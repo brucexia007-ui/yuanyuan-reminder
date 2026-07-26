@@ -1,0 +1,24 @@
+name: 功能建议
+description: 提议新的本地功能或圆圆互动
+title: "[Feature] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 使用场景
+      description: 你希望解决什么问题？
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: 希望圆圆怎么配合
+      description: 请同时说明界面行为和圆圆动画。
+    validations:
+      required: true
+  - type: textarea
+    id: privacy
+    attributes:
+      label: 本地与隐私考虑
+      description: 是否涉及网络、账号、文件或系统权限？

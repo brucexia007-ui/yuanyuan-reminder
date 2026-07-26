@@ -1,0 +1,49 @@
+name: Windows Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: npm.cmd ci
+      - name: Verify project
+        run: npm.cmd run verify
+      - name: Test Rust backend
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - name: Build Windows application
+        run: npm.cmd run tauri build
+      - name: Prepare release files
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          $assetDir = New-Item -ItemType Directory -Path release-assets -Force
+          $portable = "Yuanyuan-Reminder-$version-x64-Portable.exe"
+          $setup = "Yuanyuan-Reminder-$version-x64-Setup.exe"
+          Copy-Item -LiteralPath "src-tauri/target/release/yuanyuan-reminder.exe" -Destination (Join-Path $assetDir $portable)
+          $installer = Get-ChildItem -Path "src-tauri/target/release/bundle/nsis" -Filter "*.exe" | Select-Object -First 1
+          if (-not $installer) { throw "NSIS installer was not produced" }
+          Copy-Item -LiteralPath $installer.FullName -Destination (Join-Path $assetDir $setup)
+          $hashes = Get-ChildItem -Path $assetDir -Filter "*.exe" | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          }
+          Set-Content -LiteralPath (Join-Path $assetDir "SHA256SUMS.txt") -Value $hashes -Encoding ascii
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" release-assets/* --generate-notes --title "圆圆提醒 ${{ github.ref_name }}"

@@ -1,0 +1,31 @@
+name: 宠物包问题
+description: 报告自定义宠物图集、方向或动作问题
+title: "[Pet Pack] "
+labels: [pet-pack]
+body:
+  - type: checkboxes
+    id: rights
+    attributes:
+      label: 素材权利
+      options:
+        - label: 我有权使用和分享本 Issue 中的宠物素材
+          required: true
+  - type: dropdown
+    id: atlas
+    attributes:
+      label: 涉及图集
+      options: [标准 8×11, 睡眠 3 行, 生活互动 21 行, 不确定]
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题描述
+      description: 说明动作名、方向、帧和实际表现。不要上传私人原始照片。
+    validations:
+      required: true
+  - type: textarea
+    id: qa
+    attributes:
+      label: 验证结果
+      description: 粘贴 npm.cmd run pet:validate 的非敏感输出。

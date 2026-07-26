@@ -1,0 +1,17 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+work/
+release/
+qa/
+scripts/__pycache__/
+*.py[cod]
+*.tsbuildinfo
+*.log
+.DS_Store
+.idea/
+.vscode/
+.env
+.env.*
+!.env.example
