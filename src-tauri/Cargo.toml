@@ -5,6 +5,7 @@ description = "独立运行的圆圆桌面提醒工具"
 authors = ["Yuanyuan"]
 edition = "2021"
 license = "MIT"
+repository = "https://github.com/brucexia007-ui/yuanyuan-reminder"
 
 [lib]
 name = "yuanyuan_reminder_lib"
