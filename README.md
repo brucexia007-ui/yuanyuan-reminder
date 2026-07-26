@@ -57,6 +57,45 @@
 
 ![喂食、摸摸、逗猫棒和扔球游戏](docs/images/care.jpg)
 
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/images/interaction-food.png" alt="圆圆低头吃猫粮">
+      <br><strong>喂猫粮</strong>
+      <br><sub>圆圆走近小碗，低下脑袋慢慢吃。</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/images/interaction-water.png" alt="圆圆认真舔水">
+      <br><strong>喂水</strong>
+      <br><sub>圆圆伏在水碗前，伸出舌头认真喝水。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/images/interaction-treat.png" alt="圆圆站起来追着猫条吃">
+      <br><strong>喂猫条</strong>
+      <br><sub>眼睛盯着猫条，随鼠标转向，猫条升高时会站起来吃。</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/images/interaction-wand.png" alt="圆圆伸爪抓逗猫棒">
+      <br><strong>逗猫棒</strong>
+      <br><sub>逗猫棒在哪个方向，圆圆就朝那个方向转头、伸出对应的爪子。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/images/interaction-petting.png" alt="圆圆眯着眼睛蹭手">
+      <br><strong>摸摸圆圆</strong>
+      <br><sub>鼠标进入头部区域后，圆圆会眯起眼睛，顺着你的手轻轻蹭过去。</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/images/interaction-ball.png" alt="圆圆伸爪扒拉小球">
+      <br><strong>扔球游戏</strong>
+      <br><sub>追到球后先用爪子扒拉，再叼起球慢慢走回来并放到脚边。</sub>
+    </td>
+  </tr>
+</table>
+
 - 猫条会跟随鼠标，圆圆转头盯住猫条并逐步站起来吃；
 - 逗猫棒在左边时伸左爪，在右边时伸右爪，在上方会站起来抓；
 - 鼠标进入头部区域时圆圆会轻轻蹭过去，移出后立即停下；
