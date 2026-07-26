@@ -55,13 +55,14 @@ describe("今日计划提醒", () => {
   });
 
   it("今天和明天使用易读日期标签", () => {
-    const now = new Date("2026-07-25T09:00:00+08:00");
-    expect(plannedDueLabel("2026-07-25T10:30:00+08:00", now)).toEqual({
+    const now = new Date(2026, 6, 25, 9, 0);
+    const todayDue = new Date(2026, 6, 25, 10, 30).toISOString();
+    const tomorrowDue = new Date(2026, 6, 26, 8, 0).toISOString();
+
+    expect(plannedDueLabel(todayDue, now)).toEqual({
       date: "今天",
       time: "10:30",
     });
-    expect(plannedDueLabel("2026-07-26T08:00:00+08:00", now).date).toBe(
-      "明天",
-    );
+    expect(plannedDueLabel(tomorrowDue, now).date).toBe("明天");
   });
 });
