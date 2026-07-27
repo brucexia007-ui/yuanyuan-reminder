@@ -47,10 +47,8 @@
 }
 
 .pet-intent-bubble.alert-banner.activity-banner::after {
-  background: #e2f3dd;
-  color: #5e945b;
-  content: "动";
-  font-size: 15px;
+  display: none;
+  content: none;
 }
 
 .pet-intent-bubble.alert-banner.activity-banner small {
@@ -122,8 +120,9 @@
   left: 10px;
   width: auto;
   max-width: none;
+  display: grid;
   min-height: 78px;
-  padding: 13px 54px 13px 15px;
+  padding: 13px 14px;
   border: 1px solid rgb(113 83 59 / 15%);
   border-radius: 23px;
   background: rgb(255 253 249 / 98%);
@@ -135,24 +134,37 @@
     both;
 }
 
-.pet-intent-bubble.alert-banner::after {
-  position: absolute;
-  top: 50%;
-  right: 16px;
-  display: grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  border-radius: 50%;
-  background: #e9f7ed;
-  color: #29a757;
-  content: "✓";
-  font-size: 19px;
-  font-weight: 800;
-  transform: translateY(-50%);
+.pet-intent-bubble.alert-banner.has-actions {
+  min-height: 112px;
+  padding: 12px 14px;
 }
 
-.pet-intent-bubble.alert-banner small {
+.pet-intent-bubble.alert-banner::after {
+  display: none;
+  content: none;
+}
+
+.pet-alert-copy {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.pet-alert-copy:hover,
+.pet-alert-copy:focus-visible {
+  background: transparent;
+  outline: none;
+}
+
+.pet-alert-copy small {
   flex: 0 0 auto;
   margin-right: 10px;
   padding: 4px 7px;
@@ -162,22 +174,59 @@
   font-size: 11px;
 }
 
-.pet-intent-bubble.alert-banner .pet-bubble-detail {
+.pet-alert-copy .pet-bubble-detail {
   max-width: none;
   margin-left: 0;
   opacity: 1;
 }
 
-.pet-intent-bubble.alert-banner .pet-bubble-detail strong {
+.pet-alert-copy .pet-bubble-detail strong {
   font-size: 16px;
   line-height: 1.25;
 }
 
-.pet-intent-bubble.alert-banner .pet-bubble-detail > span {
+.pet-alert-copy .pet-bubble-detail > span {
   margin-top: 4px;
   color: #705f52;
   font-size: 12px;
   line-height: 1.25;
+}
+
+.pet-alert-actions {
+  display: flex;
+  gap: 7px;
+  margin-top: 9px;
+  padding-left: 48px;
+}
+
+.pet-alert-actions button {
+  min-height: 28px;
+  padding: 5px 11px;
+  border: 1px solid rgb(103 78 59 / 16%);
+  border-radius: 999px;
+  background: #f3ece4;
+  color: #604c3e;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 730;
+}
+
+.pet-alert-actions button.primary {
+  border-color: #86ad7a;
+  background: #6f9f65;
+  color: white;
+}
+
+.pet-alert-actions button:hover:not(:disabled),
+.pet-alert-actions button:focus-visible:not(:disabled) {
+  filter: brightness(0.96);
+  outline: none;
+}
+
+.pet-alert-actions button:disabled {
+  cursor: wait;
+  opacity: 0.55;
 }
 
 .pet-intent-bubble.bubble-left {

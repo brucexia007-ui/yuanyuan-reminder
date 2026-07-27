@@ -46,6 +46,9 @@ impl Repository {
         if schema_version < 5 {
             conn.execute_batch(include_str!("../migrations/005_occurrence_history.sql"))?;
         }
+        if schema_version < 6 {
+            conn.execute_batch(include_str!("../migrations/006_activity_tracking.sql"))?;
+        }
         let repo = Self { conn };
         repo.ensure_settings()?;
         repo.ensure_default_water_reminder()?;
@@ -128,6 +131,7 @@ impl Repository {
 
     pub fn list_today(&self, notification_available: bool) -> AppResult<TodaySnapshot> {
         self.mark_overdue()?;
+        let (day_start, next_day_start) = local_day_utc_bounds(Local::now())?;
         let mut reminder_statement = self.conn.prepare(
             "SELECT id, title, category, schedule_kind, schedule_json, timezone,
                     enabled, next_due_at, created_at, updated_at
@@ -144,7 +148,7 @@ impl Repository {
              FROM occurrences o
              JOIN reminders r ON r.id = o.reminder_id
              WHERE o.status IN ('pending', 'overdue', 'snoozed')
-                OR date(o.acted_at) = date('now')
+                OR (o.acted_at >= ?1 AND o.acted_at < ?2)
              ORDER BY
                 CASE
                     WHEN r.category = 'water' THEN 0
@@ -154,12 +158,13 @@ impl Repository {
                 COALESCE(o.snoozed_until, o.scheduled_at) ASC",
         )?;
         let occurrences = occurrence_statement
-            .query_map([], occurrence_from_row)?
+            .query_map(params![day_start, next_day_start], occurrence_from_row)?
             .collect::<Result<Vec<_>, _>>()?;
 
         let water_completed: u32 = self.conn.query_row(
-            "SELECT COUNT(*) FROM water_log WHERE date(completed_at) = date('now')",
-            [],
+            "SELECT COUNT(*) FROM water_log
+             WHERE completed_at >= ?1 AND completed_at < ?2",
+            params![day_start, next_day_start],
             |row| row.get(0),
         )?;
         let settings = self.get_settings()?;
@@ -360,6 +365,61 @@ impl Repository {
         )?)
     }
 
+    pub fn activity_active_seconds(&self) -> AppResult<u64> {
+        let value: i64 = self.conn.query_row(
+            "SELECT active_seconds FROM activity_tracking_state WHERE id = 1",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(value.max(0) as u64)
+    }
+
+    pub fn save_activity_active_seconds(&self, active_seconds: u64) -> AppResult<()> {
+        self.conn.execute(
+            "UPDATE activity_tracking_state
+             SET active_seconds = ?1, updated_at = ?2
+             WHERE id = 1",
+            params![
+                i64::try_from(active_seconds).unwrap_or(i64::MAX),
+                Utc::now().to_rfc3339()
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn complete_occurrence(&mut self, id: &str) -> AppResult<bool> {
+        let now = Utc::now().to_rfc3339();
+        let transaction = self.conn.transaction()?;
+        let category = transaction
+            .query_row(
+                "SELECT r.category
+                 FROM occurrences o
+                 JOIN reminders r ON r.id = o.reminder_id
+                 WHERE o.id = ?1",
+                [id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        let Some(category) = category else {
+            return Err(AppError::Validation("occurrence does not exist".into()));
+        };
+        let changed = transaction.execute(
+            "UPDATE occurrences
+             SET status = 'completed', acted_at = ?1, snoozed_until = NULL
+             WHERE id = ?2 AND status IN ('pending', 'overdue', 'snoozed')",
+            params![now, id],
+        )?;
+        let completed_water = changed > 0 && category == "water";
+        if completed_water {
+            transaction.execute(
+                "INSERT INTO water_log(id, completed_at) VALUES(?1, ?2)",
+                params![Uuid::new_v4().to_string(), now],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(completed_water)
+    }
+
     pub fn claim_due(&mut self, now: DateTime<Utc>) -> AppResult<Vec<DueOccurrence>> {
         let pause_until = self
             .get_settings()?
@@ -390,12 +450,26 @@ impl Repository {
                 .as_ref()
                 .ok_or_else(|| AppError::Time("due reminder has no due time".into()))?;
             let occurrence_id = Uuid::new_v4().to_string();
-            let inserted = transaction.execute(
-                "INSERT OR IGNORE INTO occurrences(
-                    id, reminder_id, scheduled_at, status, created_at
-                 ) VALUES(?1, ?2, ?3, 'pending', ?4)",
-                params![occurrence_id, reminder.id, scheduled_at, now.to_rfc3339()],
-            )?;
+            let has_active_water = reminder.category == "water"
+                && transaction.query_row(
+                    "SELECT EXISTS(
+                        SELECT 1 FROM occurrences
+                        WHERE reminder_id = ?1
+                          AND status IN ('pending', 'overdue', 'snoozed')
+                    )",
+                    [&reminder.id],
+                    |row| row.get(0),
+                )?;
+            let inserted = if has_active_water {
+                0
+            } else {
+                transaction.execute(
+                    "INSERT OR IGNORE INTO occurrences(
+                        id, reminder_id, scheduled_at, status, created_at
+                     ) VALUES(?1, ?2, ?3, 'pending', ?4)",
+                    params![occurrence_id, reminder.id, scheduled_at, now.to_rfc3339()],
+                )?
+            };
 
             let input: CreateReminderInput = serde_json::from_str(&reminder.schedule_json)?;
             let next_due = compute_next_due(&input, now, false)?;
@@ -494,24 +568,28 @@ impl Repository {
         Ok(())
     }
 
-    pub fn record_water(&self) -> AppResult<()> {
+    pub fn record_water(&mut self) -> AppResult<()> {
         let now = Utc::now().to_rfc3339();
-        self.conn.execute(
+        let transaction = self.conn.transaction()?;
+        transaction.execute(
             "INSERT INTO water_log(id, completed_at) VALUES(?1, ?2)",
             params![Uuid::new_v4().to_string(), now],
         )?;
-        self.conn.execute(
+        transaction.execute(
             "UPDATE occurrences
              SET status = 'completed', acted_at = ?1, snoozed_until = NULL
-             WHERE id IN (
+             WHERE id = (
                  SELECT o.id
                  FROM occurrences o
                  JOIN reminders r ON r.id = o.reminder_id
                  WHERE r.category = 'water'
                    AND o.status IN ('pending', 'overdue', 'snoozed')
+                 ORDER BY COALESCE(o.snoozed_until, o.scheduled_at) ASC
+                 LIMIT 1
              )",
-            [Utc::now().to_rfc3339()],
+            [&now],
         )?;
+        transaction.commit()?;
         Ok(())
     }
 
@@ -529,20 +607,21 @@ impl Repository {
     }
 
     pub fn get_pet_care(&self) -> AppResult<PetCareSnapshot> {
+        let (day_start, next_day_start) = local_day_utc_bounds(Local::now())?;
         self.conn
             .query_row(
                 "SELECT
                     COUNT(*),
-                    SUM(CASE WHEN kind = 'food' THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN kind = 'water' THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN kind = 'treat' THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN kind = 'wand' THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN kind = 'pet' THEN 1 ELSE 0 END),
-                    SUM(CASE WHEN kind = 'ball' THEN 1 ELSE 0 END),
+                    COALESCE(SUM(CASE WHEN kind = 'food' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN kind = 'water' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN kind = 'treat' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN kind = 'wand' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN kind = 'pet' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN kind = 'ball' THEN 1 ELSE 0 END), 0),
                     MAX(created_at)
                  FROM pet_interactions
-                 WHERE date(created_at) = date('now')",
-                [],
+                 WHERE created_at >= ?1 AND created_at < ?2",
+                params![day_start, next_day_start],
                 |row| {
                     Ok(PetCareSnapshot {
                         total: row.get(0)?,
@@ -959,6 +1038,23 @@ fn resolve_local(naive: NaiveDateTime) -> AppResult<DateTime<Local>> {
     }
 }
 
+fn local_day_utc_bounds(now: DateTime<Local>) -> AppResult<(String, String)> {
+    let date = now.date_naive();
+    let start = resolve_local(
+        date.and_hms_opt(0, 0, 0)
+            .ok_or_else(|| AppError::Time("could not resolve local day start".into()))?,
+    )?;
+    let next = resolve_local(
+        (date + Duration::days(1))
+            .and_hms_opt(0, 0, 0)
+            .ok_or_else(|| AppError::Time("could not resolve next local day start".into()))?,
+    )?;
+    Ok((
+        start.with_timezone(&Utc).to_rfc3339(),
+        next.with_timezone(&Utc).to_rfc3339(),
+    ))
+}
+
 fn parse_time(value: &str) -> AppResult<NaiveTime> {
     NaiveTime::parse_from_str(value, "%H:%M").map_err(|error| AppError::Time(error.to_string()))
 }
@@ -1016,6 +1112,40 @@ mod tests {
         let after = Utc.with_ymd_and_hms(2030, 1, 1, 1, 0, 0).unwrap();
         let next = compute_next_due(&input, after, true).unwrap().unwrap();
         assert_eq!(next - after, Duration::minutes(60));
+    }
+
+    #[test]
+    fn today_uses_local_midnight_boundaries() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-local-day-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let repository = Repository::open(&path).unwrap();
+        let (start, next) = local_day_utc_bounds(Local::now()).unwrap();
+        let start = DateTime::parse_from_rfc3339(&start)
+            .unwrap()
+            .with_timezone(&Utc);
+        let next = DateTime::parse_from_rfc3339(&next)
+            .unwrap()
+            .with_timezone(&Utc);
+        for timestamp in [
+            start - Duration::seconds(1),
+            start + Duration::seconds(1),
+            next - Duration::seconds(1),
+        ] {
+            repository
+                .conn
+                .execute(
+                    "INSERT INTO water_log(id, completed_at) VALUES(?1, ?2)",
+                    params![Uuid::new_v4().to_string(), timestamp.to_rfc3339()],
+                )
+                .unwrap();
+        }
+        assert_eq!(repository.list_today(false).unwrap().water_completed, 2);
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
     }
 
     #[test]
@@ -1124,12 +1254,125 @@ mod tests {
     }
 
     #[test]
-    fn recording_water_resolves_active_water_occurrences() {
+    fn due_water_reminder_does_not_stack_while_one_is_active() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-no-water-stack-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let mut repository = Repository::open(&path).unwrap();
+        let reminder_id: String = repository
+            .conn
+            .query_row(
+                "SELECT id FROM reminders WHERE category = 'water' LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let now = Utc::now();
+        repository
+            .conn
+            .execute(
+                "UPDATE reminders SET enabled = 1, next_due_at = ?1 WHERE id = ?2",
+                params![(now - Duration::minutes(1)).to_rfc3339(), reminder_id],
+            )
+            .unwrap();
+        repository
+            .conn
+            .execute(
+                "INSERT INTO occurrences(
+                    id, reminder_id, scheduled_at, status, created_at
+                 ) VALUES(?1, ?2, ?3, 'pending', ?3)",
+                params![
+                    Uuid::new_v4().to_string(),
+                    reminder_id,
+                    (now - Duration::minutes(20)).to_rfc3339()
+                ],
+            )
+            .unwrap();
+
+        let claimed = repository.claim_due(now).unwrap();
+        assert!(claimed
+            .iter()
+            .all(|item| item.occurrence.category != "water"));
+        let active_count: u32 = repository
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM occurrences
+                 WHERE reminder_id = ?1
+                   AND status IN ('pending', 'overdue', 'snoozed')",
+                [&reminder_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(active_count, 1);
+
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
+    fn recording_water_resolves_only_the_oldest_active_water_occurrence() {
         let path = std::env::temp_dir().join(format!(
             "yuanyuan-reminder-water-{}.sqlite3",
             Uuid::new_v4()
         ));
-        let repository = Repository::open(&path).unwrap();
+        let mut repository = Repository::open(&path).unwrap();
+        let reminder_id: String = repository
+            .conn
+            .query_row(
+                "SELECT id FROM reminders WHERE category = 'water' LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let oldest_id = Uuid::new_v4().to_string();
+        let newest_id = Uuid::new_v4().to_string();
+        let now = Utc::now();
+        for (id, scheduled_at) in [
+            (&oldest_id, now - Duration::minutes(10)),
+            (&newest_id, now),
+        ] {
+            repository
+                .conn
+                .execute(
+                    "INSERT INTO occurrences(
+                        id, reminder_id, scheduled_at, status, created_at
+                     ) VALUES(?1, ?2, ?3, 'pending', ?3)",
+                    params![id, reminder_id, scheduled_at.to_rfc3339()],
+                )
+                .unwrap();
+        }
+        repository.record_water().unwrap();
+        let statuses: Vec<(String, String)> = repository
+            .conn
+            .prepare(
+                "SELECT id, status FROM occurrences
+                 WHERE id IN (?1, ?2) ORDER BY scheduled_at",
+            )
+            .unwrap()
+            .query_map(params![oldest_id, newest_id], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(statuses[0].1, "completed");
+        assert_eq!(statuses[1].1, "pending");
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
+    fn completing_a_water_occurrence_records_exactly_one_cup() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-complete-water-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let mut repository = Repository::open(&path).unwrap();
         let reminder_id: String = repository
             .conn
             .query_row(
@@ -1149,16 +1392,12 @@ mod tests {
                 params![occurrence_id, reminder_id, now],
             )
             .unwrap();
-        repository.record_water().unwrap();
-        let status: String = repository
-            .conn
-            .query_row(
-                "SELECT status FROM occurrences WHERE id = ?1",
-                [&occurrence_id],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(status, "completed");
+
+        assert!(repository.complete_occurrence(&occurrence_id).unwrap());
+        assert_eq!(repository.list_today(false).unwrap().water_completed, 1);
+        assert!(!repository.complete_occurrence(&occurrence_id).unwrap());
+        assert_eq!(repository.list_today(false).unwrap().water_completed, 1);
+
         drop(repository);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
@@ -1196,7 +1435,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 5);
+        assert_eq!(version, 6);
         drop(repository);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
@@ -1219,6 +1458,85 @@ mod tests {
         assert_eq!(care.treat, 1);
         assert_eq!(care.ball, 1);
         assert!(repository.record_pet_interaction("unknown").is_err());
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
+    fn empty_pet_care_returns_zero_counts() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-empty-care-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let repository = Repository::open(&path).unwrap();
+        let care = repository.get_pet_care().unwrap();
+        assert_eq!(care.total, 0);
+        assert_eq!(care.food, 0);
+        assert_eq!(care.water, 0);
+        assert_eq!(care.treat, 0);
+        assert_eq!(care.wand, 0);
+        assert_eq!(care.pet, 0);
+        assert_eq!(care.ball, 0);
+        assert!(care.last_interaction_at.is_none());
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
+    fn pet_care_uses_local_day_boundaries() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-local-care-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let repository = Repository::open(&path).unwrap();
+        let (start, _) = local_day_utc_bounds(Local::now()).unwrap();
+        let start = DateTime::parse_from_rfc3339(&start)
+            .unwrap()
+            .with_timezone(&Utc);
+        for (kind, created_at) in [
+            ("food", start - Duration::seconds(1)),
+            ("treat", start + Duration::seconds(1)),
+        ] {
+            repository
+                .conn
+                .execute(
+                    "INSERT INTO pet_interactions(id, kind, created_at)
+                     VALUES(?1, ?2, ?3)",
+                    params![
+                        Uuid::new_v4().to_string(),
+                        kind,
+                        created_at.to_rfc3339()
+                    ],
+                )
+                .unwrap();
+        }
+        let care = repository.get_pet_care().unwrap();
+        assert_eq!(care.total, 1);
+        assert_eq!(care.food, 0);
+        assert_eq!(care.treat, 1);
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
+    fn activity_progress_survives_repository_reopen() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-activity-progress-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let repository = Repository::open(&path).unwrap();
+        repository.save_activity_active_seconds(3_245).unwrap();
+        drop(repository);
+
+        let repository = Repository::open(&path).unwrap();
+        assert_eq!(repository.activity_active_seconds().unwrap(), 3_245);
+
         drop(repository);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));

@@ -15,8 +15,6 @@ pub fn send_due(app: &AppHandle, occurrence: &Occurrence) -> AppResult<()> {
         .builder()
         .title("圆圆提醒你")
         .body(&occurrence.reminder_title)
-        .action_type_id("reminder-actions")
-        .extra("occurrenceId", &occurrence.id)
         .auto_cancel()
         .show()
         .map_err(|error| AppError::Notification(error.to_string()))
@@ -32,13 +30,11 @@ pub fn send_break_complete(app: &AppHandle) -> AppResult<()> {
         .map_err(|error| AppError::Notification(error.to_string()))
 }
 
-pub fn send_activity_due(app: &AppHandle, occurrence: &Occurrence) -> AppResult<()> {
+pub fn send_activity_due(app: &AppHandle, _occurrence: &Occurrence) -> AppResult<()> {
     app.notification()
         .builder()
         .title("圆圆叫你起来活动啦")
         .body("已经连续使用电脑一段时间，站起来走一走、伸伸肩颈吧。")
-        .action_type_id("reminder-actions")
-        .extra("occurrenceId", &occurrence.id)
         .auto_cancel()
         .show()
         .map_err(|error| AppError::Notification(error.to_string()))

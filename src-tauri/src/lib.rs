@@ -84,9 +84,14 @@ fn setup(app: &mut tauri::App) -> AppResult<()> {
     fs::create_dir_all(&app_data)?;
     let repository = Repository::open(&app_data.join("yuanyuan-reminder.sqlite3"))?;
     let mut settings = repository.get_settings()?;
+    let activity_active_seconds = repository.activity_active_seconds()?;
     windows::apply_settings(app.handle(), &mut settings)?;
     repository.save_settings(&settings)?;
-    app.manage(AppState::new(repository, guard));
+    app.manage(AppState::new(
+        repository,
+        guard,
+        activity_active_seconds,
+    ));
 
     tray::create(app)?;
     scheduler::spawn(app.handle().clone());

@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 1.3.0" src="https://img.shields.io/badge/version-1.3.0-bb835c">
+  <img alt="Version 1.3.2" src="https://img.shields.io/badge/version-1.3.2-bb835c">
   <img alt="Windows 10/11 x64" src="https://img.shields.io/badge/Windows-10%20%2F%2011-5b8fb9">
   <img alt="Code license MIT" src="https://img.shields.io/badge/code-MIT-76a985">
   <img alt="Offline first" src="https://img.shields.io/badge/runtime-offline-8a78a8">

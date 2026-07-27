@@ -1,11 +1,8 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   isPermissionGranted,
-  onAction,
-  registerActionTypes,
   requestPermission,
 } from "@tauri-apps/plugin-notification";
-import type { PluginListener } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   completeOccurrence,
@@ -148,40 +145,40 @@ export function TaskPanel() {
   }, [panelWindow, refresh]);
 
   useEffect(() => {
-    let listener: PluginListener | undefined;
+    let cancelled = false;
+    let timer = 0;
+    const scheduleNextLocalDay = () => {
+      const now = new Date();
+      const next = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() + 1,
+        0,
+        0,
+        1,
+      );
+      timer = window.setTimeout(() => {
+        void refresh().finally(() => {
+          if (!cancelled) scheduleNextLocalDay();
+        });
+      }, Math.max(1_000, next.getTime() - now.getTime()));
+    };
+    scheduleNextLocalDay();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [refresh]);
+
+  useEffect(() => {
     void (async () => {
       try {
         if (!(await isPermissionGranted())) await requestPermission();
-        await registerActionTypes([
-          {
-            id: "reminder-actions",
-            actions: [
-              { id: "complete", title: "已完成", foreground: true },
-              { id: "snooze", title: "10 分钟后", foreground: true },
-              { id: "skip", title: "跳过", foreground: true },
-            ],
-          },
-        ]);
-        listener = await onAction(async (notification) => {
-          const data = notification as unknown as {
-            actionId?: string;
-            extra?: Record<string, string>;
-          };
-          const id = data.extra?.occurrenceId;
-          if (!id) return;
-          if (data.actionId === "complete") await completeOccurrence(id);
-          if (data.actionId === "snooze") await snoozeOccurrence(id);
-          if (data.actionId === "skip") await skipOccurrence(id);
-          await refresh();
-        });
       } catch {
         // The Rust backend also emits an in-app due state when OS notifications are unavailable.
       }
     })();
-    return () => {
-      void listener?.unregister();
-    };
-  }, [refresh]);
+  }, []);
 
   const saveSetting = async (patch: Partial<AppSettings>) => {
     try {
@@ -1246,7 +1243,7 @@ function SettingsView({
       </SettingRow>
       <SettingRow
         title="活动间隔"
-        description="离开电脑约 5 分钟后会重新累计"
+        description="静止 5 分钟暂停，离开 10 分钟重新累计"
       >
         <select
           disabled={!settings.activityEnabled}

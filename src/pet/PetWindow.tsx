@@ -16,12 +16,15 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
+  completeOccurrence,
   getFocusState,
   getSettings,
   listToday,
   onBackendEvent,
   setPetSize,
   showTaskPanel,
+  skipOccurrence,
+  snoozeOccurrence,
   tauriAvailable,
 } from "../lib/backend";
 import type {
@@ -249,6 +252,7 @@ export function PetWindow() {
   const [animation, setAnimation] = useState<AnimationName>("idle");
   const [lookFrame, setLookFrame] = useState<number | null>(null);
   const [activeIntent, setActiveIntent] = useState<PetIntent | null>(null);
+  const [alertActionPending, setAlertActionPending] = useState(false);
   const [focusState, setFocusState] = useState<FocusState>({ session: null });
   const [toolInteraction, setToolInteraction] =
     useState<ActiveToolInteraction | null>(null);
@@ -1184,6 +1188,34 @@ export function PetWindow() {
     void showTaskPanel(route);
   };
 
+  const handleAlertAction = async (
+    action: "complete" | "snooze" | "skip",
+  ) => {
+    const intent = activeIntentRef.current;
+    if (!intent?.occurrenceId || alertActionPending) return;
+    setAlertActionPending(true);
+    try {
+      if (action === "complete") {
+        await completeOccurrence(intent.occurrenceId);
+      } else if (action === "snooze") {
+        await snoozeOccurrence(intent.occurrenceId);
+      } else {
+        await skipOccurrence(intent.occurrenceId);
+      }
+      if (!tauriAvailable()) {
+        updateActiveIntent(null);
+        const today = await listToday();
+        const pending = pendingIntentFromSnapshot(today);
+        if (pending) applyIntent(pending);
+        else restoreFunctionalAnimation();
+      }
+    } catch {
+      await showTaskPanel(intent.route);
+    } finally {
+      setAlertActionPending(false);
+    }
+  };
+
   const focusSession = focusState.session;
   const strongAlertActive = isStrongAlertIntent(activeIntent);
   const bubble = activeIntent
@@ -1281,14 +1313,62 @@ export function PetWindow() {
         onPointerUp={finishPointer}
         onPointerCancel={finishPointer}
       >
-        {bubble && (
+        {bubble && strongAlertActive ? (
+          <div
+            className={`pet-intent-bubble alert-banner ${
+              activeIntent?.kind === "activity" ? "activity-banner" : ""
+            } ${activeIntent?.occurrenceId ? "has-actions" : ""}`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onPointerMove={(event) => event.stopPropagation()}
+            onPointerUp={(event) => event.stopPropagation()}
+            onPointerCancel={(event) => event.stopPropagation()}
+          >
+            <button
+              className="pet-alert-copy"
+              type="button"
+              aria-label={`${bubble.title}：${bubble.message}，打开今日任务`}
+              onClick={(event) => {
+                event.stopPropagation();
+                openBubbleRoute(bubble.route);
+              }}
+            >
+              <small>{bubble.label}</small>
+              <span className="pet-bubble-detail">
+                <strong>{bubble.title}</strong>
+                <span>{bubble.message}</span>
+              </span>
+            </button>
+            {activeIntent?.occurrenceId && (
+              <div className="pet-alert-actions" aria-label="处理提醒">
+                <button
+                  className="primary"
+                  type="button"
+                  disabled={alertActionPending}
+                  onClick={() => void handleAlertAction("complete")}
+                >
+                  {activeIntent.kind === "activity" ? "活动完成" : "完成"}
+                </button>
+                <button
+                  type="button"
+                  disabled={alertActionPending}
+                  onClick={() => void handleAlertAction("snooze")}
+                >
+                  10 分钟后
+                </button>
+                <button
+                  type="button"
+                  disabled={alertActionPending}
+                  onClick={() => void handleAlertAction("skip")}
+                >
+                  跳过
+                </button>
+              </div>
+            )}
+          </div>
+        ) : bubble ? (
           <button
             className={`pet-intent-bubble ${
-              strongAlertActive
-                ? `alert-banner ${
-                    activeIntent?.kind === "activity" ? "activity-banner" : ""
-                  }`
-                : toolInteraction &&
+              toolInteraction &&
               toolInteraction.kind !== "pet" &&
               toolInteraction.x >= settings.petWidth / 2
                 ? "bubble-left"
@@ -1311,7 +1391,7 @@ export function PetWindow() {
               <span>{bubble.message}</span>
             </span>
           </button>
-        )}
+        ) : null}
         <SpriteAnimator
           animation={animation}
           lookFrame={lookFrame}

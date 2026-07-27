@@ -53,10 +53,8 @@ pub fn complete_occurrence(
     state: State<'_, AppState>,
 ) -> AppResult<()> {
     let is_water = {
-        let repository = state.repository.lock();
-        let is_water = repository.occurrence_is_water(&id)?;
-        repository.update_occurrence(&id, "completed", None)?;
-        is_water
+        let mut repository = state.repository.lock();
+        repository.complete_occurrence(&id)?
     };
     app.emit("occurrence-updated", ())
         .map_err(|error| AppError::Window(error.to_string()))?;

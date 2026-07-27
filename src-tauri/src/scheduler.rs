@@ -149,15 +149,34 @@ fn update_activity_tracking(
         .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
         .is_some_and(|until| until.with_timezone(&Utc) > now);
     let in_active_window = is_time_in_window(start, end, Local::now().time());
-    let should_trigger = state.activity_tracker.lock().tick(
-        system_idle_seconds(),
-        settings.activity_enabled && !paused && !break_active,
-        in_active_window,
-        settings.activity_interval_minutes,
-    );
+    let (should_trigger, persistence_update) = {
+        let mut tracker = state.activity_tracker.lock();
+        let should_trigger = tracker.tick(
+            system_idle_seconds(),
+            settings.activity_enabled && !paused && !break_active,
+            in_active_window,
+            settings.activity_interval_minutes,
+        );
+        (should_trigger, tracker.take_persistence_update())
+    };
+    if let Some(active_seconds) = persistence_update {
+        if let Err(error) = state
+            .repository
+            .lock()
+            .save_activity_active_seconds(active_seconds)
+        {
+            tracing::warn!(error = %error, "activity tracking progress could not be saved");
+        }
+    }
     if should_trigger {
         match state.repository.lock().create_activity_occurrence(now) {
-            Ok(Some(_)) => {}
+            Ok(Some(occurrence)) => {
+                tracing::info!(
+                    occurrence_id = %occurrence.id,
+                    interval_minutes = settings.activity_interval_minutes,
+                    "activity reminder created"
+                );
+            }
             Ok(None) => {}
             Err(error) => {
                 tracing::warn!(error = %error, "activity occurrence could not be created");

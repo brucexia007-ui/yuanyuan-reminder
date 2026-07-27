@@ -11,7 +11,8 @@ import type {
   TodaySnapshot,
 } from "../types";
 
-const isTauri = "__TAURI_INTERNALS__" in window;
+const isTauri =
+  typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 const demoAt = (hour: number, minute: number) => {
   const value = new Date();
@@ -19,7 +20,7 @@ const demoAt = (hour: number, minute: number) => {
   return value.toISOString();
 };
 
-const demoSnapshot: TodaySnapshot = {
+let demoSnapshot: TodaySnapshot = {
   reminders: [
     {
       id: "demo-water",
@@ -68,6 +69,16 @@ const demoSnapshot: TodaySnapshot = {
       snoozedUntil: null,
     },
     {
+      id: "demo-activity-due",
+      reminderId: "system-activity-reminder",
+      reminderTitle: "起来活动一下",
+      category: "personal",
+      scheduledAt: demoAt(15, 5),
+      status: "pending",
+      actedAt: null,
+      snoozedUntil: null,
+    },
+    {
       id: "demo-water-history",
       reminderId: "demo-water",
       reminderTitle: "喝水时间",
@@ -93,7 +104,7 @@ const demoSnapshot: TodaySnapshot = {
   notificationAvailable: false,
 };
 
-const demoSettings: AppSettings = {
+let demoSettings: AppSettings = {
   animationMode: "always",
   animationSpeed: 1,
   cursorFollow: true,
@@ -127,7 +138,9 @@ let demoCare: PetCareSnapshot = {
 };
 
 export async function listToday(): Promise<TodaySnapshot> {
-  return isTauri ? invoke<TodaySnapshot>("list_today") : demoSnapshot;
+  return isTauri
+    ? invoke<TodaySnapshot>("list_today")
+    : structuredClone(demoSnapshot);
 }
 
 export async function listHistory(query: HistoryQuery): Promise<Occurrence[]> {
@@ -167,23 +180,140 @@ export async function listHistory(query: HistoryQuery): Promise<Occurrence[]> {
 }
 
 export async function createReminder(input: CreateReminderInput): Promise<void> {
-  if (isTauri) await invoke("create_reminder", { input });
+  if (isTauri) {
+    await invoke("create_reminder", { input });
+    return;
+  }
+  const now = new Date();
+  const nextDue =
+    input.scheduleKind === "once" && input.atLocal
+      ? new Date(input.atLocal).toISOString()
+      : new Date(
+          now.getTime() + (input.everyMinutes ?? 60) * 60_000,
+        ).toISOString();
+  demoSnapshot = {
+    ...demoSnapshot,
+    reminders: [
+      ...demoSnapshot.reminders,
+      {
+        id: crypto.randomUUID(),
+        title: input.title,
+        category: input.category,
+        scheduleKind: input.scheduleKind,
+        scheduleJson: JSON.stringify(input),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        enabled: true,
+        nextDueAt: nextDue,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+      },
+    ],
+  };
 }
 
 export async function completeOccurrence(id: string): Promise<void> {
-  if (isTauri) await invoke("complete_occurrence", { id });
+  if (isTauri) {
+    await invoke("complete_occurrence", { id });
+    return;
+  }
+  const now = new Date().toISOString();
+  let waterCompleted = demoSnapshot.waterCompleted;
+  demoSnapshot = {
+    ...demoSnapshot,
+    occurrences: demoSnapshot.occurrences.map((item) => {
+      if (
+        item.id !== id ||
+        !["pending", "overdue", "snoozed"].includes(item.status)
+      ) {
+        return item;
+      }
+      if (item.category === "water") waterCompleted += 1;
+      return {
+        ...item,
+        status: "completed",
+        actedAt: now,
+        snoozedUntil: null,
+      };
+    }),
+    waterCompleted,
+  };
 }
 
 export async function snoozeOccurrence(id: string, minutes = 10): Promise<void> {
-  if (isTauri) await invoke("snooze_occurrence", { id, minutes });
+  if (isTauri) {
+    await invoke("snooze_occurrence", { id, minutes });
+    return;
+  }
+  const now = new Date();
+  demoSnapshot = {
+    ...demoSnapshot,
+    occurrences: demoSnapshot.occurrences.map((item) =>
+      item.id === id && ["pending", "overdue", "snoozed"].includes(item.status)
+        ? {
+            ...item,
+            status: "snoozed",
+            actedAt: now.toISOString(),
+            snoozedUntil: new Date(
+              now.getTime() + minutes * 60_000,
+            ).toISOString(),
+          }
+        : item,
+    ),
+  };
 }
 
 export async function skipOccurrence(id: string): Promise<void> {
-  if (isTauri) await invoke("skip_occurrence", { id });
+  if (isTauri) {
+    await invoke("skip_occurrence", { id });
+    return;
+  }
+  const now = new Date().toISOString();
+  demoSnapshot = {
+    ...demoSnapshot,
+    occurrences: demoSnapshot.occurrences.map((item) =>
+      item.id === id && ["pending", "overdue", "snoozed"].includes(item.status)
+        ? {
+            ...item,
+            status: "skipped",
+            actedAt: now,
+            snoozedUntil: null,
+          }
+        : item,
+    ),
+  };
 }
 
 export async function recordWater(): Promise<void> {
-  if (isTauri) await invoke("record_water");
+  if (isTauri) {
+    await invoke("record_water");
+    return;
+  }
+  const now = new Date().toISOString();
+  const oldest = demoSnapshot.occurrences
+    .filter(
+      (item) =>
+        item.category === "water" &&
+        ["pending", "overdue", "snoozed"].includes(item.status),
+    )
+    .sort(
+      (left, right) =>
+        new Date(left.snoozedUntil ?? left.scheduledAt).getTime() -
+        new Date(right.snoozedUntil ?? right.scheduledAt).getTime(),
+    )[0];
+  demoSnapshot = {
+    ...demoSnapshot,
+    waterCompleted: demoSnapshot.waterCompleted + 1,
+    occurrences: demoSnapshot.occurrences.map((item) =>
+      item.id === oldest?.id
+        ? {
+            ...item,
+            status: "completed",
+            actedAt: now,
+            snoozedUntil: null,
+          }
+        : item,
+    ),
+  };
 }
 
 export async function getFocusState(): Promise<FocusState> {
@@ -242,13 +372,15 @@ export async function startPetInteraction(
 }
 
 export async function getSettings(): Promise<AppSettings> {
-  return isTauri ? invoke<AppSettings>("get_settings") : demoSettings;
+  return isTauri
+    ? invoke<AppSettings>("get_settings")
+    : structuredClone(demoSettings);
 }
 
 export async function updateSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
-  return isTauri
-    ? invoke<AppSettings>("update_settings", { patch })
-    : { ...demoSettings, ...patch };
+  if (isTauri) return invoke<AppSettings>("update_settings", { patch });
+  demoSettings = { ...demoSettings, ...patch };
+  return structuredClone(demoSettings);
 }
 
 export async function showTaskPanel(route = "today"): Promise<void> {
