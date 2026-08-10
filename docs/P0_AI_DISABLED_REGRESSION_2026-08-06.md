@@ -62,7 +62,7 @@ Rust测试`ai_unavailable_keeps_full_offline_reminder_core_usable`使用真实Re
 - NSIS SHA-256：`C96D883452FC02B296AF13E92633C2282E261C5B3211BC949987DE39A3A66F96`
 - `ready=true`
 
-发布预检将`ai_disabled_regression`列为独立自动检查；加入候选绑定的隔离/默认路径转换、安装失败恢复、首次启动数据库恢复、卸载数据选择、独立控制面板注册和无障碍人工矩阵门后，当前候选为13项通过、14项待完成、0失败。签名、渠道、安全软件、控制面板注册、无障碍人工矩阵、真实历史数据库迁移和完整掉电/回退人工证据仍未完成，整体`readyForRelease=false`。
+发布预检将`ai_disabled_regression`列为独立自动检查；加入候选绑定的隔离/默认路径转换、安装失败恢复、首次启动数据库恢复、卸载数据选择、独立控制面板注册和无障碍人工矩阵门后，项目已采用“未签名 NSIS 测试版 + SHA-256、后续 Store MSIX 正式版”的低成本策略。MSIX占位身份技术预览已完成结构验证，但Store身份、安装与运行矩阵、正式提交候选、安全软件、控制面板注册、无障碍人工矩阵、真实历史数据库迁移和完整掉电/回退人工证据仍未完成，整体`readyForRelease=false`。
 
 ## 门禁测试
 

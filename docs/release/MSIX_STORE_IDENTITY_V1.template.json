@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "status": "pending_partner_center",
+  "source": "partner_center_product_identity",
+  "confirmedBy": null,
+  "confirmedAt": null,
+  "product": {
+    "reservedProductName": null,
+    "storeId": null
+  },
+  "package": {
+    "identityName": null,
+    "publisher": null,
+    "publisherDisplayName": null,
+    "packageFamilyName": null
+  },
+  "platform": {
+    "version": "1.4.0.0",
+    "architecture": "x64",
+    "targetDeviceFamily": "Windows.Desktop",
+    "minVersion": "10.0.19041.0",
+    "maxVersionTested": "10.0.26100.0"
+  }
+}

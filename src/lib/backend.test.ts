@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DELETE_ALL_LOCAL_DATA_CONFIRMATION,
   applyConnectorTrustChange,
   applyProjectHookInspection,
   cancelProjectHookInspection,
@@ -8,6 +9,7 @@ import {
   completeOccurrence,
   discoverBuiltinConnectors,
   deferTaskWatchAttention,
+  deleteAllLocalDataAndExit,
   exportAiDiagnostics,
   getAiSupervisorStatus,
   getCompanionExpressionSnapshot,
@@ -50,6 +52,12 @@ describe("浏览器演示后端", () => {
   it("设置修改在演示会话内保持有效", async () => {
     await updateSettings({ activityIntervalMinutes: 45 });
     expect((await getSettings()).activityIntervalMinutes).toBe(45);
+  });
+
+  it("浏览器演示不会伪造全部本地数据已删除", async () => {
+    await expect(
+      deleteAllLocalDataAndExit(DELETE_ALL_LOCAL_DATA_CONFIRMATION, true),
+    ).rejects.toThrow("local data deletion is unavailable");
   });
 
   it("浏览器表达快照只有固定非语言字段", async () => {

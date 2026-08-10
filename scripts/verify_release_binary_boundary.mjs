@@ -37,6 +37,8 @@ export const forbiddenQaMarkers = [
   "reminder-latency",
   "task-failure-motion",
   "yuanyuan-database-migration-qa",
+  "yuanyuan-store-data-lifecycle-qa",
+  ".yuanyuan-store-data-lifecycle-v1.json",
   "yuanyuan-v132-migration-qa-",
   "operator_attested_copy_plus_schema_version_6",
   "yuanyuan-retention-qa",

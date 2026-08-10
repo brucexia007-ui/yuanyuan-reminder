@@ -5,7 +5,7 @@
 
 ## 1. 当前结论
 
-当前候选仍是`NO-GO`：便携主程序、NSIS实际安装主程序和NSIS安装包均未签名，发布渠道、精确发布者身份、RFC 3161时间戳服务、SmartScreen干净机观察、两款第三方安全软件、许可证人工复核和安装升级回退演练尚未闭环。
+当前候选仍是正式发布`NO-GO`：低成本方案允许把 NSIS 作为明确标注、附 SHA-256 的未签名测试版，但 v1.4.0 尚未发布，旧冻结摘要对应文件也已不在工作区；当前脏工作区的同名重建文件不能冒充该候选。便携主程序、NSIS实际安装主程序和NSIS安装包均未签名，不能标记为稳定版。正式目标为 Microsoft Store MSIX，须建立新的候选与验收边界。
 
 已经完成的工程地基：
 
@@ -35,13 +35,13 @@
 | Microsoft Store MSIX/AppX | Store认证后由Microsoft重新签名，免自购公开信任代码签名证书 | 需要新增MSIX打包、身份、更新、迁移、自启动和卸载验证，不等于把当前NSIS直接上传 |
 | Microsoft Store MSI/EXE | 支持现有安装器，但安装器及其中所有PE必须先用受信CA证书签名；要求版本化HTTPS地址、独立离线安装器和静默安装 | 不能借Store绕过现有NSIS签名采购；还要验证NSIS静默参数和返回码 |
 
-项目暂不在`RELEASE_POLICY_V1.json`中替用户猜测签约主体，因此`selectedChannel`和`publisherSubject`保持未冻结。建议决策顺序：
+项目负责人已选择低成本分阶段方案：`RELEASE_POLICY_V1.json`记录`strategy=low_cost_staged`、`previewArtifactPolicy=unsigned_beta_with_sha256`和`plannedStableChannel=microsoft_store`。当前 NSIS 不是 MSIX，故正式`selectedChannel`保持`pending`。后续执行顺序：
 
-1. 确认发布主体、所在国家/地区、个人或组织身份、预算和密钥托管要求；
-2. 满足Artifact Signing Public Trust资格且保留站外NSIS分发时，优先评估Basic档；
-3. 不满足资格但仍需NSIS直发时，比较受信CA的OV/EV方案；不要仅为“立即消除SmartScreen”购买EV，因为Microsoft已明确EV不再自动获得初始信誉；
-4. 并行做一次MSIX可行性Spike，但在数据路径、自启动、通知、单实例、安装迁移和卸载回退通过前，不替换当前安装模型；
-5. 渠道确定后，把证书中的精确Subject写入策略并由第二人复核，不能用模糊包含匹配。
+1. 按 `V1.4.0_RELEASE_SOURCE_SCOPE_V1.json` 和 `V1.4.0_SOURCE_SPLIT_AUDIT_2026-08-11.md` 排除 Learning Preview，形成干净、可追溯且主库仍为 schema 11 的 `main` 提交并重新冻结 NSIS 候选；
+2. 完成未签名候选的发布验收，重新生成同一文件的字节数与 SHA-256，并以 GitHub prerelease 明确标注“测试版 / 未签名 / 未知发布者”；
+3. 创建或使用 Microsoft Store 开发者账户，取得产品保留名与 Partner Center 六项公开身份；
+4. MSIX可行性Spike已完成独立构建、打包、解包、清单、哈希和精确载荷边界验证；在干净Windows 11环境补齐安装、运行、数据生命周期、WACK和人工矩阵；
+5. Store 认证并重签后完成最终回归，再把稳定渠道从 `pending` 切换为 `microsoft_store`。本路线不采购 OV/EV 证书；只有未来恢复独立稳定下载渠道时才重新评估传统 CA 签名。
 
 官方依据：
 
@@ -84,13 +84,45 @@
 | `npm.cmd run release:first-start-recovery` | 在干净合成数据目录观察到非空SQLite WAL后终止1% CPU受限Job，再以同一候选恢复并生成无旁文件数据库样本供独立复验 | 通过；不代表物理掉电、系统重启或真实历史数据库迁移通过 |
 | `npm.cmd run release:uninstall-data-choice` | 在干净交互账户验证默认卸载保留LocalAppData/RoamingAppData，且只有明确勾选真实NSIS复选框才删除两处数据 | 通过；仅使用合成哨兵，不代表真实数据恢复或辅助功能矩阵通过 |
 | `npm.cmd run release:binary-boundary` | 确认默认主程序不含运行验收标记 | 通过 |
+| `npm.cmd run release:source-scope:test` | 冻结v1.4.0稳定范围、v1.3.2基线、排除Learning Preview路径与共享运行时标记、主库schema 11、路径规范化和报告哈希绑定 | 9/9通过；只验证合同 |
+| `npm.cmd run release:source-scope:verify` | 在真实Git提交上复核干净main、基线祖先、全部变更路径和逐文件运行时源码哈希 | 当前必须退出2；位于`feat/learning-preview-foundation`且工作区不干净 |
+| `npm.cmd run release:unsigned-beta:test` | 验证源码范围报告、干净main来源、双重人工声明、固定五段构建链、无Authenticode证书表、不可覆盖独立暂存、精确校验文件/披露文案，以及GitHub prerelease标签、正文、资产、API digest和匿名下载边界 | 16/16通过；只验证合同，不代表当前候选已冻结或发布 |
+| `npm.cmd run release:unsigned-beta:freeze` | 在构建前后确认同一干净main提交和同一源码范围报告，重跑范围门、完整验证、Rust测试、正式构建和安装载荷复核，再不可覆盖地冻结候选及来源证据 | 当前必须退出2；工作区有大量未提交变更且位于`feat/learning-preview-foundation`，冻结目录不存在 |
+| `npm.cmd run release:unsigned-beta:github:capture` | 发布后匿名复核tag提交、prerelease标记、逐字披露、精确两个资产和下载字节 | 当前必须退出2；冻结目录及公开v1.4.0 prerelease均不存在 |
+| `npm.cmd run msix:store:test` | 验证Partner Center身份安全录入、匿名公开链接证据、干净源码候选、Store listing/隐私/截图/合规输入、逐文件发布清单、Store专用许可证复核、五场景数据生命周期、Defender候选绑定、两款非Defender产品人工矩阵、WACK短期信任清理、临时受信副本/微软重签包两类运行来源与候选载荷血缘、十三项固定PNG人工预提交证据、认证/上架证据和最终渠道切换合同的正向样本与关闭失败边界 | 84/84通过；只验证合同，不代表实际身份或人工证据存在 |
+| `npm.cmd run msix:store:data:capture:test` | 验证一次性合成数据会话、固定10个检查点、schema 11/固定表集合、逻辑哈希、无正文报告、不可覆盖证据和完整数据根删除观察 | 9项Rust临时目录与命令合同测试通过；不触碰当前账户真实数据 |
+| `npm.cmd run msix:store:identity:test` | 验证六项公开身份值、两项显式来源声明、自动UTC时间、严格正式校验、重复/未知参数拒绝和正式身份文件不可覆盖 | 11/11通过；不生成或猜测Partner Center实际身份 |
+| `npm.cmd run msix:store:identity:verify` | 只接受Partner Center产品标识页逐字复制且由人确认的Name、Publisher、PublisherDisplayName、PFN和Store ID | 当前必须退出2；实际身份文件尚不存在 |
+| `npm.cmd run msix:store:public-urls:test` | 验证匿名GET、精确HTTP 200、固定HTTPS来源、响应类型/大小/页面标记、远端隐私原文一致、七天时效、严格字段与报告不可覆盖 | 8/8通过；不发起真实联网采集 |
+| `npm.cmd run msix:store:public-urls:capture` | 匿名读取隐私政策、项目主页、支持入口及隐私原文，生成一次性机器证据 | 当前必须退出2；公开仓库主页和Issues匿名返回200，但远端main尚无PRIVACY.md，隐私链接为404 |
+| `npm.cmd run msix:store:build` | 在完全干净、已提交源码上隔离构建未签名Store接入包，并绑定Git提交、身份、工具、主程序、清单和精确载荷 | 当前必须失败；实际身份缺失且工作区未冻结 |
+| `npm.cmd run msix:store:submission:test` | 验证listing字段限制、只填机器字段的draft、四张候选绑定PNG、匿名链接报告时序/哈希、隐私/支持URL、免费/市场/可见性人工选择、离线声明、runFullTrust说明和IARC待办边界 | 10/10通过；现有1280×720 JPG按设计不被接受 |
+| `npm.cmd run msix:store:submission:prepare` | 验证正式PNG编码并自动生成仅含机器哈希/尺寸的待人工draft，不填写或伪造批准字段 | 当前必须退出2；实际身份、候选和正式截图不存在 |
+| `npm.cmd run msix:store:submission:verify` | 复核实际身份、候选、七天内匿名公开链接证据、公开隐私政策、Store输入文件、四张真实截图及全部来源哈希 | 当前必须退出2；实际身份、公开链接报告、候选、输入文件和正式截图不存在 |
+| `npm.cmd run msix:store:release-manifest` | 为未签名Store候选生成独立逐文件清单，绑定主程序、清单、图标、许可载荷、SBOM、许可证清单、隐私政策、listing输入、身份和策略 | 当前必须退出2；实际身份、候选和人工确认Store输入不存在 |
+| `npm.cmd run msix:store:release-manifest:verify` | 重新计算上述全部字节和合规输入，拒绝载荷扩张、许可证替换、SBOM未解决项和直接分发声明 | 当前必须退出2；正式Store发布清单尚不存在 |
+| `npm.cmd run msix:store:license:packet` | 为实际Store intake候选生成独立许可证人工复核包，冻结11类材料、四份入包许可文件、507/306/301组件、22种生产表达式、11个回退映射、5个MPL源码地址和NSIS签字不可复用边界 | 当前必须退出2；实际Store身份与发布清单不存在 |
+| `npm.cmd run msix:store:license:verify` | 复核Store渠道/发布者显示名/地区/商业属性、具名人工复核与批准、九项决定、素材商业许可、零未解决发现和至少两项证据引用 | 当前必须退出2；实际Store许可证人工验收文件不存在 |
+| `npm.cmd run msix:store:data:test` | 验证NSIS→MSIX、备份恢复、更高版本更新、卸载保留数据、应用内显式删除后卸载五类合成数据合同，拒绝逻辑哈希/schema/计数/包族/发布者/证据漂移和真实用户数据 | 8/8通过；不代表真实Windows场景已执行 |
+| `npm.cmd run msix:store:data:verify` | 绑定Store身份、发布清单、临时受信运行报告、当前测试签名包、NSIS测试版冻结报告、匿名GitHub prerelease报告、校验文件、策略、五张脱敏PNG和具名人工批准 | 当前必须退出2；应用内完整数据删除入口已实现，但实际冻结/公开NSIS测试版、Store身份、候选和具名人工验收不存在 |
+| `npm.cmd run msix:store:defender` | 在Defender实时保护启用且安全情报不超过48小时的环境扫描原始MSIX与完整解包载荷，记录版本、目标哈希和检测结果 | 当前必须失败；实际身份、候选和Store发布清单不存在，本机Defender还由其他安全产品接管 |
+| `npm.cmd run msix:store:defender:verify` | 复核候选/逐文件目标/扫描脚本绑定、定义时效、实时保护和零检测 | 当前必须退出2；正式Store Defender报告不存在 |
+| `npm.cmd run msix:store:security:test` | 验证两家不同厂商、不同干净快照、72小时内定义、实时保护、原包与完整解包载荷、零检测、脱敏PNG和具名人工批准合同 | 6/6通过；不代表真实第三方产品扫描已经执行 |
+| `npm.cmd run msix:store:security:verify` | 联合绑定Store发布清单、Defender报告、策略、验证器和两款第三方产品人工证据；SmartScreen仅因Store托管且禁止直发而不适用 | 当前必须退出2；实际Store安全验收文件和脱敏证据不存在 |
+| `npm.cmd run msix:store:wack -- -ConfirmDisposableWindows11Environment` | 在一次性Windows 11的活动管理员会话，用不可导出短期证书签名候选副本，先做安装/启动/卸载，再执行WACK；随后删除My/TrustedPeople证书并证明原始上传包未变 | 当前待办；执行成功后仍须人工阅读报告 |
+| `npm.cmd run msix:store:wack:verify` | 复核上传候选未变、测试副本签名、短期证书/包/进程零残留、WACK工具和原始XML哈希 | 当前必须退出2；实际WACK报告不存在 |
+| `npm.cmd run msix:store:runtime:verify` | 复核WACK流程生成的临时受信副本运行报告；它不代表Microsoft签名或Store认证 | 当前必须退出2；实际运行报告不存在 |
+| `npm.cmd run msix:store:pre-submission:verify` | 绑定Store身份、listing/隐私输入、逐文件发布清单、Store专用许可证复核包/人工验收、五场景数据生命周期、Defender与两款第三方产品、未签名候选、临时测试签名副本、WACK、运行报告和十三项固定路径脱敏PNG人工矩阵；逐文件复算格式、尺寸和SHA-256 | 当前必须退出2；认证状态必须保持pending |
+| `npm.cmd run msix:store:certified-runtime:verify` | Partner Center认证后复核Microsoft重签包的身份、安装、AUMID启动、进程来源、卸载和零残留 | 当前必须退出2；认证及重签包尚不存在 |
+| `npm.cmd run msix:store:certification:verify` | 联合复核预提交门、Store许可证与数据生命周期人工验收、Microsoft重签包回归、Partner Center认证/上架状态、IARC、runFullTrust审批、公开产品链接、脱敏证据和全部来源哈希，同时保持渠道未切换 | 当前必须退出2；实际身份、认证、上架、重签包和人工证据均不存在 |
+| `npm.cmd run msix:store:channel:verify` | 认证门通过后复核负责人仅把`selectedChannel`从`pending`切换为`microsoft_store`，并绑定切换前后策略哈希与具名人工操作 | 当前必须退出2；不得在认证证据完成前切换 |
 | `npm.cmd run ai-off:release` | 验证AI关闭源码/运行/安装边界并绑定当前候选 | 通过 |
 | `npm.cmd run release:sbom` | 生成Windows x64 CycloneDX和许可证声明清单 | 通过 |
 | `npm.cmd run release:license-review:packet` | 将三项正式候选、八份许可材料、生产表达式、回退映射和MPL源码地址冻结为确定性人工复核包 | 包已生成；实际具名人工签字仍缺失 |
-| `npm.cmd run release:license-review:verify` | 复核候选/渠道/发布者/地区绑定、具名人工身份、全部决定、未解决发现和证据引用 | 当前必须退出2；渠道、发布者和人工签字尚未完成 |
+| `npm.cmd run release:license-review:verify` | 复核候选/渠道/发布者/地区绑定、具名人工身份、全部决定、未解决发现和证据引用 | 当前必须退出2；发布者、目标地区和人工签字尚未完成 |
 | `npm.cmd run release:external-trust:packet` | 冻结三项正式候选、SmartScreen干净机前提、完整生命周期和至少两款非Defender安全产品的零检测要求 | 包已生成；真实外部测试与签字仍缺失 |
 | `npm.cmd run release:external-trust:verify` | 复核具名人工测试人、环境快照、MoTW/Internet Zone、在线信誉、SmartScreen提示、产品去重、实时防护和零检测结果 | 当前必须失败；实际签字文件尚未创建 |
-| `npm.cmd run release:signing-protocol:packet` | 冻结三项正式候选、渠道/发布者/时间戳策略、签名采集脚本和RFC3161操作合同 | 包已生成；策略决定仍为未冻结 |
+| `npm.cmd run release:signing-protocol:packet` | 冻结三项正式候选、渠道/发布者/时间戳策略、签名采集脚本和RFC3161操作合同 | 当前 NSIS 只作未签名测试版；MSIX仅为占位身份技术预览，正式渠道等待Store身份与提交候选建立后冻结 |
 | `npm.cmd run release:signing-protocol:verify` | 联合实时Authenticode事实复核具名人工操作人、签名工具、执行证据、同证书、精确发布者、时间戳证书与`/fd SHA256`、`/tr`、`/td SHA256` | 当前必须退出2；产物未签名且实际签字缺失 |
 | `npm.cmd run release:accessibility:packet` | 冻结三项正式候选及多档DPI、文本缩放、对比度、减少动态、全键盘、Narrator与安装卸载人工矩阵 | 包已生成；最终签名候选与人工矩阵缺失 |
 | `npm.cmd run release:accessibility:verify` | 联合实时签名事实、具名人工听读、完整矩阵和候选绑定证据 | 当前必须退出2；实际签字不存在 |
@@ -102,7 +134,7 @@
 | `npm.cmd run release:preflight` | 生成完整报告 | 当前应为`readyForRelease=false` |
 | `npm.cmd run release:gate` | 严格发布门 | 当前必须退出2 |
 
-当前SBOM包含507个去重组件：306个Windows x64发布/构建必需组件，201个锁定但非发布范围的开发组件，许可证声明缺失为0，共26种许可证表达式。候选绑定的人工复核包另冻结301个第三方生产组件、22种生产表达式、11个回退映射、5个MPL源码地址和八份材料哈希；具名人工签字契约拒绝AI/自动化签字、渠道或候选漂移、未完成决定与未解决发现。自动清单和结构化契约均不构成法律意见；MPL-2.0组件及素材、字体、图标、WebView2引导程序等仍需人工复核实际分发形式和NOTICE义务，当前实际签字文件不存在，许可门保持待办。外部信任包另以当前清单和发布策略冻结三项正式产物及SmartScreen/安全产品条件；它只定义可复验合同，不等于完成了任何外部观察。签名协议包同样只是执行合同：当前包明确策略未冻结，最终签名改变字节后必须重新生成，不能沿用当前未签名候选的包或哈希。无障碍验收包也只定义人工体验合同；DOM/CSS测试、UI Automation、截图或AI判断不能替代真实键盘操作和Narrator听读，实际具名签字完成前该门保持待办。
+当前SBOM包含507个去重组件：306个Windows x64发布/构建必需组件，201个锁定但非发布范围的开发组件，许可证声明缺失为0，共26种许可证表达式。NSIS候选绑定的人工复核包冻结301个第三方生产组件、22种生产表达式、11个回退映射、5个MPL源码地址和八份材料哈希；Store链另有独立复核包，把相同依赖事实重新绑定到11类Store材料、四份实际入包许可文件、Store身份、未签名intake候选与逐文件发布清单，并明确拒绝复用NSIS签字。两套具名人工签字契约都拒绝AI/自动化签字、渠道或候选漂移、未完成决定与未解决发现。自动清单和结构化契约均不构成法律意见；MPL-2.0组件及素材、字体、图标、WebView2引导程序等仍需人工复核实际分发形式和NOTICE义务，当前实际签字文件不存在，许可门保持待办。现有签名协议包继续证明 NSIS 不满足正式签名门；未签名测试版必须单独披露状态和 SHA-256。MSIX正式链已建立身份、构建、listing/隐私/截图/合规输入、逐文件发布清单、Store专用许可证复核、Defender原包/解包双扫描、两家不同厂商第三方安全产品人工矩阵、临时受信运行及候选载荷血缘、WACK、人工预提交、认证后Microsoft重签包回归、Partner Center认证/上架脱敏证据和仅改变渠道字段的最终切换合同，但实际Partner Center身份、候选和证据均不存在；它仍是新候选，必须重新建立许可、升级、安全软件与体验证据，不能沿用当前NSIS的包或哈希。
 
 ## 5. 安全软件与误报流程
 
@@ -149,4 +181,4 @@
 - 安装、升级、中断、卸载和回退矩阵通过；
 - 严格发布门返回0。
 
-在这些条件完成前，Bridge/AI不得进入安装包，当前未签名安装包只能作为本地开发证据。
+在这些条件完成前，Bridge/AI不得进入安装包；当前未签名安装包只能作为明确标注、附 SHA-256 的测试版或本地开发证据，不能标记为稳定正式版。

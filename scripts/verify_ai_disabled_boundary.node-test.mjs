@@ -39,6 +39,8 @@ test("bundle declaration rejects every optional process and QA payload", () => {
     "yuanyuan-runtime-qa-fixture.exe",
     "migration-qa",
     "yuanyuan-database-migration-qa.exe",
+    "store-data-lifecycle-qa",
+    "yuanyuan-store-data-lifecycle-qa.exe",
     "yuanyuan-pid-reuse-qa.exe",
   ]) {
     assert.throws(() =>

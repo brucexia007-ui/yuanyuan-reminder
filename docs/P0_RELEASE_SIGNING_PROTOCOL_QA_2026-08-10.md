@@ -7,7 +7,7 @@
 
 发布预检不再接受 `rfc3161ProtocolVerified` 裸布尔值。RFC 3161 门现在同时要求：Windows 对三项正式产物给出 `Valid` Authenticode 状态；三项产物使用同一发布者与同一证书；每项都有可解析时间戳证书；发布渠道、精确发布者 Subject 和 HTTPS 时间戳 URL 已冻结；具名人工操作人提交候选绑定的签名工具、执行证据和 `/fd SHA256`、`/tr`、`/td SHA256` 结构化签字。
 
-当前候选仍未签名，策略中的渠道、发布者和时间戳 URL 也未冻结，因此 `rfc3161_protocol_verified=pending`，`readyForRelease=false`。只把证据布尔值改为 `true` 会使该门变为 `failed`，不会冒充通过。
+当前候选仍未签名，并只允许作为附 SHA-256 的测试版。正式低成本目标是 Microsoft Store MSIX，但新候选尚未建立，因此 `rfc3161_protocol_verified=pending`，`readyForRelease=false`。只把证据布尔值改为 `true` 会使该门变为 `failed`，不会冒充通过。
 
 ## 冻结证据
 
@@ -23,7 +23,7 @@
 - NSIS 实际安装主程序：22,192,640 bytes，SHA-256 `143B59A18FCE473858B00725DA6ADE427FA16E91CECDC402DC00CF300416121D`；
 - NSIS 安装包：12,500,456 bytes，SHA-256 `C96D883452FC02B296AF13E92633C2282E261C5B3211BC949987DE39A3A66F96`。
 
-包内 `decisionsFrozen=false`，如实反映 `selectedChannel=pending`、`publisherSubject=null`、`timestampUrl=null`。该包是当前未签名候选的执行合同，不是最终签名证据；签名会改变产物字节，最终候选必须重新生成清单和协议包，旧包自动失效。
+包内 `decisionsFrozen=false`，如实反映 `selectedChannel=pending`、`publisherSubject=null`、`timestampUrl=null`。发布策略另记录当前测试版为 `unsigned_beta_with_sha256`、计划稳定渠道为 `microsoft_store`。该包是当前未签名候选的执行合同，不是最终签名证据；未来 MSIX 必须重新生成自己的清单和协议包。
 
 ## 自动事实与人工证据必须同时成立
 

@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "status": "pending",
+  "product": {
+    "identityFile": "docs/release/MSIX_STORE_IDENTITY_V1.json",
+    "identitySha256": null,
+    "name": "圆圆提醒",
+    "version": "1.4.0.0",
+    "primaryLanguage": "zh-CN",
+    "category": "Productivity"
+  },
+  "listing": {
+    "shortDescription": "一只完全本地运行的 Windows 桌面小猫，陪你喝水、专注、休息和安排提醒。",
+    "description": "圆圆提醒是一款完全本地运行的 Windows 桌面宠物与提醒工具。小猫会留在桌面陪伴你，在合适的时间提醒喝水、处理待办、专注工作和离屏休息。\n\n你可以创建一次性、间隔、每日和每周提醒，完成、稍后或跳过事项；也可以查看今天的喝水进度与历史记录。专注期间圆圆保持安静，离屏休息可由你主动请求 Windows 锁屏。\n\n应用支持托盘、自启动、Windows 通知、本地 SQLite 数据库、每日自动备份和手动恢复。日常使用不需要账户、云服务、遥测、广告或远程 AI，提醒和记录保存在当前 Windows 用户的本地目录。",
+    "whatsNew": null,
+    "features": [
+      "一次性、间隔、每日和每周提醒",
+      "喝水、活动、专注与离屏休息",
+      "会呼吸、睡觉和互动的桌面小猫",
+      "托盘、Windows 通知和登录后自启动",
+      "本地 SQLite 数据与最近 14 份自动备份",
+      "无需账户、云服务、遥测、广告或远程 AI"
+    ],
+    "searchTerms": [
+      "桌面宠物",
+      "提醒",
+      "喝水",
+      "专注",
+      "休息",
+      "离线"
+    ],
+    "copyright": "© 2026 Yuanyuan Reminder contributors。圆圆素材权利保留，详见素材许可。",
+    "appLicenseTerms": "程序代码采用 MIT License；圆圆照片、图集、图标和演示图片适用单独的圆圆素材许可，仅允许官方免费分发和个人非商业使用。",
+    "screenshots": [
+      {
+        "path": "docs/release/store-assets/01-today.png",
+        "sha256": null,
+        "width": null,
+        "height": null,
+        "caption": "今日喝水进度、待办事项与桌面上的圆圆",
+        "capturedFromCandidateSha256": null
+      },
+      {
+        "path": "docs/release/store-assets/02-focus.png",
+        "sha256": null,
+        "width": null,
+        "height": null,
+        "caption": "专注工作与由用户主动开始的离屏休息",
+        "capturedFromCandidateSha256": null
+      },
+      {
+        "path": "docs/release/store-assets/03-care.png",
+        "sha256": null,
+        "width": null,
+        "height": null,
+        "caption": "喂食、喝水、摸摸、逗猫棒和追球互动",
+        "capturedFromCandidateSha256": null
+      },
+      {
+        "path": "docs/release/store-assets/04-settings.png",
+        "sha256": null,
+        "width": null,
+        "height": null,
+        "caption": "提醒节奏、通知、自启动和本地备份设置",
+        "capturedFromCandidateSha256": null
+      }
+    ]
+  },
+  "properties": {
+    "accessesPersonalInformation": true,
+    "storesPersonalInformationLocally": true,
+    "transmitsPersonalInformation": false,
+    "privacyPolicyUrl": "https://github.com/brucexia007-ui/yuanyuan-reminder/blob/main/PRIVACY.md",
+    "websiteUrl": "https://github.com/brucexia007-ui/yuanyuan-reminder",
+    "supportUrl": "https://github.com/brucexia007-ui/yuanyuan-reminder/issues",
+    "publicUrlsVerifiedBy": null,
+    "publicUrlsVerifiedAt": null
+  },
+  "availability": {
+    "basePrice": "free",
+    "freeTrial": "none",
+    "visibility": null,
+    "marketSelection": {
+      "mode": null,
+      "markets": []
+    },
+    "confirmedBy": null,
+    "confirmedAt": null
+  },
+  "declarations": {
+    "accountRequired": false,
+    "appNetworkTransport": false,
+    "telemetry": false,
+    "advertising": false,
+    "inAppPurchases": false,
+    "sharedUserGeneratedContent": false,
+    "generativeAi": false,
+    "preciseLocation": false,
+    "camera": false,
+    "microphone": false,
+    "healthRelatedRecordsStoredLocally": true,
+    "localDeveloperToolDiscovery": true,
+    "developerToolTaskContentRead": false,
+    "restrictedCapabilities": [
+      {
+        "name": "runFullTrust",
+        "justification": "Yuanyuan Reminder is a packaged classic Win32/Tauri desktop application that runs at medium integrity. runFullTrust is required to launch the classic executable and provide the system tray, local SQLite data and backups, startup registration, Windows notifications, and the user-initiated LockWorkStation break flow. The app does not request elevation, install a service or driver, bypass Windows authentication, or use this capability for remote access."
+      }
+    ],
+    "confirmedBy": null,
+    "confirmedAt": null
+  },
+  "ageRating": {
+    "questionnaireStatus": "pending_partner_center_completion",
+    "preQuestionnaireFacts": {
+      "violence": false,
+      "sexualContent": false,
+      "gambling": false,
+      "controlledSubstances": false,
+      "sharedUserGeneratedContent": false,
+      "unrestrictedWebAccess": false,
+      "inAppPurchases": false
+    },
+    "contentFactsConfirmedBy": null,
+    "contentFactsConfirmedAt": null,
+    "ratingId": null
+  },
+  "sourceBindings": {
+    "storeCandidateReportSha256": null,
+    "unsignedStoreCandidateSha256": null,
+    "privacyPolicySha256": null,
+    "publicUrlsReportSha256": null,
+    "publicUrlsVerifierSha256": null,
+    "readmeSha256": null,
+    "tauriConfigSha256": null,
+    "storeManifestTemplateSha256": null,
+    "assetLicenseSha256": null,
+    "verifierSha256": null
+  },
+  "outcome": {
+    "readyForPartnerCenterEntry": false,
+    "partnerCenterSubmissionComplete": false,
+    "approvedBy": null,
+    "approvedAt": null
+  }
+}

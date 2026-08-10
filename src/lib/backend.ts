@@ -601,6 +601,21 @@ export async function restoreBackup(fileName: string): Promise<void> {
   }
 }
 
+export const DELETE_ALL_LOCAL_DATA_CONFIRMATION = "删除圆圆全部本地数据";
+
+export async function deleteAllLocalDataAndExit(
+  confirmation: string,
+  understandsNoRecovery: boolean,
+): Promise<void> {
+  if (!isTauri) {
+    throw new Error("local data deletion is unavailable");
+  }
+  await invoke("delete_all_local_data_and_exit", {
+    confirmation,
+    understandsNoRecovery,
+  });
+}
+
 export async function completeOccurrence(id: string): Promise<void> {
   if (isTauri) {
     await invoke("complete_occurrence", { id });

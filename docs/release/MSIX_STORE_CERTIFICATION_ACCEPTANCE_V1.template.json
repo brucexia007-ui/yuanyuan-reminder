@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "status": "pending_partner_center_certification",
+  "partnerCenter": {
+    "productStoreId": null,
+    "submissionId": null,
+    "certificationStatus": "pending",
+    "publicationStatus": "pending",
+    "certifiedAt": null,
+    "publishedAt": null,
+    "storeListingUrl": null,
+    "restrictedCapabilityApproval": "pending",
+    "iarc": {
+      "ratingId": null,
+      "ratings": []
+    }
+  },
+  "evidence": {
+    "path": "src-tauri/target/msix-store-certification/partner-center-redacted-evidence.png",
+    "sha256": null,
+    "redacted": false,
+    "reviewedBy": null,
+    "reviewedAt": null
+  },
+  "bindings": {
+    "storeIdentitySha256": null,
+    "storeSubmissionInputsSha256": null,
+    "storeReleaseManifestSha256": null,
+    "storeLicenseReviewPacketSha256": null,
+    "storeLicenseReviewAcceptanceSha256": null,
+    "storeDataLifecycleAcceptanceSha256": null,
+    "storeDefenderReportSha256": null,
+    "storeSecurityAcceptanceSha256": null,
+    "preSubmissionAcceptanceSha256": null,
+    "certifiedRuntimeReportSha256": null,
+    "microsoftSignedPackageSha256": null,
+    "releasePolicyBeforePromotionSha256": null
+  },
+  "outcome": {
+    "blockingFindings": [],
+    "readyToSelectMicrosoftStore": false,
+    "approvedBy": null,
+    "approvedAt": null,
+    "selectedChannel": "pending",
+    "releasePolicyAfterPromotionSha256": null,
+    "promotedBy": null,
+    "promotedAt": null
+  }
+}

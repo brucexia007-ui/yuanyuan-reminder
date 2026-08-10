@@ -42,6 +42,8 @@ const forbiddenBundleMarkers = [
   "yuanyuan-runtime-qa-fixture",
   "migration-qa",
   "yuanyuan-database-migration-qa",
+  "store-data-lifecycle-qa",
+  "yuanyuan-store-data-lifecycle-qa",
   "yuanyuan-pid-reuse-qa",
 ];
 const requiredLicenseResources = {

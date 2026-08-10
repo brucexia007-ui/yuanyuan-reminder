@@ -33,16 +33,18 @@ const backend = vi.hoisted(() => ({
   stopBasicSupport: vi.fn(),
   startPetInteraction: vi.fn(),
   updateSettings: vi.fn(),
+  deleteAllLocalDataAndExit: vi.fn(),
   pauseReminders: vi.fn(),
   requestSleep: vi.fn(),
   requestWake: vi.fn(),
   quitApplication: vi.fn(),
   onBackendEvent: vi.fn(),
+  tauriAvailable: vi.fn(),
 }));
 
 vi.mock("../lib/backend", () => ({
   ...backend,
-  tauriAvailable: () => false,
+  DELETE_ALL_LOCAL_DATA_CONFIRMATION: "删除圆圆全部本地数据",
 }));
 
 vi.mock("@tauri-apps/plugin-notification", () => ({
@@ -208,6 +210,7 @@ describe("TaskPanel complete reminder workflows", () => {
     backend.listHistory.mockResolvedValue([]);
     backend.listBackups.mockResolvedValue([]);
     backend.onBackendEvent.mockResolvedValue(() => {});
+    backend.tauriAvailable.mockReturnValue(false);
     backend.setReminderEnabled.mockImplementation(async (id: string, enabled: boolean) => {
       const reminder = snapshot.reminders.find((item) => item.id === id)!;
       reminder.enabled = enabled;
@@ -257,7 +260,10 @@ describe("TaskPanel complete reminder workflows", () => {
     await click("前往设置");
     expect(container.textContent).toContain("错过提醒");
     expect(container.textContent).toContain("数据备份");
+    expect(container.textContent).toContain("删除全部本地数据");
     expect(container.textContent).toContain("道具标签");
+    expect(button("永久删除本地数据并退出").disabled).toBe(true);
+    expect(backend.deleteAllLocalDataAndExit).not.toHaveBeenCalled();
 
     const labelMode = [...container.querySelectorAll("select")].find((select) =>
       [...select.options].some((option) => option.value === "motion_only"),
@@ -327,6 +333,43 @@ describe("TaskPanel complete reminder workflows", () => {
     await click("结束本次陪伴");
     expect(backend.stopBasicSupport).toHaveBeenCalledOnce();
     expect(document.activeElement).toBe(button("打开三张陪伴小牌"));
+  });
+
+  it("requires the exact phrase, acknowledgement, and final dialog before local deletion", async () => {
+    backend.tauriAvailable.mockReturnValue(true);
+    backend.deleteAllLocalDataAndExit.mockResolvedValue(undefined);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    await remount();
+    await click("设置");
+
+    const destructiveButton = button("永久删除本地数据并退出");
+    const confirmationInput = container.querySelector<HTMLInputElement>(
+      ".delete-data-confirmation input",
+    )!;
+    const acknowledgement = container.querySelector<HTMLInputElement>(
+      ".delete-data-acknowledgement input",
+    )!;
+    expect(destructiveButton.disabled).toBe(true);
+
+    await act(async () => {
+      const setInputValue = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set;
+      if (!setInputValue) throw new Error("native input value setter is unavailable");
+      setInputValue.call(confirmationInput, "删除圆圆全部本地数据");
+      confirmationInput.dispatchEvent(new Event("input", { bubbles: true }));
+      acknowledgement.click();
+    });
+    await flush();
+
+    expect(button("永久删除本地数据并退出").disabled).toBe(false);
+    await click("永久删除本地数据并退出");
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(backend.deleteAllLocalDataAndExit).toHaveBeenCalledWith(
+      "删除圆圆全部本地数据",
+      true,
+    );
   });
 
   it("opens the sanitized task-watch route without exposing task identity fields", async () => {

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "status": "pending",
+  "bindings": {
+    "storeReleaseManifestSha256": null,
+    "storeDefenderReportSha256": null,
+    "unsignedStoreCandidateSha256": null,
+    "releasePolicySha256": null,
+    "verifierSha256": null
+  },
+  "requirements": {
+    "minimumThirdPartySecurityProducts": 2,
+    "defenderEvidenceRequired": true,
+    "smartScreenDisposition": "not_applicable_store_managed_distribution",
+    "directDistributionAllowed": false
+  },
+  "securityProducts": [],
+  "outcome": {
+    "blockingFindings": [],
+    "verifiedThirdPartySecurityProducts": 0,
+    "approvedBy": null,
+    "approvedAt": null,
+    "accepted": false
+  },
+  "attestationText": "I attest that the recorded third-party security-product observations were performed by the named human testers on the exact unsigned Microsoft Store intake candidate and unpacked payload bound by this document, with real-time protection enabled and no omitted detection or unresolved result."
+}

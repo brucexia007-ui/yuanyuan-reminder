@@ -5,7 +5,11 @@
     "name": "圆圆提醒"
   },
   "distribution": {
+    "strategy": "low_cost_staged",
     "selectedChannel": "pending",
+    "previewChannel": "github_releases",
+    "previewArtifactPolicy": "unsigned_beta_with_sha256",
+    "plannedStableChannel": "microsoft_store",
     "allowedChannels": [
       "microsoft_store",
       "artifact_signing_public_trust",

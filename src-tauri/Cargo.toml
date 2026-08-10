@@ -20,6 +20,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 default = []
 runtime-qa = []
 migration-qa = []
+store-data-lifecycle-qa = []
 
 [[bin]]
 name = "yuanyuan-task-watch-fixture"
@@ -40,6 +41,11 @@ required-features = ["migration-qa"]
 name = "yuanyuan-database-migration-qa-capture"
 path = "src/bin/database_runtime_fixture.rs"
 required-features = ["migration-qa"]
+
+[[bin]]
+name = "yuanyuan-store-data-lifecycle-qa"
+path = "src/bin/store_data_lifecycle_qa.rs"
+required-features = ["store-data-lifecycle-qa"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -82,6 +88,7 @@ windows-sys = { version = "0.60", features = [
   "Win32_System_Registry",
   "Win32_System_Shutdown",
   "Win32_System_SystemInformation",
+  "Win32_System_Threading",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_WindowsAndMessaging",
 ] }

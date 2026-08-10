@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "product": {
+    "identifier": "com.yuanyuan.reminder",
+    "name": "圆圆提醒",
+    "version": "1.4.0"
+  },
+  "targetBranch": "main",
+  "baseline": {
+    "tag": "v1.3.2",
+    "commit": "11841b88cf7b3e6d10502fd0158401e2c02167ae"
+  },
+  "decision": {
+    "scope": "offline_stable_core_and_release_blockers_only",
+    "allowedChangeClasses": [
+      "release_blocker_fix",
+      "regression_fix",
+      "evidence_correction",
+      "behavior_preserving_maintenance"
+    ],
+    "learningPreviewDisposition": "excluded_from_v1_4_release_source",
+    "learningPreviewMayExistInReleaseCommit": false,
+    "learningPreviewMayExistInDefaultBundle": false,
+    "stableMainDatabaseSchemaVersion": 11
+  },
+  "excludedPathPrefixes": [
+    "docs/learning/",
+    "src/learning/",
+    "src-tauri/src/learning/"
+  ],
+  "excludedPaths": [
+    "docs/LEARNING_PREVIEW_SCOPE.md",
+    "docs/YUANYUAN_KAOYAN_ENGLISH_LEARNING_FINAL_PLAN.md",
+    "src-tauri/migrations/012_learning_invitation_attention.sql"
+  ],
+  "runtimeSourceRoots": [
+    "src/",
+    "src-tauri/src/",
+    "src-tauri/migrations/"
+  ],
+  "runtimeSourceFiles": [
+    "src-tauri/Cargo.toml",
+    "src/vite-env.d.ts",
+    "vite.config.ts"
+  ],
+  "runtimeSourceExcludedPathFragments": [
+    ".test.",
+    ".spec.",
+    "/tests/",
+    "/fixtures/"
+  ],
+  "forbiddenRuntimeTerms": [
+    "learning",
+    "学习"
+  ],
+  "requiredVerificationCommands": [
+    "npm.cmd run release:source-scope:verify",
+    "npm.cmd run verify",
+    "cargo test (src-tauri)",
+    "npm.cmd run tauri build",
+    "npm.cmd run release:manifest"
+  ]
+}

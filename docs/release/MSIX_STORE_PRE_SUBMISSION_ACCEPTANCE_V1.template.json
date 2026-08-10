@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "status": "pending",
+  "candidate": {
+    "storeIdentitySha256": null,
+    "storeSubmissionInputsSha256": null,
+    "storeReleaseManifestSha256": null,
+    "storeLicenseReviewPacketSha256": null,
+    "storeLicenseReviewAcceptanceSha256": null,
+    "storeDataLifecycleAcceptanceSha256": null,
+    "storeDefenderReportSha256": null,
+    "storeSecurityAcceptanceSha256": null,
+    "privacyPolicySha256": null,
+    "storeCandidateReportSha256": null,
+    "unsignedStoreCandidateSha256": null,
+    "disposableTestSignedPackageSha256": null,
+    "runtimeReportSha256": null,
+    "wackExecutionReportSha256": null,
+    "wackRawReportSha256": null
+  },
+  "environment": {
+    "tester": null,
+    "testedAt": null,
+    "windowsVersion": null,
+    "machineType": "clean_windows_11_vm_or_dedicated_machine"
+  },
+  "checks": {
+    "trustedInstallAndLaunch": { "status": "pending", "evidencePath": "src-tauri/target/msix-store-pre-submission/trustedInstallAndLaunch-redacted-evidence.png", "evidenceSha256": null, "redacted": false, "notes": null },
+    "trayPresence": { "status": "pending", "evidencePath": "src-tauri/target/msix-store-pre-submission/trayPresence-redacted-evidence.png", "evidenceSha256": null, "redacted": false, "notes": null },
+    "autostartAfterSignIn": { "status": "pending", "evidencePath": "src-tauri/target/msix-store-pre-submission/autostartAfterSignIn-redacted-evidence.png", "evidenceSha256": null, "redacted": false, "notes": null },
+    "notificationDelivery": { "status": "pending", "evidencePath": "src-tauri/target/msix-store-pre-submission/notificationDelivery-redacted-evidence.png", "evidenceSha256": null, "redacted": false, "notes": null },
+    "singleInstance": { "status": "pending", "evidencePath": "src-tauri/target/msix-store-pre-submission/singleInstance-redacted-evidence.png", "evidenceSha256": null, "redacted": false, "notes": null },
+    "webView2Startup": { "status": "pending", "evidencePath": "src-tauri/target/msix-store-pre-submission/webView2Startup-redacted-evidence.png", "evidenceSha256": null, "redacted": false, "notes": null },
+    "nsisToMsixMigration": { "status": "pending", "evidencePath": "src-tauri/target/msix-store-pre-submission/nsisToMsixMigration-redacted-evidence.png", "evidenceSha256": null, "redacted": false, "notes": null },
+    "backupRestore": { "status": "pending", "evidencePath": "src-tauri/target/msix-store-pre-submission/backupRestore-redacted-evidence.png", "evidenceSha256": null, "redacted": false, "notes": null },
+    "updateForward": { "status": "pending", "evidencePath": "src-tauri/target/msix-store-pre-submission/updateForward-redacted-evidence.png", "evidenceSha256": null, "redacted": false, "notes": null },
+    "uninstallKeepData": { "status": "pending", "evidencePath": "src-tauri/target/msix-store-pre-submission/uninstallKeepData-redacted-evidence.png", "evidenceSha256": null, "redacted": false, "notes": null },
+    "uninstallDeleteData": { "status": "pending", "evidencePath": "src-tauri/target/msix-store-pre-submission/uninstallDeleteData-redacted-evidence.png", "evidenceSha256": null, "redacted": false, "notes": null },
+    "accessibility": { "status": "pending", "evidencePath": "src-tauri/target/msix-store-pre-submission/accessibility-redacted-evidence.png", "evidenceSha256": null, "redacted": false, "notes": null },
+    "wackReportReview": { "status": "pending", "evidencePath": "src-tauri/target/msix-store-pre-submission/wackReportReview-redacted-evidence.png", "evidenceSha256": null, "redacted": false, "notes": null }
+  },
+  "outcome": {
+    "blockingFindings": [],
+    "approvedBy": null,
+    "approvedAt": null,
+    "preSubmissionAccepted": false,
+    "storeCertification": "pending"
+  }
+}

@@ -38,6 +38,8 @@ mod connector_trust_control;
 mod cursor_direction;
 mod error;
 mod logging;
+#[cfg(windows)]
+mod local_data_cleanup;
 #[cfg(feature = "migration-qa")]
 pub mod migration_qa;
 mod models;
@@ -51,6 +53,8 @@ mod return_action_registry;
 #[cfg(feature = "runtime-qa")]
 pub mod runtime_qa;
 mod scheduler;
+#[cfg(feature = "store-data-lifecycle-qa")]
+pub mod store_data_lifecycle_qa;
 mod state;
 #[cfg(windows)]
 // The panel gate is compiled and tested without a Tauri command registration
@@ -79,6 +83,15 @@ pub fn run() {
             .expect("failed to configure the isolated runtime QA context");
         context
     };
+    #[cfg(all(windows, not(feature = "runtime-qa")))]
+    match local_data_cleanup::handle_startup(&context.config().identifier) {
+        Ok(true) => return,
+        Ok(false) => {}
+        Err(error) => {
+            eprintln!("local data cleanup could not complete: {error}");
+            return;
+        }
+    }
     let app_state = prepare_app_state(&context.config().identifier)
         .expect("failed to initialize Yuanyuan Reminder state");
 
@@ -150,6 +163,7 @@ pub fn run() {
             commands::pause_reminders,
             commands::show_pet_context_menu,
             commands::quit_application,
+            commands::delete_all_local_data_and_exit,
             commands::get_ai_supervisor_status,
             commands::get_ai_supervisor_diagnostics,
             commands::preview_ai_diagnostics,

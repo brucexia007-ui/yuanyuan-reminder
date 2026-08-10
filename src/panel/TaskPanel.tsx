@@ -14,11 +14,13 @@ import {
   useState,
 } from "react";
 import {
+  DELETE_ALL_LOCAL_DATA_CONFIRMATION,
   completeOccurrence,
   cancelFocus,
   createBackup,
   createReminder,
   deferTaskWatchAttention,
+  deleteAllLocalDataAndExit,
   deleteReminder,
   getBasicSupportState,
   getFocusState,
@@ -1951,6 +1953,16 @@ function SettingsView({
   const [backupLoading, setBackupLoading] = useState(true);
   const [backupError, setBackupError] = useState<string | null>(null);
   const [backupWorking, setBackupWorking] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deleteNoRecovery, setDeleteNoRecovery] = useState(false);
+  const [deleteWorking, setDeleteWorking] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const deleteConfirmationId = useId();
+  const deleteNoRecoveryId = useId();
+  const deleteReady =
+    tauriAvailable() &&
+    deleteConfirmation === DELETE_ALL_LOCAL_DATA_CONFIRMATION &&
+    deleteNoRecovery;
 
   const refreshBackups = useCallback(async () => {
     setBackupLoading(true);
@@ -2274,6 +2286,75 @@ function SettingsView({
             ))}
           </div>
         )}
+      </section>
+      <section className="delete-data-section" aria-labelledby="delete-local-data-title">
+        <div className="delete-data-heading">
+          <strong id="delete-local-data-title">删除全部本地数据</strong>
+          <small>
+            将永久删除提醒、历史、专注记录、设置、备份和日志，然后完全退出。如果没有保存在应用数据目录之外的副本，请不要继续。
+          </small>
+        </div>
+        <label className="delete-data-confirmation" htmlFor={deleteConfirmationId}>
+          <span>输入“{DELETE_ALL_LOCAL_DATA_CONFIRMATION}”以确认</span>
+          <input
+            id={deleteConfirmationId}
+            type="text"
+            autoComplete="off"
+            spellCheck={false}
+            disabled={deleteWorking || !tauriAvailable()}
+            value={deleteConfirmation}
+            onChange={(event) => {
+              setDeleteConfirmation(event.target.value);
+              setDeleteError(null);
+            }}
+          />
+        </label>
+        <label className="delete-data-acknowledgement" htmlFor={deleteNoRecoveryId}>
+          <input
+            id={deleteNoRecoveryId}
+            type="checkbox"
+            disabled={deleteWorking || !tauriAvailable()}
+            checked={deleteNoRecovery}
+            onChange={(event) => {
+              setDeleteNoRecovery(event.target.checked);
+              setDeleteError(null);
+            }}
+          />
+          <span>我明白此操作无法撤销，普通卸载不会替代这一步。</span>
+        </label>
+        {!tauriAvailable() && (
+          <p className="delete-data-note">此操作只能在已安装的 Windows 桌面应用中执行。</p>
+        )}
+        {deleteError && (
+          <p className="delete-data-error" role="alert" aria-live="assertive">
+            {deleteError}
+          </p>
+        )}
+        <button
+          className="delete-data-button"
+          type="button"
+          disabled={!deleteReady || deleteWorking}
+          onClick={async () => {
+            if (!deleteReady) return;
+            if (
+              !window.confirm(
+                "最后确认：圆圆会完全退出，所有本地数据和应用内备份都将永久删除。确定继续吗？",
+              )
+            ) {
+              return;
+            }
+            setDeleteWorking(true);
+            setDeleteError(null);
+            try {
+              await deleteAllLocalDataAndExit(deleteConfirmation, deleteNoRecovery);
+            } catch (error) {
+              setDeleteError(`删除未启动：${String(error)}`);
+              setDeleteWorking(false);
+            }
+          }}
+        >
+          {deleteWorking ? "正在退出并清理…" : "永久删除本地数据并退出"}
+        </button>
       </section>
       <div className="settings-actions">
         <button type="button" onClick={() => void requestSleep()}>

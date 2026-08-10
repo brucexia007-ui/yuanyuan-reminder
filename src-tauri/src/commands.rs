@@ -537,6 +537,32 @@ pub fn quit_inner(app: &AppHandle) {
 
 #[cfg(windows)]
 #[tauri::command]
+pub fn delete_all_local_data_and_exit(
+    app: AppHandle,
+    confirmation: String,
+    understands_no_recovery: bool,
+) -> AppResult<()> {
+    crate::local_data_cleanup::validate_delete_request(&confirmation, understands_no_recovery)?;
+    sync_autostart(&app, false)?;
+    crate::local_data_cleanup::schedule_after_exit(&app.config().identifier)?;
+    quit_inner(&app);
+    Ok(())
+}
+
+#[cfg(not(windows))]
+#[tauri::command]
+pub fn delete_all_local_data_and_exit(
+    _app: AppHandle,
+    _confirmation: String,
+    _understands_no_recovery: bool,
+) -> AppResult<()> {
+    Err(AppError::Validation(
+        "local data deletion is available only on Windows".into(),
+    ))
+}
+
+#[cfg(windows)]
+#[tauri::command]
 pub fn get_ai_supervisor_status(app: AppHandle) -> String {
     app.state::<crate::ai_supervisor::AiSupervisor>()
         .status()
