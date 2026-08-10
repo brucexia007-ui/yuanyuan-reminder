@@ -8,6 +8,7 @@ import {
   coldStartEvidenceMatches,
   defaultUpgradeRollbackRegistrationEvidenceMatches,
   defaultUpgradeRollbackProbeEvidenceMatches,
+  defaultRegistrationPendingDetail,
   defenderEvidenceMatches,
   installFailureRecoveryProbeEvidenceMatches,
   licenseBundleEvidenceMatches,
@@ -58,6 +59,21 @@ test("preflight detail describes the actual passed or pending state", () => {
     status: "pending",
     detail: "尚未完成",
   });
+  assert.match(defaultRegistrationPendingDetail(null, false), /尚未取得/u);
+  assert.match(
+    defaultRegistrationPendingDetail(
+      { environment: { currentUserRegistry64Writable: false } },
+      true,
+    ),
+    /无法写入64位HKCU/u,
+  );
+  assert.match(
+    defaultRegistrationPendingDetail(
+      { environment: { currentUserRegistry64Writable: true } },
+      true,
+    ),
+    /可写64位HKCU/u,
+  );
 });
 
 test("license review stays pending before signoff but a false success claim fails closed", () => {
@@ -375,7 +391,7 @@ test("upgrade/rollback probe binds historical bytes, candidate transitions, and 
     timestampSubject: null,
   };
   const report = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: "2026-08-08T22:30:00.000Z",
     mode: "release_upgrade_rollback_probe",
     ready: true,
@@ -401,6 +417,7 @@ test("upgrade/rollback probe binds historical bytes, candidate transitions, and 
       profileRegistryQueryAvailable: true,
       tokenProfilePathMatchesEnvironment: true,
       localAppDataMatchesTokenProfile: true,
+      currentUserRegistry64Writable: false,
       preexistingApplicationProcessCount: 0,
       preexistingProductRegistration: false,
       preexistingDataRoot: false,
@@ -462,6 +479,16 @@ test("upgrade/rollback probe binds historical bytes, candidate transitions, and 
   const matches = (candidate, scriptSha256 = "C".repeat(64)) =>
     upgradeRollbackProbeEvidenceMatches(candidate, artifacts, scriptSha256, "1.4.0");
   assert.equal(matches(report), true);
+  assert.equal(
+    matches({
+      ...report,
+      environment: {
+        ...report.environment,
+        currentUserRegistry64Writable: undefined,
+      },
+    }),
+    false,
+  );
   assert.equal(matches(report, "E".repeat(64)), false);
   assert.equal(
     matches({
@@ -519,6 +546,10 @@ test("upgrade/rollback probe binds historical bytes, candidate transitions, and 
       customTemporaryInstallRootUsed: false,
       registrationGatePassed: true,
     },
+    environment: {
+      ...report.environment,
+      currentUserRegistry64Writable: true,
+    },
     steps: {
       historicalInstall: ownedInstall(report.steps.historicalInstall),
       candidateUpgrade: ownedInstall(report.steps.candidateUpgrade),
@@ -542,6 +573,21 @@ test("upgrade/rollback probe binds historical bytes, candidate transitions, and 
       "1.4.0",
     ),
     true,
+  );
+  assert.equal(
+    defaultUpgradeRollbackProbeEvidenceMatches(
+      {
+        ...defaultReport,
+        environment: {
+          ...defaultReport.environment,
+          currentUserRegistry64Writable: false,
+        },
+      },
+      artifacts,
+      "C".repeat(64),
+      "1.4.0",
+    ),
+    false,
   );
   assert.equal(
     defaultUpgradeRollbackProbeEvidenceMatches(

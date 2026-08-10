@@ -74,6 +74,52 @@ function Test-SamePath([AllowNull()][string]$Left, [string]$Right) {
     $normalizedLeft.Equals($normalizedRight, [StringComparison]::OrdinalIgnoreCase)
 }
 
+function Test-CurrentUserRegistry64WriteAccess {
+    $relativePath = "Software\yuanyuan-release-qa-{0}" -f [Guid]::NewGuid().ToString("N")
+    $probeValue = [Guid]::NewGuid().ToString("N")
+    $baseKey = $null
+    $created = $false
+    $writeKey = $null
+    try {
+        $baseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+            [Microsoft.Win32.RegistryHive]::CurrentUser,
+            [Microsoft.Win32.RegistryView]::Registry64
+        )
+        $writeKey = $baseKey.CreateSubKey($relativePath, $true)
+        if ($null -eq $writeKey) { return $false }
+        $created = $true
+        $writeKey.SetValue("Probe", $probeValue, [Microsoft.Win32.RegistryValueKind]::String)
+        $writeKey.Dispose()
+        $writeKey = $null
+
+        $readKey = $baseKey.OpenSubKey($relativePath, $false)
+        if ($null -eq $readKey) { return $false }
+        try {
+            return [string]$readKey.GetValue("Probe") -eq $probeValue
+        }
+        finally {
+            $readKey.Dispose()
+        }
+    }
+    catch {
+        return $false
+    }
+    finally {
+        if ($null -ne $writeKey) { $writeKey.Dispose() }
+        if ($null -ne $baseKey) {
+            if ($created) {
+                try {
+                    $baseKey.DeleteSubKeyTree($relativePath, $false)
+                }
+                catch {
+                    throw "current-user registry writability probe cleanup failed"
+                }
+            }
+            $baseKey.Dispose()
+        }
+    }
+}
+
 function Get-SignatureRecord([string]$Path) {
     $signature = Get-AuthenticodeSignature -LiteralPath $Path
     $signer = $signature.SignerCertificate
@@ -402,6 +448,7 @@ $localAppDataMatchesTokenProfile = $profileRegistryQueryAvailable -and
         ([IO.Path]::GetFullPath($profilePath).TrimEnd('\') + '\'),
         [StringComparison]::OrdinalIgnoreCase
     )
+$currentUserRegistry64Writable = Test-CurrentUserRegistry64WriteAccess
 
 $uninstallKey = "Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\$productName"
 $productKey = "Registry::HKEY_CURRENT_USER\Software\yuanyuan\$productName"
@@ -586,7 +633,7 @@ try {
         $localAppData
 
     $report = [ordered]@{
-        schemaVersion = 1
+        schemaVersion = 2
         generatedAt = (Get-Date).ToUniversalTime().ToString("o")
         mode = if ($UseDefaultInstallRoot) {
             "release_default_upgrade_rollback_probe"
@@ -614,13 +661,15 @@ try {
                 $candidateRegistrationDisposition -eq "owned" -and
                 $historicalRollbackRegistrationDisposition -eq "owned" -and
                 $candidatePostUninstallRegistrationConsistent -and
-                $historicalPostUninstallRegistrationConsistent
+                $historicalPostUninstallRegistrationConsistent -and
+                $currentUserRegistry64Writable
         }
         environment = [ordered]@{
             currentUserAuthenticated = [bool]$identity.IsAuthenticated
             profileRegistryQueryAvailable = $profileRegistryQueryAvailable
             tokenProfilePathMatchesEnvironment = $tokenProfilePathMatchesEnvironment
             localAppDataMatchesTokenProfile = $localAppDataMatchesTokenProfile
+            currentUserRegistry64Writable = $currentUserRegistry64Writable
             preexistingApplicationProcessCount = $preexistingProcesses.Count
             preexistingProductRegistration = $preexistingRegistration
             preexistingDataRoot = $preexistingDataRoot

@@ -1,6 +1,7 @@
 # P0 默认安装路径升级、卸载与安全回装旧版验收
 
-日期：2026-08-09  
+日期：2026-08-10
+
 对应范围：P0-E08 默认 current-user 安装路径的可自动化文件转换证据
 
 ## 结论
@@ -9,7 +10,7 @@
 
 三个安装阶段的主程序版本、字节数和 SHA-256 均精确匹配；v1.4.0 的四份许可证文件名称和内容正确，回装 v1.3.2 后这些新文件不残留；正式 LocalAppData 合成哨兵五阶段保持同一哈希。最终默认安装目录、正式数据目录、快捷方式、临时目录和圆圆进程均为零残留。
 
-发布预检包含独立 `default_install_path_transition_probe`、`default_install_control_panel_registration`、安装失败恢复、首次启动数据库恢复与卸载数据选择子门；当前文件转换项通过、控制面板注册项待完成，总结果为 13 项通过、13 项待完成、0 项失败，`readyForRelease=false`。
+发布预检包含独立 `default_install_path_transition_probe`、`default_install_control_panel_registration`、安装失败恢复、首次启动数据库恢复与卸载数据选择子门；当前文件转换项通过、控制面板注册项待完成，总结果为 13 项通过、14 项待完成、0 项失败，`readyForRelease=false`。
 
 ## 注册表观察不冒充通过
 
@@ -20,7 +21,7 @@
 - 测试键最终不存在；
 - 圆圆产品注册、安装目录和进程同样均不存在。
 
-因此报告明确记录 `registrationGatePassed=false`。本项只证明默认安装路径下的文件安装、升级、卸载和安全回装旧版，不证明控制面板注册；预检将文件转换列为通过，同时把独立 `default_install_control_panel_registration` 保持为待完成，也不会用它设置 `upgradeRollbackDrillVerified=true`。控制面板条目、显示版本、安装位置和卸载字符串仍须在允许 current-user 注册写入的干净 Windows 账户复核。
+升级回退报告 schema v2 现直接用 .NET 64 位注册表视图创建、复读并清理随机一次性键，当前结果为 `currentUserRegistry64Writable=false`，并明确记录 `registrationGatePassed=false`。本项只证明默认安装路径下的文件安装、升级、卸载和安全回装旧版，不证明控制面板注册；预检将文件转换列为通过，同时把独立 `default_install_control_panel_registration` 保持为待完成，并在报告中说明当前令牌无法写入 64 位 HKCU，也不会用它设置 `upgradeRollbackDrillVerified=true`。控制面板条目、显示版本、安装位置和卸载字符串仍须在允许 current-user 注册写入的干净 Windows 账户复核。
 
 ## 冻结候选与报告
 
@@ -28,15 +29,15 @@
 |---|---|
 | 官方 v1.3.2 Setup | `FD08FAC044D32995FA7BB153A06E5ED092FCCA827DCAA4154608F579541FF4F1` |
 | 官方 v1.3.2 安装主程序 | `864209F2D6385205CA15E35677C64BA94388B315DB555EBA08369D57717F3FCF` |
-| 当前 v1.4.0 NSIS | `C96D883452FC02B296AF13E92633C2282E261C5B3211BC949987DE39A3A66F96` |
-| 当前 v1.4.0 NSIS 实际安装主程序 | `143B59A18FCE473858B00725DA6ADE427FA16E91CECDC402DC00CF300416121D` |
+| 当前 v1.4.0 NSIS | `6F41A4B19BD0E8DFC21432CD23C893D17AFB5D2C5C9F42C632567E2BFD2D2225` |
+| 当前 v1.4.0 NSIS 实际安装主程序 | `BC00B42649D2B1863115ED7E3A4F3B3EC681351C49BD081CC4F6B8D13AFD4C1E` |
 
 - 默认路径报告：`src-tauri/target/release/release-default-upgrade-rollback-probe.json`
-- 报告 SHA-256：`7C986BDD270A670E810C535472C14D1A2A79FD4C2756F43515BA6B3F3FD07496`
-- 探测脚本 SHA-256：`AB717DD75AFB406107D7AA4F18EBC9F7BE8A4414902E77C242B999792E3103C2`
-- 最新发布预检报告 SHA-256：`C733DF6567E0C47070A92F55440FF00BC1545A4D4001BB74BABA3D1E29C45434`
+- 报告 SHA-256：`489D425A80BF1522A89743A84D3E1852CC433A10862ADBB87496934691EDE4DF`
+- 探测脚本 SHA-256：`33CF9BD904C5CF3B29DCA52768F3C056A05AD0A6DC6A6DE9114828D2A36413CB`
+- 最新发布预检报告 SHA-256：`E831F58C0E93496E324D632D98F0675F7F6F8BEDF93FE8674155176F7CC97626`
 
-报告与预检会重新绑定脚本、历史安装器、历史安装主程序、当前安装器和当前安装主程序哈希，并重新计算 `registrationGatePassed`；把 `absent` 注册伪装为 `owned`、改变安装边界确认、修改清理状态或加入未知字段都会失败。
+报告与预检会重新绑定脚本、历史安装器、历史安装主程序、当前安装器和当前安装主程序哈希，并重新计算 `registrationGatePassed`；把 `absent` 注册伪装为 `owned`、删除或伪造 64 位 HKCU 可写性、改变安装边界确认、修改清理状态或加入未知字段都会失败。
 
 ## 安全前置与清理
 

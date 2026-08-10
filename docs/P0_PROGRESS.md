@@ -5,7 +5,7 @@
 
 v1.4.0 的稳定版交付范围、明确排除项、冻结时验证结果和剩余发布阻断项已于 2026-08-10 固化在 [`V1.4.0_SCOPE_FREEZE_2026-08-10.md`](V1.4.0_SCOPE_FREEZE_2026-08-10.md)。当前源码已通过完整 `verify` 与 Tauri 正式构建，但签名、外部信任、真实升级/中断、24小时运行和具名人工验收仍未关闭，因此正式发布状态继续为 NO-GO。
 
-当前安装包候选 `A5237E6C…620A` 已重新完成候选绑定预检，结果恢复为 13 项通过、14 项待完成、0 项失败，严格门按设计退出 2。默认路径文件转换、首次启动恢复、卸载数据选择和三次干净配置冷启动均已刷新；控制面板注册仍未出现，本机 Defender 未启用，二者保持待办。完整记录见 [`P0_RELEASE_CANDIDATE_REFRESH_2026-08-10.md`](P0_RELEASE_CANDIDATE_REFRESH_2026-08-10.md)，签名与渠道选择见 [`release/V1.4.0_SIGNING_CHANNEL_DECISION_2026-08-10.md`](release/V1.4.0_SIGNING_CHANNEL_DECISION_2026-08-10.md)。
+当前安装包候选 `6F41A4B1…2225` 已重新完成候选绑定预检，结果恢复为 13 项通过、14 项待完成、0 项失败，严格门按设计退出 2。默认路径文件转换、首次启动恢复、卸载数据选择和三次干净配置冷启动均已刷新；升级回退报告 schema v2 现独立记录 64 位 HKCU 可写性，实测当前受控令牌为不可写，因而控制面板注册继续待办而不被误判为安装器缺陷。本机 Defender 同样未启用。完整记录见 [`P0_RELEASE_CANDIDATE_REFRESH_2026-08-10.md`](P0_RELEASE_CANDIDATE_REFRESH_2026-08-10.md)，签名与渠道选择见 [`release/V1.4.0_SIGNING_CHANNEL_DECISION_2026-08-10.md`](release/V1.4.0_SIGNING_CHANNEL_DECISION_2026-08-10.md)。
 
 ## 总体状态
 

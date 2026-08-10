@@ -514,7 +514,7 @@ export function upgradeRollbackProbeEvidenceMatches(
       "cleanup",
       "limitations",
     ]) ||
-    report.schemaVersion !== 1 ||
+    report.schemaVersion !== 2 ||
     !Number.isFinite(Date.parse(report.generatedAt)) ||
     report.mode !== expectedReportMode ||
     report.ready !== true ||
@@ -551,6 +551,7 @@ export function upgradeRollbackProbeEvidenceMatches(
       "profileRegistryQueryAvailable",
       "tokenProfilePathMatchesEnvironment",
       "localAppDataMatchesTokenProfile",
+      "currentUserRegistry64Writable",
       "preexistingApplicationProcessCount",
       "preexistingProductRegistration",
       "preexistingDataRoot",
@@ -562,6 +563,7 @@ export function upgradeRollbackProbeEvidenceMatches(
     report.environment.profileRegistryQueryAvailable !== true ||
     report.environment.tokenProfilePathMatchesEnvironment !== true ||
     report.environment.localAppDataMatchesTokenProfile !== true ||
+    typeof report.environment.currentUserRegistry64Writable !== "boolean" ||
     report.environment.preexistingApplicationProcessCount !== 0 ||
     report.environment.preexistingProductRegistration !== false ||
     report.environment.preexistingDataRoot !== false ||
@@ -672,6 +674,7 @@ export function upgradeRollbackProbeEvidenceMatches(
   const historicalRollback = report.steps.historicalRollback;
   const historicalUninstall = report.steps.historicalUninstall;
   const expectedRegistrationGate =
+    report.environment.currentUserRegistry64Writable === true &&
     historicalInstall.registrationDisposition === "owned" &&
     candidateUpgrade.registrationDisposition === "owned" &&
     historicalRollback.registrationDisposition === "owned" &&
@@ -1386,6 +1389,16 @@ export function check(id, passed, passedDetail, pending = false, pendingDetail =
   };
 }
 
+export function defaultRegistrationPendingDetail(report, transitionEvidenceValid) {
+  if (!transitionEvidenceValid) {
+    return "尚未取得与当前候选绑定的干净测试账户默认安装路径及控制面板注册证据";
+  }
+  if (report?.environment?.currentUserRegistry64Writable === false) {
+    return "默认路径文件转换已验证，但当前测试令牌无法写入64位HKCU，控制面板注册必须在可写注册表的干净账户复测";
+  }
+  return "默认路径文件转换已验证，测试账户可写64位HKCU，但尚未观察到逐阶段控制面板注册";
+}
+
 export function licenseReviewCheck(evidenceValid, reviewClaimed, packetReady) {
   return check(
     "license_review",
@@ -2046,7 +2059,10 @@ async function buildReport() {
       defaultPathRegistrationEvidenceValid,
       "官方v1.3.2与当前候选已在可写HKCU的干净账户逐阶段验证控制面板注册、版本和卸载边界",
       true,
-      "默认路径文件转换已验证，但尚未在可写HKCU的干净账户观察到逐阶段控制面板注册",
+      defaultRegistrationPendingDetail(
+        defaultUpgradeRollbackProbeReport,
+        defaultPathTransitionEvidenceValid,
+      ),
     ),
     check(
       "isolated_install_failure_recovery_probe",
