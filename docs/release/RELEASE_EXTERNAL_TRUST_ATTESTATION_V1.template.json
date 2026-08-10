@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "mode": "release_external_trust_attestation",
+  "packetSha256": null,
+  "candidateManifestSha256": null,
+  "smartScreen": {
+    "testedAt": null,
+    "tester": {
+      "name": null,
+      "role": null,
+      "organization": null,
+      "humanTester": false
+    },
+    "environment": {
+      "machineAlias": null,
+      "windowsEdition": null,
+      "windowsVersion": null,
+      "osBuild": null,
+      "accountType": null,
+      "cleanSnapshotSha256": null
+    },
+    "candidateInstallerSha256": null,
+    "networkReputationAvailable": false,
+    "previousYuanyuanInstall": null,
+    "previousCandidateExecution": null,
+    "markOfWebPresent": false,
+    "sourceZone": null,
+    "stages": {
+      "internetZoneTransfer": null,
+      "installerLaunch": null,
+      "install": null,
+      "firstStart": null,
+      "residentOperation": null,
+      "uninstall": null
+    },
+    "promptDisposition": null,
+    "evidenceReferences": [
+      "docs/release/P0_RELEASE_SIGNING_AND_FALSE_POSITIVE_SOP.md"
+    ],
+    "passed": false
+  },
+  "securityProducts": [],
+  "attestationText": "I attest that the recorded SmartScreen and security-product observations were performed by the named human testers on the exact candidate artifacts and clean Windows environments described by this packet, with no omitted detection or unresolved result."
+}

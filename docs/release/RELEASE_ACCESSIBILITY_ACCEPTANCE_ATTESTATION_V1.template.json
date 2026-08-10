@@ -1,0 +1,422 @@
+{
+  "schemaVersion": 1,
+  "mode": "release_accessibility_acceptance_attestation",
+  "packetSha256": "REPLACE_WITH_PACKET_SHA256",
+  "candidateManifestSha256": "REPLACE_WITH_MANIFEST_SHA256",
+  "startedAt": "REPLACE_WITH_ISO_8601_START_TIME",
+  "completedAt": "REPLACE_WITH_ISO_8601_COMPLETION_TIME",
+  "tester": {
+    "name": "REPLACE_WITH_HUMAN_TESTER_NAME",
+    "role": "REPLACE_WITH_ACCESSIBILITY_REVIEW_ROLE",
+    "organization": "REPLACE_WITH_ORGANIZATION",
+    "humanTester": false
+  },
+  "environment": {
+    "machineAlias": "REPLACE_WITH_NON_SENSITIVE_MACHINE_ALIAS",
+    "windowsEdition": "REPLACE_WITH_WINDOWS_EDITION",
+    "windowsVersion": "REPLACE_WITH_WINDOWS_VERSION",
+    "osBuild": "REPLACE_WITH_OS_BUILD",
+    "webView2Version": "REPLACE_WITH_WEBVIEW2_VERSION",
+    "accountType": "standard_user",
+    "systemLanguage": "zh-CN",
+    "interactiveDesktop": false,
+    "audioOutputAvailable": false,
+    "cleanSnapshotSha256": "REPLACE_WITH_CLEAN_SNAPSHOT_SHA256"
+  },
+  "humanObservedAllResults": false,
+  "automationUsedForPrimaryVerdict": true,
+  "artifactRecords": [
+    {
+      "id": "stable_core",
+      "bytes": 0,
+      "sha256": "REPLACE_FROM_PACKET",
+      "executed": false,
+      "passed": false
+    },
+    {
+      "id": "nsis_installed_core",
+      "bytes": 0,
+      "sha256": "REPLACE_FROM_PACKET",
+      "executed": false,
+      "passed": false
+    },
+    {
+      "id": "nsis_installer",
+      "bytes": 0,
+      "sha256": "REPLACE_FROM_PACKET",
+      "executed": false,
+      "passed": false
+    }
+  ],
+  "dpiObservations": [
+    {
+      "percent": 100,
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "workflowResults": {
+        "launch_and_open_panel": "pending",
+        "today_reminders_and_resolution": "pending",
+        "reminder_management_lifecycle": "pending",
+        "focus_session_start_and_stop": "pending",
+        "settings_backup_and_restore": "pending",
+        "support_path_start_and_exit": "pending",
+        "complete_exit": "pending"
+      },
+      "noClipping": false,
+      "noOverlap": false,
+      "noUnexpectedHorizontalScroll": false,
+      "readableText": false,
+      "evidenceReferences": [],
+      "passed": false
+    },
+    {
+      "percent": 125,
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "workflowResults": {
+        "launch_and_open_panel": "pending",
+        "today_reminders_and_resolution": "pending",
+        "reminder_management_lifecycle": "pending",
+        "focus_session_start_and_stop": "pending",
+        "settings_backup_and_restore": "pending",
+        "support_path_start_and_exit": "pending",
+        "complete_exit": "pending"
+      },
+      "noClipping": false,
+      "noOverlap": false,
+      "noUnexpectedHorizontalScroll": false,
+      "readableText": false,
+      "evidenceReferences": [],
+      "passed": false
+    },
+    {
+      "percent": 150,
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "workflowResults": {
+        "launch_and_open_panel": "pending",
+        "today_reminders_and_resolution": "pending",
+        "reminder_management_lifecycle": "pending",
+        "focus_session_start_and_stop": "pending",
+        "settings_backup_and_restore": "pending",
+        "support_path_start_and_exit": "pending",
+        "complete_exit": "pending"
+      },
+      "noClipping": false,
+      "noOverlap": false,
+      "noUnexpectedHorizontalScroll": false,
+      "readableText": false,
+      "evidenceReferences": [],
+      "passed": false
+    },
+    {
+      "percent": 200,
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "workflowResults": {
+        "launch_and_open_panel": "pending",
+        "today_reminders_and_resolution": "pending",
+        "reminder_management_lifecycle": "pending",
+        "focus_session_start_and_stop": "pending",
+        "settings_backup_and_restore": "pending",
+        "support_path_start_and_exit": "pending",
+        "complete_exit": "pending"
+      },
+      "noClipping": false,
+      "noOverlap": false,
+      "noUnexpectedHorizontalScroll": false,
+      "readableText": false,
+      "evidenceReferences": [],
+      "passed": false
+    }
+  ],
+  "textScaleObservations": [
+    {
+      "percent": 100,
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "workflowResults": {
+        "launch_and_open_panel": "pending",
+        "today_reminders_and_resolution": "pending",
+        "reminder_management_lifecycle": "pending",
+        "focus_session_start_and_stop": "pending",
+        "settings_backup_and_restore": "pending",
+        "support_path_start_and_exit": "pending",
+        "complete_exit": "pending"
+      },
+      "noClipping": false,
+      "noOverlap": false,
+      "noUnexpectedHorizontalScroll": false,
+      "readableText": false,
+      "evidenceReferences": [],
+      "passed": false
+    },
+    {
+      "percent": 150,
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "workflowResults": {
+        "launch_and_open_panel": "pending",
+        "today_reminders_and_resolution": "pending",
+        "reminder_management_lifecycle": "pending",
+        "focus_session_start_and_stop": "pending",
+        "settings_backup_and_restore": "pending",
+        "support_path_start_and_exit": "pending",
+        "complete_exit": "pending"
+      },
+      "noClipping": false,
+      "noOverlap": false,
+      "noUnexpectedHorizontalScroll": false,
+      "readableText": false,
+      "evidenceReferences": [],
+      "passed": false
+    },
+    {
+      "percent": 200,
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "workflowResults": {
+        "launch_and_open_panel": "pending",
+        "today_reminders_and_resolution": "pending",
+        "reminder_management_lifecycle": "pending",
+        "focus_session_start_and_stop": "pending",
+        "settings_backup_and_restore": "pending",
+        "support_path_start_and_exit": "pending",
+        "complete_exit": "pending"
+      },
+      "noClipping": false,
+      "noOverlap": false,
+      "noUnexpectedHorizontalScroll": false,
+      "readableText": false,
+      "evidenceReferences": [],
+      "passed": false
+    }
+  ],
+  "contrastObservations": [
+    {
+      "mode": "dark",
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "systemContrastEnabled": false,
+      "workflowResults": {
+        "launch_and_open_panel": "pending",
+        "today_reminders_and_resolution": "pending",
+        "reminder_management_lifecycle": "pending",
+        "focus_session_start_and_stop": "pending",
+        "settings_backup_and_restore": "pending",
+        "support_path_start_and_exit": "pending",
+        "complete_exit": "pending"
+      },
+      "foregroundBackgroundDistinct": false,
+      "focusVisible": false,
+      "selectedAndDisabledStatesDistinct": false,
+      "informationNotColorOnly": false,
+      "evidenceReferences": [],
+      "passed": false
+    },
+    {
+      "mode": "light",
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "systemContrastEnabled": false,
+      "workflowResults": {
+        "launch_and_open_panel": "pending",
+        "today_reminders_and_resolution": "pending",
+        "reminder_management_lifecycle": "pending",
+        "focus_session_start_and_stop": "pending",
+        "settings_backup_and_restore": "pending",
+        "support_path_start_and_exit": "pending",
+        "complete_exit": "pending"
+      },
+      "foregroundBackgroundDistinct": false,
+      "focusVisible": false,
+      "selectedAndDisabledStatesDistinct": false,
+      "informationNotColorOnly": false,
+      "evidenceReferences": [],
+      "passed": false
+    }
+  ],
+  "reducedMotionObservation": {
+    "installedCoreSha256": "REPLACE_FROM_PACKET",
+    "windowsAnimationEffectsDisabled": false,
+    "applicationReducedMotionEnabled": false,
+    "coreWorkflowsCompleted": false,
+    "animatedMotionReplaced": false,
+    "meaningPreserved": false,
+    "noFlashing": false,
+    "evidenceReferences": [],
+    "passed": false
+  },
+  "keyboardPaths": [
+    {
+      "pathId": "panel_primary_navigation",
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "pointerUsed": true,
+      "allControlsReachable": false,
+      "focusOrderLogical": false,
+      "focusVisible": false,
+      "focusReturnedAfterDialog": false,
+      "escapeOrCancelAvailable": false,
+      "evidenceReferences": [],
+      "passed": false
+    },
+    {
+      "pathId": "reminder_management_lifecycle",
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "pointerUsed": true,
+      "allControlsReachable": false,
+      "focusOrderLogical": false,
+      "focusVisible": false,
+      "focusReturnedAfterDialog": false,
+      "escapeOrCancelAvailable": false,
+      "evidenceReferences": [],
+      "passed": false
+    },
+    {
+      "pathId": "backup_and_restore_confirmation",
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "pointerUsed": true,
+      "allControlsReachable": false,
+      "focusOrderLogical": false,
+      "focusVisible": false,
+      "focusReturnedAfterDialog": false,
+      "escapeOrCancelAvailable": false,
+      "evidenceReferences": [],
+      "passed": false
+    },
+    {
+      "pathId": "support_path_start_and_exit",
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "pointerUsed": true,
+      "allControlsReachable": false,
+      "focusOrderLogical": false,
+      "focusVisible": false,
+      "focusReturnedAfterDialog": false,
+      "escapeOrCancelAvailable": false,
+      "evidenceReferences": [],
+      "passed": false
+    },
+    {
+      "pathId": "pet_to_panel_and_complete_exit",
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "pointerUsed": true,
+      "allControlsReachable": false,
+      "focusOrderLogical": false,
+      "focusVisible": false,
+      "focusReturnedAfterDialog": false,
+      "escapeOrCancelAvailable": false,
+      "evidenceReferences": [],
+      "passed": false
+    }
+  ],
+  "narratorPaths": [
+    {
+      "pathId": "panel_landmarks_and_primary_navigation",
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "screenReader": "Windows Narrator",
+      "speechOutputHeard": false,
+      "namesRolesAndStatesAccurate": false,
+      "dynamicChangesAnnounced": false,
+      "noCriticalSilence": false,
+      "noDuplicateBlockingAnnouncement": false,
+      "evidenceReferences": [],
+      "passed": false
+    },
+    {
+      "pathId": "reminder_management_states_and_errors",
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "screenReader": "Windows Narrator",
+      "speechOutputHeard": false,
+      "namesRolesAndStatesAccurate": false,
+      "dynamicChangesAnnounced": false,
+      "noCriticalSilence": false,
+      "noDuplicateBlockingAnnouncement": false,
+      "evidenceReferences": [],
+      "passed": false
+    },
+    {
+      "pathId": "focus_and_dynamic_status",
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "screenReader": "Windows Narrator",
+      "speechOutputHeard": false,
+      "namesRolesAndStatesAccurate": false,
+      "dynamicChangesAnnounced": false,
+      "noCriticalSilence": false,
+      "noDuplicateBlockingAnnouncement": false,
+      "evidenceReferences": [],
+      "passed": false
+    },
+    {
+      "pathId": "backup_restore_and_destructive_confirmation",
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "screenReader": "Windows Narrator",
+      "speechOutputHeard": false,
+      "namesRolesAndStatesAccurate": false,
+      "dynamicChangesAnnounced": false,
+      "noCriticalSilence": false,
+      "noDuplicateBlockingAnnouncement": false,
+      "evidenceReferences": [],
+      "passed": false
+    },
+    {
+      "pathId": "support_path_controls_and_exit",
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "screenReader": "Windows Narrator",
+      "speechOutputHeard": false,
+      "namesRolesAndStatesAccurate": false,
+      "dynamicChangesAnnounced": false,
+      "noCriticalSilence": false,
+      "noDuplicateBlockingAnnouncement": false,
+      "evidenceReferences": [],
+      "passed": false
+    },
+    {
+      "pathId": "pet_status_and_panel_entry",
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "screenReader": "Windows Narrator",
+      "speechOutputHeard": false,
+      "namesRolesAndStatesAccurate": false,
+      "dynamicChangesAnnounced": false,
+      "noCriticalSilence": false,
+      "noDuplicateBlockingAnnouncement": false,
+      "evidenceReferences": [],
+      "passed": false
+    }
+  ],
+  "setupPaths": [
+    {
+      "pathId": "installer_install",
+      "installerSha256": "REPLACE_FROM_PACKET",
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "keyboardOnly": false,
+      "narratorUsed": false,
+      "choicesAndConsequencesAnnounced": false,
+      "focusVisible": false,
+      "dataDispositionObserved": "not_applicable",
+      "evidenceReferences": [],
+      "passed": false
+    },
+    {
+      "pathId": "uninstaller_preserve_data",
+      "installerSha256": "REPLACE_FROM_PACKET",
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "keyboardOnly": false,
+      "narratorUsed": false,
+      "choicesAndConsequencesAnnounced": false,
+      "focusVisible": false,
+      "dataDispositionObserved": "preserved",
+      "evidenceReferences": [],
+      "passed": false
+    },
+    {
+      "pathId": "uninstaller_delete_data",
+      "installerSha256": "REPLACE_FROM_PACKET",
+      "installedCoreSha256": "REPLACE_FROM_PACKET",
+      "keyboardOnly": false,
+      "narratorUsed": false,
+      "choicesAndConsequencesAnnounced": false,
+      "focusVisible": false,
+      "dataDispositionObserved": "deleted",
+      "evidenceReferences": [],
+      "passed": false
+    }
+  ],
+  "unresolvedFindings": [
+    "REMOVE_ONLY_AFTER_EVERY_BLOCKER_IS_RESOLVED"
+  ],
+  "evidenceReferences": [
+    "docs/release/P0_RELEASE_ACCESSIBILITY_ACCEPTANCE_SOP.md"
+  ],
+  "attestationText": "I attest that I personally completed and heard the recorded accessibility matrix on the exact signed release candidate in the native Windows environments described by this packet, that automation was not used as the primary verdict, and that no unresolved blocker or failed result was omitted."
+}

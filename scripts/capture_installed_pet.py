@@ -101,7 +101,11 @@ def main() -> None:
     parser.add_argument("--duration", type=float, default=42.0)
     parser.add_argument("--interval", type=float, default=0.12)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--prelaunch-backdrop-attested", action="store_true")
     args = parser.parse_args()
+
+    if not args.prelaunch_backdrop_attested:
+        raise RuntimeError("the prelaunch privacy backdrop attestation is required")
 
     user32.SetProcessDPIAware()
     windows = visible_windows_for_pid(args.pid)
@@ -153,6 +157,8 @@ def main() -> None:
         "sampleCount": len(samples),
         "distinctFrameCount": len(distinct),
         "contactFrameCount": len(contact_frames),
+        "prelaunchBackdropAttested": True,
+        "captureScope": "pet_window_over_prelaunch_virtual_desktop_backdrop",
     }
     (args.output_dir / "installed-capture.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2),

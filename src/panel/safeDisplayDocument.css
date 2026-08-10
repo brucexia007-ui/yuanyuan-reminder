@@ -1,0 +1,120 @@
+.safe-document {
+  color: #382f2a;
+  background: #fffaf4;
+  border: 1px solid rgb(128 92 64 / 18%);
+  border-radius: 18px;
+  box-shadow: 0 12px 36px rgb(86 55 35 / 10%);
+  padding: 18px;
+  overflow: hidden;
+}
+
+.safe-document__header h2 {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+}
+
+.safe-document__provenance {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: #75665c;
+  font-size: 0.76rem;
+}
+
+.safe-document__provenance span {
+  border-radius: 999px;
+  background: #f3e9dd;
+  padding: 3px 8px;
+}
+
+.safe-document__body {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.safe-document__body h3,
+.safe-document__body h4,
+.safe-document__body h5 {
+  margin: 18px 0 6px;
+}
+
+.safe-document__body p,
+.safe-document__body ul,
+.safe-document__body ol {
+  margin: 10px 0;
+}
+
+.safe-document__table-wrap {
+  margin: 12px 0;
+  overflow-x: auto;
+}
+
+.safe-document table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.safe-document th,
+.safe-document td {
+  border: 1px solid #eadbcc;
+  padding: 7px 9px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.safe-document pre,
+.safe-document__references code {
+  background: #2f2a28;
+  color: #fff6ec;
+  border-radius: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.safe-document pre {
+  padding: 12px;
+  overflow-x: auto;
+}
+
+.safe-document__references {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid #eadbcc;
+  margin-top: 14px;
+  padding-top: 12px;
+}
+
+.safe-document__references div {
+  display: grid;
+  gap: 4px;
+}
+
+.safe-document__references code {
+  padding: 7px 9px;
+}
+
+.safe-document__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.safe-document__actions button {
+  border: 0;
+  border-radius: 999px;
+  background: #77604e;
+  color: white;
+  cursor: pointer;
+  padding: 8px 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .safe-document *,
+  .safe-document *::before,
+  .safe-document *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}

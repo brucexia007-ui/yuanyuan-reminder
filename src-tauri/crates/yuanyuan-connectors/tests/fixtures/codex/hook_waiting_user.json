@@ -1,0 +1,7 @@
+{
+  "hook_event_name": "PermissionRequest",
+  "session_id": "codex-session-fixture-001",
+  "tool_input": { "command": "redacted" },
+  "timestamp": "2026-08-04T09:01:00Z",
+  "sequence": 11
+}

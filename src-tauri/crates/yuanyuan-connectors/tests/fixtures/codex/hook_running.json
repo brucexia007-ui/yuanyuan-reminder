@@ -1,0 +1,8 @@
+{
+  "hook_event_name": "SessionStart",
+  "session_id": "codex-session-fixture-001",
+  "cwd": "C:\\Users\\fixture\\private-project",
+  "transcript_path": "C:\\Users\\fixture\\private-transcript.jsonl",
+  "timestamp": "2026-08-04T09:00:30Z",
+  "sequence": 10
+}

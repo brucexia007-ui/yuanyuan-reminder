@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "mode": "release_upgrade_completion_attestation",
+  "testedAt": null,
+  "packetSha256": null,
+  "candidateManifestSha256": null,
+  "tester": {
+    "name": null,
+    "role": null,
+    "organization": null,
+    "humanTester": false
+  },
+  "environment": {
+    "machineAlias": null,
+    "windowsEdition": null,
+    "windowsVersion": null,
+    "osBuild": null,
+    "accountType": null,
+    "cleanSnapshotSha256": null
+  },
+  "authenticHistoricalDatabase": {
+    "migrationReportSha256": null,
+    "sourceDatabaseSha256": null,
+    "sourceSizeBytes": null,
+    "sourceApplicationDisplayedVersion": null,
+    "sourceApplicationFullyExitedBeforeCopy": false,
+    "sourceProvider": {
+      "name": null,
+      "role": null,
+      "organization": null,
+      "humanProvider": false
+    },
+    "sourceDatabaseNotCommitted": false
+  },
+  "scenarios": {
+    "defaultPathRegistration": {
+      "controlPanelEntryObserved": false,
+      "displayedVersion": null,
+      "installLocationMatched": false,
+      "uninstallCommandMatched": false,
+      "evidenceReferences": [
+        "docs/P0_RELEASE_UPGRADE_ROLLBACK_PROBE_2026-08-09.md"
+      ],
+      "passed": false
+    },
+    "authenticDatabaseUpgrade": {
+      "sourceSchemaVersion": null,
+      "migratedSchemaVersion": null,
+      "sourceLogicalSha256": null,
+      "migratedMatchedSourceRowsSha256": null,
+      "quickCheckOk": false,
+      "allRowsPreserved": false,
+      "evidenceReferences": [
+        "docs/P0_RELEASE_UPGRADE_ROLLBACK_PROBE_2026-08-09.md"
+      ],
+      "passed": false
+    },
+    "physicalPowerLossRecovery": {
+      "interruptionStage": null,
+      "physicalPowerLossOrHypervisorHardReset": false,
+      "gracefulShutdownRequested": null,
+      "writeBoundaryObserved": false,
+      "recoveryUsedUnmodifiedCandidate": false,
+      "recoveredToVisibleWindow": false,
+      "quickCheckOk": false,
+      "dataPreserved": false,
+      "evidenceReferences": [
+        "docs/P0_RELEASE_UPGRADE_ROLLBACK_PROBE_2026-08-09.md"
+      ],
+      "passed": false
+    },
+    "windowsRestartRecovery": {
+      "restartStage": null,
+      "actualWindowsRestart": false,
+      "applicationProcessStoppedByRestart": false,
+      "recoveredToVisibleWindow": false,
+      "quickCheckOk": false,
+      "dataPreserved": false,
+      "evidenceReferences": [
+        "docs/P0_RELEASE_UPGRADE_ROLLBACK_PROBE_2026-08-09.md"
+      ],
+      "passed": false
+    },
+    "safeHistoricalRollback": {
+      "preUpgradeDatabaseCopyCreated": false,
+      "restoredPreUpgradeDatabaseCopy": false,
+      "migratedV11DatabaseOpenedByHistoricalVersion": null,
+      "historicalVersionLaunchedAfterRestore": false,
+      "restoredLogicalSha256": null,
+      "evidenceReferences": [
+        "docs/P0_RELEASE_UPGRADE_ROLLBACK_PROBE_2026-08-09.md"
+      ],
+      "passed": false
+    },
+    "signedCandidateRevalidatedAfterRecovery": false
+  },
+  "unresolvedFindings": [],
+  "evidenceReferences": [
+    "docs/P0_RELEASE_UPGRADE_ROLLBACK_PROBE_2026-08-09.md"
+  ],
+  "attestationText": "I attest that the named human tester completed the exact-candidate default-path registration, authentic v1.3.2 database upgrade, physical power-loss or hard-reset recovery, real Windows restart recovery, signed-candidate revalidation, and safe rollback scenarios described by this packet, restored only owned test data, and omitted no unresolved result."
+}

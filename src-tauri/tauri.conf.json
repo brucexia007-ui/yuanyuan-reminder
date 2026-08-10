@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "圆圆提醒",
-  "version": "1.3.2",
+  "version": "1.4.0",
   "identifier": "com.yuanyuan.reminder",
   "build": {
     "beforeDevCommand": "npm.cmd run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm.cmd run build",
+    "beforeBuildCommand": "npm.cmd run build && npm.cmd run release:licenses",
     "frontendDist": "../dist"
   },
   "app": {
@@ -55,6 +55,12 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "resources": {
+      "../LICENSE": "licenses/LICENSE.txt",
+      "../THIRD_PARTY_NOTICES.md": "licenses/THIRD_PARTY_NOTICES.md",
+      "../THIRD_PARTY_LICENSES.txt": "licenses/THIRD_PARTY_LICENSES.txt",
+      "../ASSETS_LICENSE.md": "licenses/ASSETS_LICENSE.md"
+    },
     "category": "Productivity",
     "shortDescription": "圆圆陪你喝水、安排工作和准时休息",
     "longDescription": "一款完全独立运行的 Windows 桌面宠物提醒工具。",
@@ -70,7 +76,8 @@
         "silent": true
       },
       "nsis": {
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "installerHooks": "./windows/installer-hooks.nsh"
       }
     }
   }

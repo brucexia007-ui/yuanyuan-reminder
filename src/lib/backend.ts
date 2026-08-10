@@ -2,17 +2,262 @@ import { invoke } from "@tauri-apps/api/core";
 import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AppSettings,
+  BackupInfo,
+  BasicSupportPath,
+  BasicSupportSession,
+  CompanionExpressionSnapshot,
   CreateReminderInput,
   FocusState,
   HistoryQuery,
   Occurrence,
   PetCareSnapshot,
   PetInteractionKind,
+  Reminder,
+  TaskWatchSnapshot,
+  TaskWatchSource,
+  TaskWatchState,
   TodaySnapshot,
 } from "../types";
 
 const isTauri =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+export type AiSupervisorStatus =
+  | "unavailable"
+  | "starting"
+  | "running"
+  | "backing_off"
+  | "circuit_open"
+  | "stopped";
+
+export interface AiSupervisorDiagnostics {
+  status: AiSupervisorStatus;
+  binaryPresent: boolean;
+  localDiagnosticsPresent: boolean;
+  canRetry: boolean;
+  controlProtocolVersion: number;
+}
+
+export interface DiagnosticExportResult {
+  status: "saved" | "cancelled";
+  fileName: string | null;
+  bytes: number;
+  schemaVersion: number;
+  sensitiveFieldsIncluded: false;
+  sensitiveScanStatus: "clean";
+  sensitiveScanVersion: number;
+  sensitiveScanChecks: number;
+  selectedPathReturned: false;
+  internalCopyCreated: false;
+  automaticUpload: false;
+}
+
+export interface DiagnosticPreviewResult {
+  schemaVersion: number;
+  estimatedBytes: number;
+  exportFileCount: 1;
+  pendingFiles: number;
+  pendingBytes: number;
+  quarantinedFiles: number;
+  diagnosticCodeCategories: number;
+  diagnosticOccurrences: number;
+  sensitiveFieldsIncluded: false;
+  sensitiveScanStatus: "clean";
+  sensitiveScanVersion: number;
+  sensitiveScanChecks: number;
+  selectedLocationRequired: true;
+  internalCopyCreated: false;
+  automaticUpload: false;
+}
+
+export interface DiagnosticClearResult {
+  removedSnapshotFiles: number;
+  removedCounterFiles: number;
+}
+
+export type ConnectorTrustAction =
+  | "register"
+  | "rotate"
+  | "reset"
+  | "reconnect";
+
+export interface ConnectorTrustStatus {
+  connectorId: string;
+  configured: boolean;
+  active: boolean;
+  needsReconnect: boolean;
+  rotationGraceActive: boolean;
+  generation: number | null;
+  sourceInstance: string | null;
+  legacyIdentity: boolean;
+  hookConfigurationChanged: false;
+}
+
+export interface ConnectorTrustPreview {
+  confirmationToken: string;
+  expiresInSeconds: number;
+  action: ConnectorTrustAction;
+  immediateRevocation: boolean;
+  createsNewCredential: boolean;
+  oldEventGraceSeconds: number;
+  revokesAllLiveKeys: boolean;
+  deletesObsoleteCredentials: boolean;
+  sourceTaskBehaviorChanged: false;
+  keyMaterialExposed: false;
+  hookConfigurationChanged: false;
+  sourceInstanceAssignedAfterConfirmation: boolean;
+  connectorIdAssignedAfterConfirmation: boolean;
+}
+
+export type ConnectorKind = "codex" | "claude_code";
+export type ConnectorInstallationChannel =
+  | "windows_desktop_app"
+  | "cli_on_path"
+  | "native_user_install";
+
+export interface ConnectorDiscoveryStatus {
+  kind: ConnectorKind;
+  installationState: "not_detected" | "detected";
+  installationChannels: ConnectorInstallationChannel[];
+  toolTrust: {
+    status: "not_detected" | "verified" | "review_required" | "unavailable";
+    reason:
+      | "not_detected"
+      | "official_distribution_verified"
+      | "artifact_evidence_missing"
+      | "conflicting_installations"
+      | "unsupported_wrapper"
+      | "unsafe_artifact"
+      | "signature_invalid"
+      | "publisher_mismatch"
+      | "distribution_not_attested"
+      | "package_identity_missing"
+      | "package_identity_mismatch"
+      | "manifest_evidence_missing"
+      | "manifest_mismatch"
+      | "distribution_verifier_unavailable"
+      | "artifact_changed"
+      | "verifier_unavailable";
+    artifactsChecked: number;
+    authenticodeChecked: boolean;
+    authenticodeValid: boolean;
+    publisherMatched: boolean;
+    packageIdentityAttested: boolean;
+    manifestAttested: boolean;
+    sourceProcessesExecuted: false;
+    networkAccessed: false;
+    artifactPathReturned: false;
+    certificateMaterialReturned: false;
+  };
+  compatibility: "limited";
+  hookConfiguration: "unknown";
+  eventHealth:
+    | "not_observed"
+    | "paused_authentication_failure"
+    | "unavailable";
+  authorizationProbe: "unconfigured" | "available" | "unavailable";
+  trustedInstances: Array<{
+    connectorId: string;
+    sourceInstance: string;
+    authorizationState: "active" | "reconnect_required";
+    rotationGraceActive: boolean;
+    generation: number;
+    legacyIdentity: boolean;
+  }>;
+}
+
+export interface ConnectorDiscoverySnapshot {
+  connectors: ConnectorDiscoveryStatus[];
+  privacy: {
+    sourceProcessesExecuted: false;
+    privateConfigurationRead: false;
+    taskDataRead: false;
+    hookConfigurationChanged: false;
+  };
+}
+
+export type HookConfigInspectionAction =
+  | "add_all"
+  | "add_missing"
+  | "no_change"
+  | "manual_review";
+
+export interface HookConfigSourcesPreview {
+  tool: "codex" | "claude_code";
+  conflict:
+    | "none"
+    | "parse_failure"
+    | "source_tool_mismatch"
+    | "codex_user_inline_hooks"
+    | "codex_user_dual_representation"
+    | "owned_outside_preferred_source"
+    | "owned_across_multiple_sources"
+    | "preferred_source_conflict";
+  proposedAction: HookConfigInspectionAction;
+  sourceFiles: number;
+  parsedSources: number;
+  sourcesWithHooks: number;
+  sourcesWithOwnedHandlers: number;
+  preferredSourcePresent: boolean;
+  expectedHandlers: number;
+  exactHandlers: number;
+  missingHandlers: number;
+  modifiedHandlers: number;
+  duplicateHandlers: number;
+  unexpectedOwnedHandlers: number;
+  losslessEditSupported: boolean;
+  configWritePerformed: false;
+  sourceTaskBehaviorChanged: false;
+}
+
+export interface ConnectorHookConfigInspection {
+  status: "checked" | "manual_review";
+  preview: HookConfigSourcesPreview | null;
+  privateConfigurationRead: boolean;
+  projectConfigurationRead: false;
+  taskDataRead: false;
+  sourceProcessesExecuted: false;
+  configWritePerformed: false;
+  sourceTaskBehaviorChanged: false;
+}
+
+export interface ProjectInspectionAuthorizationPreview {
+  confirmationToken: string;
+  expiresInSeconds: number;
+  tool: "codex" | "claude_code";
+  projectDirectoryVerified: true;
+  userHookConfigurationMayBeRead: true;
+  projectHookConfigurationMayBeRead: true;
+  taskDataRead: false;
+  sourceProcessesExecuted: false;
+  configWritePerformed: false;
+  sourceTaskBehaviorChanged: false;
+  selectedPathReturned: false;
+  selectionPersisted: false;
+}
+
+export interface ProjectPickerResult {
+  status: "cancelled" | "confirmation_required";
+  preview: ProjectInspectionAuthorizationPreview | null;
+  selectedPathReturned: false;
+  selectionPersisted: false;
+}
+
+export interface ProjectInspectionResult {
+  status: "checked" | "manual_review";
+  preview: HookConfigSourcesPreview | null;
+  projectDirectoryChecked: true;
+  userConfigurationFilesRead: number;
+  projectConfigurationFilesRead: number;
+  privateConfigurationRead: boolean;
+  projectConfigurationRead: boolean;
+  taskDataRead: false;
+  sourceProcessesExecuted: false;
+  configWritePerformed: false;
+  sourceTaskBehaviorChanged: false;
+  selectedPathReturned: false;
+  selectionPersisted: false;
+}
 
 const demoAt = (hour: number, minute: number) => {
   const value = new Date();
@@ -33,6 +278,8 @@ let demoSnapshot: TodaySnapshot = {
       nextDueAt: demoAt(16, 0),
       createdAt: demoAt(9, 0),
       updatedAt: demoAt(9, 0),
+      archivedAt: null,
+      systemKind: "water",
     },
     {
       id: "demo-work",
@@ -45,6 +292,22 @@ let demoSnapshot: TodaySnapshot = {
       nextDueAt: demoAt(14, 30),
       createdAt: demoAt(9, 5),
       updatedAt: demoAt(9, 5),
+      archivedAt: null,
+      systemKind: null,
+    },
+    {
+      id: "system-activity-reminder",
+      title: "起来活动一下",
+      category: "personal",
+      scheduleKind: "interval",
+      scheduleJson: JSON.stringify({ everyMinutes: 60 }),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      enabled: false,
+      nextDueAt: null,
+      createdAt: demoAt(9, 0),
+      updatedAt: demoAt(9, 0),
+      archivedAt: null,
+      systemKind: "activity",
     },
   ],
   occurrences: [
@@ -57,6 +320,7 @@ let demoSnapshot: TodaySnapshot = {
       status: "pending",
       actedAt: null,
       snoozedUntil: null,
+      resolutionReason: null,
     },
     {
       id: "demo-work-due",
@@ -67,6 +331,7 @@ let demoSnapshot: TodaySnapshot = {
       status: "pending",
       actedAt: null,
       snoozedUntil: null,
+      resolutionReason: null,
     },
     {
       id: "demo-activity-due",
@@ -77,6 +342,7 @@ let demoSnapshot: TodaySnapshot = {
       status: "pending",
       actedAt: null,
       snoozedUntil: null,
+      resolutionReason: null,
     },
     {
       id: "demo-water-history",
@@ -87,6 +353,7 @@ let demoSnapshot: TodaySnapshot = {
       status: "completed",
       actedAt: demoAt(11, 3),
       snoozedUntil: null,
+      resolutionReason: "manual",
     },
     {
       id: "demo-activity-history",
@@ -97,6 +364,7 @@ let demoSnapshot: TodaySnapshot = {
       status: "completed",
       actedAt: demoAt(12, 8),
       snoozedUntil: null,
+      resolutionReason: "manual",
     },
   ],
   waterCompleted: 4,
@@ -106,6 +374,8 @@ let demoSnapshot: TodaySnapshot = {
 
 let demoSettings: AppSettings = {
   animationMode: "always",
+  companionIntensity: "everyday",
+  companionLabelMode: "adaptive",
   animationSpeed: 1,
   cursorFollow: true,
   alwaysOnTop: true,
@@ -123,9 +393,12 @@ let demoSettings: AppSettings = {
   activityStart: "09:00",
   activityEnd: "18:00",
   activityIntervalMinutes: 60,
+  missedReminderPolicy: "notify",
+  missedReminderGraceMinutes: 120,
 };
 
 let demoFocusState: FocusState = { session: null };
+let demoBasicSupport: BasicSupportSession | null = null;
 let demoCare: PetCareSnapshot = {
   total: 0,
   food: 0,
@@ -179,36 +452,153 @@ export async function listHistory(query: HistoryQuery): Promise<Occurrence[]> {
     .slice(0, query.limit ?? 200);
 }
 
-export async function createReminder(input: CreateReminderInput): Promise<void> {
+function demoNextDue(input: CreateReminderInput, now = new Date()): string | null {
+  if (input.scheduleKind === "once" && input.atLocal) {
+    return new Date(input.atLocal).toISOString();
+  }
+  return new Date(
+    now.getTime() + (input.everyMinutes ?? 60) * 60_000,
+  ).toISOString();
+}
+
+function resolveDemoOccurrences(reminderId: string, reason: string) {
+  const actedAt = new Date().toISOString();
+  return demoSnapshot.occurrences.map((item) =>
+    item.reminderId === reminderId &&
+    ["pending", "overdue", "snoozed"].includes(item.status)
+      ? {
+          ...item,
+          status: "skipped" as const,
+          actedAt,
+          snoozedUntil: null,
+          resolutionReason: reason,
+        }
+      : item,
+  );
+}
+
+export async function createReminder(input: CreateReminderInput): Promise<Reminder> {
   if (isTauri) {
-    await invoke("create_reminder", { input });
-    return;
+    return invoke<Reminder>("create_reminder", { input });
   }
   const now = new Date();
-  const nextDue =
-    input.scheduleKind === "once" && input.atLocal
-      ? new Date(input.atLocal).toISOString()
-      : new Date(
-          now.getTime() + (input.everyMinutes ?? 60) * 60_000,
-        ).toISOString();
+  const reminder: Reminder = {
+    id: crypto.randomUUID(),
+    title: input.title,
+    category: input.category,
+    scheduleKind: input.scheduleKind,
+    scheduleJson: JSON.stringify(input),
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    enabled: true,
+    nextDueAt: demoNextDue(input, now),
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    archivedAt: null,
+    systemKind: null,
+  };
   demoSnapshot = {
     ...demoSnapshot,
-    reminders: [
-      ...demoSnapshot.reminders,
-      {
-        id: crypto.randomUUID(),
-        title: input.title,
-        category: input.category,
-        scheduleKind: input.scheduleKind,
-        scheduleJson: JSON.stringify(input),
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        enabled: true,
-        nextDueAt: nextDue,
-        createdAt: now.toISOString(),
-        updatedAt: now.toISOString(),
-      },
-    ],
+    reminders: [...demoSnapshot.reminders, reminder],
   };
+  return structuredClone(reminder);
+}
+
+export async function updateReminder(
+  id: string,
+  input: CreateReminderInput,
+): Promise<Reminder> {
+  if (isTauri) return invoke<Reminder>("update_reminder", { id, input });
+  const current = demoSnapshot.reminders.find((item) => item.id === id);
+  if (!current || current.archivedAt) throw new Error("reminder does not exist");
+  if (current.systemKind) throw new Error("system reminders must be changed in settings");
+  const updated: Reminder = {
+    ...current,
+    title: input.title,
+    category: input.category,
+    scheduleKind: input.scheduleKind,
+    scheduleJson: JSON.stringify(input),
+    nextDueAt: current.enabled ? demoNextDue(input) : null,
+    updatedAt: new Date().toISOString(),
+  };
+  demoSnapshot = {
+    ...demoSnapshot,
+    reminders: demoSnapshot.reminders.map((item) =>
+      item.id === id ? updated : item,
+    ),
+    occurrences: resolveDemoOccurrences(id, "reminder-edited"),
+  };
+  return structuredClone(updated);
+}
+
+export async function setReminderEnabled(
+  id: string,
+  enabled: boolean,
+): Promise<Reminder> {
+  if (isTauri) {
+    return invoke<Reminder>("set_reminder_enabled", { id, enabled });
+  }
+  const current = demoSnapshot.reminders.find((item) => item.id === id);
+  if (!current || current.archivedAt) throw new Error("reminder does not exist");
+  if (current.systemKind) throw new Error("system reminders must be changed in settings");
+  const input = JSON.parse(current.scheduleJson) as CreateReminderInput;
+  const updated: Reminder = {
+    ...current,
+    enabled,
+    nextDueAt: enabled ? demoNextDue(input) : null,
+    updatedAt: new Date().toISOString(),
+  };
+  demoSnapshot = {
+    ...demoSnapshot,
+    reminders: demoSnapshot.reminders.map((item) =>
+      item.id === id ? updated : item,
+    ),
+    occurrences: enabled
+      ? demoSnapshot.occurrences
+      : resolveDemoOccurrences(id, "reminder-disabled"),
+  };
+  return structuredClone(updated);
+}
+
+export async function deleteReminder(id: string): Promise<void> {
+  if (isTauri) {
+    await invoke("delete_reminder", { id });
+    return;
+  }
+  const current = demoSnapshot.reminders.find((item) => item.id === id);
+  if (!current || current.archivedAt) return;
+  if (current.systemKind) throw new Error("system reminders cannot be deleted");
+  const archivedAt = new Date().toISOString();
+  demoSnapshot = {
+    ...demoSnapshot,
+    reminders: demoSnapshot.reminders.map((item) =>
+      item.id === id
+        ? { ...item, enabled: false, nextDueAt: null, archivedAt, updatedAt: archivedAt }
+        : item,
+    ),
+    occurrences: resolveDemoOccurrences(id, "reminder-deleted"),
+  };
+}
+
+export async function listBackups(): Promise<BackupInfo[]> {
+  if (isTauri) return invoke<BackupInfo[]>("list_backups");
+  return [];
+}
+
+export async function createBackup(): Promise<BackupInfo> {
+  if (isTauri) return invoke<BackupInfo>("create_backup");
+  const now = new Date();
+  return {
+    fileName: `manual-${now.toISOString().replace(/[:.]/g, "-")}.sqlite3`,
+    createdAt: now.toISOString(),
+    sizeBytes: 0,
+    automatic: false,
+  };
+}
+
+export async function restoreBackup(fileName: string): Promise<void> {
+  if (isTauri) {
+    await invoke("restore_backup", { fileName });
+  }
 }
 
 export async function completeOccurrence(id: string): Promise<void> {
@@ -233,6 +623,7 @@ export async function completeOccurrence(id: string): Promise<void> {
         status: "completed",
         actedAt: now,
         snoozedUntil: null,
+        resolutionReason: "manual",
       };
     }),
     waterCompleted,
@@ -256,6 +647,7 @@ export async function snoozeOccurrence(id: string, minutes = 10): Promise<void> 
             snoozedUntil: new Date(
               now.getTime() + minutes * 60_000,
             ).toISOString(),
+            resolutionReason: null,
           }
         : item,
     ),
@@ -277,6 +669,7 @@ export async function skipOccurrence(id: string): Promise<void> {
             status: "skipped",
             actedAt: now,
             snoozedUntil: null,
+            resolutionReason: "manual",
           }
         : item,
     ),
@@ -310,6 +703,7 @@ export async function recordWater(): Promise<void> {
             status: "completed",
             actedAt: now,
             snoozedUntil: null,
+            resolutionReason: "manual",
           }
         : item,
     ),
@@ -318,6 +712,123 @@ export async function recordWater(): Promise<void> {
 
 export async function getFocusState(): Promise<FocusState> {
   return isTauri ? invoke<FocusState>("get_focus_state") : demoFocusState;
+}
+
+export async function getCompanionExpressionSnapshot(): Promise<CompanionExpressionSnapshot> {
+  if (isTauri) {
+    return invoke<CompanionExpressionSnapshot>("get_companion_expression_snapshot");
+  }
+  return {
+    schemaVersion: 1,
+    revision: 0,
+    tier: "n0",
+    intent: "quiet_presence",
+    pose: demoFocusState.session?.phase === "focus" ? "focus_calm" : "idle",
+    props: [],
+    label: null,
+    attention: "silent",
+    motion: demoSettings.animationMode === "off" ? "reduced" : "full",
+    movePropForward: false,
+    queueInBasket: false,
+    taskSource: null,
+    groupedCount: 1,
+    focusDeferredCount: 0,
+    accessibleState:
+      demoFocusState.session?.phase === "focus"
+        ? "focused_quietly"
+        : "quiet_presence",
+  };
+}
+
+const demoTaskWatchDeferrals = new Map<string, number>();
+
+function taskWatchDemoEnabled(): boolean {
+  return (
+    import.meta.env.DEV &&
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("taskWatchDemo") === "1"
+  );
+}
+
+export async function getTaskWatchSnapshot(): Promise<TaskWatchSnapshot> {
+  if (isTauri) return invoke<TaskWatchSnapshot>("get_task_watch_snapshot");
+  if (taskWatchDemoEnabled()) {
+    const now = Date.now();
+    for (const [key, until] of demoTaskWatchDeferrals) {
+      if (until <= now) demoTaskWatchDeferrals.delete(key);
+    }
+    const state = (
+      source: TaskWatchSource,
+      taskState: TaskWatchState,
+      count: number,
+    ) => ({
+      source,
+      state: taskState,
+      count,
+      deferredUntilUnixMs:
+        demoTaskWatchDeferrals.get(`${source}-${taskState}`) ?? null,
+    });
+    return {
+      schemaVersion: 2,
+      available: true,
+      observedCount: 8,
+      needsUserCount: 2,
+      states: [
+        state("codex", "running", 3),
+        state("codex", "waiting_user", 1),
+        state("codex", "succeeded", 1),
+        state("claude_code", "waiting_user", 1),
+        state("claude_code", "stalled", 1),
+        state("claude_code", "failed", 1),
+      ],
+    };
+  }
+  return {
+    schemaVersion: 2,
+    available: false,
+    observedCount: 0,
+    needsUserCount: 0,
+    states: [],
+  };
+}
+
+export async function deferTaskWatchAttention(
+  source: TaskWatchSource,
+  state: TaskWatchState,
+  minutes = 10,
+): Promise<TaskWatchSnapshot> {
+  if (isTauri) {
+    return invoke<TaskWatchSnapshot>("defer_task_watch_attention", {
+      source,
+      state,
+      minutes,
+    });
+  }
+  if (taskWatchDemoEnabled() && [10, 30, 60].includes(minutes)) {
+    demoTaskWatchDeferrals.set(
+      `${source}-${state}`,
+      Date.now() + minutes * 60 * 1_000,
+    );
+    return getTaskWatchSnapshot();
+  }
+  throw new Error("task watch attention deferral is unavailable");
+}
+
+export async function resumeTaskWatchAttention(
+  source: TaskWatchSource,
+  state: TaskWatchState,
+): Promise<TaskWatchSnapshot> {
+  if (isTauri) {
+    return invoke<TaskWatchSnapshot>("resume_task_watch_attention", {
+      source,
+      state,
+    });
+  }
+  if (taskWatchDemoEnabled()) {
+    demoTaskWatchDeferrals.delete(`${source}-${state}`);
+    return getTaskWatchSnapshot();
+  }
+  throw new Error("task watch attention resume is unavailable");
 }
 
 export async function startFocus(
@@ -352,6 +863,40 @@ export async function getPetCare(): Promise<PetCareSnapshot> {
   return isTauri ? invoke<PetCareSnapshot>("get_pet_care") : demoCare;
 }
 
+export async function getBasicSupportState(): Promise<BasicSupportSession | null> {
+  return isTauri
+    ? invoke<BasicSupportSession | null>("get_basic_support_state")
+    : structuredClone(demoBasicSupport);
+}
+
+export async function startBasicSupport(
+  path: BasicSupportPath,
+  durationMinutes: number,
+): Promise<BasicSupportSession> {
+  if (isTauri) {
+    return invoke<BasicSupportSession>("start_basic_support", {
+      path,
+      durationMinutes,
+    });
+  }
+  const startedAt = new Date();
+  demoBasicSupport = {
+    id: crypto.randomUUID(),
+    path,
+    durationMinutes,
+    startedAt: startedAt.toISOString(),
+    endsAt: new Date(startedAt.getTime() + durationMinutes * 60_000).toISOString(),
+  };
+  return structuredClone(demoBasicSupport);
+}
+
+export async function stopBasicSupport(): Promise<boolean> {
+  if (isTauri) return invoke<boolean>("stop_basic_support");
+  const stopped = demoBasicSupport !== null;
+  demoBasicSupport = null;
+  return stopped;
+}
+
 export async function startPetInteraction(
   kind: PetInteractionKind,
 ): Promise<PetCareSnapshot> {
@@ -381,6 +926,163 @@ export async function updateSettings(patch: Partial<AppSettings>): Promise<AppSe
   if (isTauri) return invoke<AppSettings>("update_settings", { patch });
   demoSettings = { ...demoSettings, ...patch };
   return structuredClone(demoSettings);
+}
+
+export async function getAiSupervisorStatus(): Promise<AiSupervisorStatus> {
+  return isTauri
+    ? invoke<AiSupervisorStatus>("get_ai_supervisor_status")
+    : "unavailable";
+}
+
+export async function getAiSupervisorDiagnostics(): Promise<AiSupervisorDiagnostics> {
+  return isTauri
+    ? invoke<AiSupervisorDiagnostics>("get_ai_supervisor_diagnostics")
+    : {
+        status: "unavailable",
+        binaryPresent: false,
+        localDiagnosticsPresent: false,
+        canRetry: false,
+        controlProtocolVersion: 1,
+      };
+}
+
+export async function previewAiDiagnostics(): Promise<DiagnosticPreviewResult> {
+  if (!isTauri) throw new Error("diagnostic preview is unavailable");
+  return invoke<DiagnosticPreviewResult>("preview_ai_diagnostics");
+}
+
+export async function exportAiDiagnostics(): Promise<DiagnosticExportResult> {
+  if (!isTauri) throw new Error("diagnostic export is unavailable");
+  return invoke<DiagnosticExportResult>("export_ai_diagnostics");
+}
+
+export async function clearAiDiagnostics(): Promise<DiagnosticClearResult> {
+  if (!isTauri) throw new Error("diagnostic cleanup is unavailable");
+  return invoke<DiagnosticClearResult>("clear_ai_diagnostics");
+}
+
+export async function retryAiAfterFailure(): Promise<boolean> {
+  return isTauri ? invoke<boolean>("retry_ai_after_failure") : false;
+}
+
+export async function discoverBuiltinConnectors(): Promise<ConnectorDiscoverySnapshot> {
+  if (isTauri) {
+    return invoke<ConnectorDiscoverySnapshot>("discover_builtin_connectors");
+  }
+  return {
+    connectors: (["codex", "claude_code"] as const).map((kind) => ({
+      kind,
+      installationState: "not_detected",
+      installationChannels: [],
+      toolTrust: {
+        status: "not_detected",
+        reason: "not_detected",
+        artifactsChecked: 0,
+        authenticodeChecked: false,
+        authenticodeValid: false,
+        publisherMatched: false,
+        packageIdentityAttested: false,
+        manifestAttested: false,
+        sourceProcessesExecuted: false,
+        networkAccessed: false,
+        artifactPathReturned: false,
+        certificateMaterialReturned: false,
+      },
+      compatibility: "limited",
+      hookConfiguration: "unknown",
+      eventHealth: "not_observed",
+      authorizationProbe: "unconfigured",
+      trustedInstances: [],
+    })),
+    privacy: {
+      sourceProcessesExecuted: false,
+      privateConfigurationRead: false,
+      taskDataRead: false,
+      hookConfigurationChanged: false,
+    },
+  };
+}
+
+export async function inspectConnectorHookConfig(
+  connectorId: string,
+  sourceInstance: string,
+): Promise<ConnectorHookConfigInspection> {
+  if (!isTauri) throw new Error("connector hook inspection is unavailable");
+  return invoke<ConnectorHookConfigInspection>("inspect_connector_hook_config", {
+    connectorId,
+    sourceInstance,
+  });
+}
+
+export async function selectProjectForHookInspection(
+  connectorId: string,
+  sourceInstance: string,
+): Promise<ProjectPickerResult> {
+  if (!isTauri) throw new Error("native project picker is unavailable");
+  return invoke<ProjectPickerResult>("select_project_for_hook_inspection", {
+    connectorId,
+    sourceInstance,
+  });
+}
+
+export async function applyProjectHookInspection(
+  confirmationToken: string,
+): Promise<ProjectInspectionResult> {
+  if (!isTauri) throw new Error("project hook inspection is unavailable");
+  return invoke<ProjectInspectionResult>("apply_project_hook_inspection", {
+    confirmationToken,
+  });
+}
+
+export async function cancelProjectHookInspection(confirmationToken: string): Promise<void> {
+  if (isTauri) {
+    await invoke("cancel_project_hook_inspection", { confirmationToken });
+  }
+}
+
+export async function getConnectorTrustStatus(
+  connectorId: string,
+  sourceInstance: string,
+): Promise<ConnectorTrustStatus> {
+  if (isTauri) {
+    return invoke<ConnectorTrustStatus>("get_connector_trust_status", {
+      connectorId,
+      sourceInstance,
+    });
+  }
+  return {
+    connectorId,
+    configured: false,
+    active: false,
+    needsReconnect: false,
+    rotationGraceActive: false,
+    generation: null,
+    sourceInstance,
+    legacyIdentity: false,
+    hookConfigurationChanged: false,
+  };
+}
+
+export async function previewConnectorTrustChange(
+  action: ConnectorTrustAction,
+  connectorId: string,
+  sourceInstance?: string,
+): Promise<ConnectorTrustPreview> {
+  if (!isTauri) throw new Error("connector trust preview is unavailable");
+  return invoke<ConnectorTrustPreview>("preview_connector_trust_change", {
+    action,
+    connectorId,
+    sourceInstance,
+  });
+}
+
+export async function applyConnectorTrustChange(
+  confirmationToken: string,
+): Promise<ConnectorTrustStatus> {
+  if (!isTauri) throw new Error("connector trust change is unavailable");
+  return invoke<ConnectorTrustStatus>("apply_connector_trust_change", {
+    confirmationToken,
+  });
 }
 
 export async function showTaskPanel(route = "today"): Promise<void> {

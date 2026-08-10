@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "mode": "release_signing_protocol_attestation",
+  "attestedAt": null,
+  "packetSha256": null,
+  "candidateManifestSha256": null,
+  "operator": {
+    "name": null,
+    "role": null,
+    "organization": null,
+    "humanOperator": false
+  },
+  "signingTool": {
+    "name": null,
+    "version": null,
+    "executableSha256": null
+  },
+  "protocol": {
+    "fileDigest": "sha256",
+    "fileDigestArgument": "/fd SHA256",
+    "timestampProtocol": "rfc3161",
+    "timestampUrl": null,
+    "timestampUrlArgument": "/tr",
+    "timestampDigest": "sha256",
+    "timestampDigestArgument": "/td SHA256",
+    "legacyTimestampArgumentPresent": null
+  },
+  "artifactRecords": [
+    {
+      "artifactId": "stable_core",
+      "bytes": null,
+      "sha256": null,
+      "signerSubject": null,
+      "signerThumbprint": null,
+      "timestampSubject": null,
+      "timestampNotBefore": null,
+      "timestampNotAfter": null,
+      "executionEvidenceSha256": null,
+      "evidenceReferences": [
+        "docs/release/P0_RELEASE_SIGNING_AND_FALSE_POSITIVE_SOP.md"
+      ],
+      "passed": false
+    },
+    {
+      "artifactId": "nsis_installed_core",
+      "bytes": null,
+      "sha256": null,
+      "signerSubject": null,
+      "signerThumbprint": null,
+      "timestampSubject": null,
+      "timestampNotBefore": null,
+      "timestampNotAfter": null,
+      "executionEvidenceSha256": null,
+      "evidenceReferences": [
+        "docs/release/P0_RELEASE_SIGNING_AND_FALSE_POSITIVE_SOP.md"
+      ],
+      "passed": false
+    },
+    {
+      "artifactId": "nsis_installer",
+      "bytes": null,
+      "sha256": null,
+      "signerSubject": null,
+      "signerThumbprint": null,
+      "timestampSubject": null,
+      "timestampNotBefore": null,
+      "timestampNotAfter": null,
+      "executionEvidenceSha256": null,
+      "evidenceReferences": [
+        "docs/release/P0_RELEASE_SIGNING_AND_FALSE_POSITIVE_SOP.md"
+      ],
+      "passed": false
+    }
+  ],
+  "unresolvedFindings": [],
+  "evidenceReferences": [
+    "docs/release/P0_RELEASE_SIGNING_AND_FALSE_POSITIVE_SOP.md"
+  ],
+  "attestationText": "I attest that the named human operator verified the exact candidate artifacts, signing identity, signing tool, SHA-256 file digest, RFC 3161 timestamp URL, SHA-256 timestamp digest, execution evidence, and resulting Authenticode records described by this packet, with no omitted credential exposure or unresolved result."
+}

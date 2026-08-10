@@ -1,9 +1,13 @@
 use std::{fs, path::Path};
 
 use chrono::{
-    DateTime, Datelike, Duration, Local, LocalResult, NaiveDateTime, NaiveTime, TimeZone, Utc,
+    DateTime, Datelike, Duration, Local, LocalResult, NaiveDate, NaiveDateTime, NaiveTime,
+    TimeZone, Utc,
 };
-use rusqlite::{params, Connection, OptionalExtension, Row};
+use rusqlite::{
+    backup::Progress, params, Connection, OpenFlags, OptionalExtension, Row, TransactionBehavior,
+    MAIN_DB,
+};
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -17,6 +21,14 @@ use crate::{
 
 pub const SYSTEM_ACTIVITY_REMINDER_ID: &str = "system-activity-reminder";
 
+#[cfg(windows)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TaskWatchAttentionDeferral {
+    pub source: crate::companion_core::TaskSource,
+    pub state: yuanyuan_protocol::TaskState,
+    pub deferred_until_unix_ms: i64,
+}
+
 pub struct Repository {
     conn: Connection,
 }
@@ -29,31 +41,38 @@ impl Repository {
         let conn = Connection::open(path)?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
-        let schema_version: u32 =
-            conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-        if schema_version < 1 {
-            conn.execute_batch(include_str!("../migrations/001_initial.sql"))?;
-        }
-        if schema_version < 2 {
-            conn.execute_batch(include_str!("../migrations/002_focus_sessions.sql"))?;
-        }
-        if schema_version < 3 {
-            conn.execute_batch(include_str!("../migrations/003_pet_interactions.sql"))?;
-        }
-        if schema_version < 4 {
-            conn.execute_batch(include_str!("../migrations/004_ball_interaction.sql"))?;
-        }
-        if schema_version < 5 {
-            conn.execute_batch(include_str!("../migrations/005_occurrence_history.sql"))?;
-        }
-        if schema_version < 6 {
-            conn.execute_batch(include_str!("../migrations/006_activity_tracking.sql"))?;
-        }
+        apply_migrations(&conn)?;
         let repo = Self { conn };
-        repo.ensure_settings()?;
-        repo.ensure_default_water_reminder()?;
-        repo.ensure_activity_reminder()?;
+        repo.ensure_runtime_defaults()?;
         Ok(repo)
+    }
+
+    fn ensure_runtime_defaults(&self) -> AppResult<()> {
+        self.ensure_settings()?;
+        self.ensure_default_water_reminder()?;
+        self.ensure_activity_reminder()?;
+        Ok(())
+    }
+
+    pub fn backup_to(&self, path: &Path) -> AppResult<()> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        self.conn.backup(MAIN_DB, path, None::<fn(Progress)>)?;
+        Ok(())
+    }
+
+    pub fn restore_from(&mut self, path: &Path) -> AppResult<()> {
+        validate_backup_database(path)?;
+        self.conn.restore(MAIN_DB, path, None::<fn(Progress)>)?;
+        apply_migrations(&self.conn)?;
+        self.ensure_runtime_defaults()?;
+        validate_connection(&self.conn)?;
+        Ok(())
+    }
+
+    pub fn validate_database_file(path: &Path) -> AppResult<()> {
+        validate_backup_database(path)
     }
 
     fn ensure_settings(&self) -> AppResult<()> {
@@ -76,7 +95,8 @@ impl Repository {
 
     fn ensure_default_water_reminder(&self) -> AppResult<()> {
         let count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM reminders WHERE category = 'water'",
+            "SELECT COUNT(*) FROM reminders
+             WHERE category = 'water' AND archived_at IS NULL",
             [],
             |row| row.get(0),
         )?;
@@ -92,6 +112,16 @@ impl Repository {
                 weekdays: Some(vec![1, 2, 3, 4, 5, 6, 0]),
             })?;
         }
+        self.conn.execute(
+            "UPDATE reminders
+             SET system_kind = 'water'
+             WHERE id = (
+                 SELECT id FROM reminders
+                 WHERE category = 'water' AND archived_at IS NULL
+                 ORDER BY created_at ASC LIMIT 1
+             )",
+            [],
+        )?;
         Ok(())
     }
 
@@ -111,8 +141,8 @@ impl Repository {
         self.conn.execute(
             "INSERT OR IGNORE INTO reminders(
                 id, title, category, schedule_kind, schedule_json, timezone,
-                enabled, next_due_at, created_at, updated_at
-             ) VALUES(?1, '起来活动一下', 'personal', 'interval', ?2, ?3, 0, NULL, ?4, ?4)",
+                enabled, next_due_at, created_at, updated_at, system_kind
+             ) VALUES(?1, '起来活动一下', 'personal', 'interval', ?2, ?3, 0, NULL, ?4, ?4, 'activity')",
             params![
                 SYSTEM_ACTIVITY_REMINDER_ID,
                 serde_json::to_string(&input)?,
@@ -122,7 +152,8 @@ impl Repository {
         )?;
         self.conn.execute(
             "UPDATE reminders
-             SET title = '起来活动一下', enabled = 0, next_due_at = NULL
+             SET title = '起来活动一下', enabled = 0, next_due_at = NULL,
+                 archived_at = NULL, system_kind = 'activity'
              WHERE id = ?1",
             [SYSTEM_ACTIVITY_REMINDER_ID],
         )?;
@@ -134,8 +165,9 @@ impl Repository {
         let (day_start, next_day_start) = local_day_utc_bounds(Local::now())?;
         let mut reminder_statement = self.conn.prepare(
             "SELECT id, title, category, schedule_kind, schedule_json, timezone,
-                    enabled, next_due_at, created_at, updated_at
+                    enabled, next_due_at, created_at, updated_at, archived_at, system_kind
              FROM reminders
+             WHERE archived_at IS NULL
              ORDER BY enabled DESC, next_due_at ASC",
         )?;
         let reminders = reminder_statement
@@ -144,7 +176,7 @@ impl Repository {
 
         let mut occurrence_statement = self.conn.prepare(
             "SELECT o.id, o.reminder_id, r.title, r.category, o.scheduled_at,
-                    o.status, o.acted_at, o.snoozed_until
+                    o.status, o.acted_at, o.snoozed_until, o.resolution_reason
              FROM occurrences o
              JOIN reminders r ON r.id = o.reminder_id
              WHERE o.status IN ('pending', 'overdue', 'snoozed')
@@ -197,16 +229,12 @@ impl Repository {
     ) -> AppResult<Vec<Occurrence>> {
         if let Some(status) = status {
             if !["completed", "skipped"].contains(&status) {
-                return Err(AppError::Validation(
-                    "unsupported history status".into(),
-                ));
+                return Err(AppError::Validation("unsupported history status".into()));
             }
         }
         if let Some(category) = category {
             if !["water", "work", "personal"].contains(&category) {
-                return Err(AppError::Validation(
-                    "unsupported history category".into(),
-                ));
+                return Err(AppError::Validation("unsupported history category".into()));
             }
         }
         let cutoff = days
@@ -215,7 +243,7 @@ impl Repository {
         let query = query.map(str::trim).filter(|value| !value.is_empty());
         let mut statement = self.conn.prepare(
             "SELECT o.id, o.reminder_id, r.title, r.category, o.scheduled_at,
-                    o.status, o.acted_at, o.snoozed_until
+                    o.status, o.acted_at, o.snoozed_until, o.resolution_reason
              FROM occurrences o
              JOIN reminders r ON r.id = o.reminder_id
              WHERE o.status IN ('completed', 'skipped')
@@ -268,12 +296,203 @@ impl Repository {
             .ok_or_else(|| AppError::Database(rusqlite::Error::QueryReturnedNoRows))
     }
 
+    #[cfg(feature = "runtime-qa")]
+    pub(crate) fn set_runtime_qa_reminder_due(
+        &self,
+        reminder_id: &str,
+        scheduled_at: DateTime<Utc>,
+    ) -> AppResult<()> {
+        let changed = self.conn.execute(
+            "UPDATE reminders SET next_due_at = ?1, updated_at = ?2 WHERE id = ?3",
+            params![
+                scheduled_at.to_rfc3339(),
+                Utc::now().to_rfc3339(),
+                reminder_id
+            ],
+        )?;
+        if changed != 1 {
+            return Err(AppError::Validation(
+                "runtime QA reminder does not exist".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "runtime-qa")]
+    pub(crate) fn runtime_qa_reminder_claim(
+        &self,
+        reminder_id: &str,
+    ) -> AppResult<Option<(String, String, String)>> {
+        self.conn
+            .query_row(
+                "SELECT scheduled_at, created_at, status
+                 FROM occurrences
+                 WHERE reminder_id = ?1
+                 ORDER BY created_at ASC
+                 LIMIT 1",
+                [reminder_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()
+            .map_err(AppError::from)
+    }
+
+    pub fn update_reminder(&mut self, id: &str, input: CreateReminderInput) -> AppResult<Reminder> {
+        validate_input(&input)?;
+        let now = Utc::now();
+        let transaction = self.conn.transaction()?;
+        let state = transaction
+            .query_row(
+                "SELECT enabled, archived_at, system_kind
+                 FROM reminders WHERE id = ?1",
+                [id],
+                |row| {
+                    Ok((
+                        row.get::<_, bool>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some((enabled, archived_at, system_kind)) = state else {
+            return Err(AppError::Validation("reminder does not exist".into()));
+        };
+        if archived_at.is_some() {
+            return Err(AppError::Validation("reminder is archived".into()));
+        }
+        if system_kind.is_some() {
+            return Err(AppError::Validation(
+                "system reminders must be changed in settings".into(),
+            ));
+        }
+        let next_due = if enabled {
+            compute_next_due(&input, now, true)?
+        } else {
+            None
+        };
+        let schedule_json = serde_json::to_string(&input)?;
+        let now_text = now.to_rfc3339();
+        transaction.execute(
+            "UPDATE reminders
+             SET title = ?1, category = ?2, schedule_kind = ?3,
+                 schedule_json = ?4, timezone = ?5, next_due_at = ?6,
+                 updated_at = ?7
+             WHERE id = ?8",
+            params![
+                input.title.trim(),
+                input.category,
+                input.schedule_kind,
+                schedule_json,
+                iana_time_zone::get_timezone().unwrap_or_else(|_| "local".into()),
+                next_due.as_ref().map(|value| value.to_rfc3339()),
+                now_text,
+                id,
+            ],
+        )?;
+        resolve_active_occurrences(&transaction, id, &now_text, "reminder-edited")?;
+        transaction.commit()?;
+        self.get_reminder(id)?
+            .ok_or_else(|| AppError::Validation("reminder does not exist".into()))
+    }
+
+    pub fn set_reminder_enabled(&mut self, id: &str, enabled: bool) -> AppResult<Reminder> {
+        let now = Utc::now();
+        let transaction = self.conn.transaction()?;
+        let state = transaction
+            .query_row(
+                "SELECT schedule_json, archived_at, system_kind
+                 FROM reminders WHERE id = ?1",
+                [id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some((schedule_json, archived_at, system_kind)) = state else {
+            return Err(AppError::Validation("reminder does not exist".into()));
+        };
+        if archived_at.is_some() {
+            return Err(AppError::Validation("reminder is archived".into()));
+        }
+        if system_kind.is_some() {
+            return Err(AppError::Validation(
+                "system reminders must be changed in settings".into(),
+            ));
+        }
+        let next_due = if enabled {
+            let input: CreateReminderInput = serde_json::from_str(&schedule_json)?;
+            compute_next_due(&input, now, true)?
+        } else {
+            None
+        };
+        let now_text = now.to_rfc3339();
+        transaction.execute(
+            "UPDATE reminders
+             SET enabled = ?1, next_due_at = ?2, updated_at = ?3
+             WHERE id = ?4",
+            params![
+                enabled,
+                next_due.as_ref().map(|value| value.to_rfc3339()),
+                now_text,
+                id,
+            ],
+        )?;
+        if !enabled {
+            resolve_active_occurrences(&transaction, id, &now_text, "reminder-disabled")?;
+        }
+        transaction.commit()?;
+        self.get_reminder(id)?
+            .ok_or_else(|| AppError::Validation("reminder does not exist".into()))
+    }
+
+    pub fn archive_reminder(&mut self, id: &str) -> AppResult<()> {
+        let now = Utc::now().to_rfc3339();
+        let transaction = self.conn.transaction()?;
+        let state = transaction
+            .query_row(
+                "SELECT archived_at, system_kind FROM reminders WHERE id = ?1",
+                [id],
+                |row| {
+                    Ok((
+                        row.get::<_, Option<String>>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some((archived_at, system_kind)) = state else {
+            return Err(AppError::Validation("reminder does not exist".into()));
+        };
+        if archived_at.is_some() {
+            return Ok(());
+        }
+        if system_kind.is_some() {
+            return Err(AppError::Validation(
+                "system reminders cannot be deleted".into(),
+            ));
+        }
+        transaction.execute(
+            "UPDATE reminders
+             SET enabled = 0, next_due_at = NULL, archived_at = ?1, updated_at = ?1
+             WHERE id = ?2",
+            params![now, id],
+        )?;
+        resolve_active_occurrences(&transaction, id, &now, "reminder-deleted")?;
+        transaction.commit()?;
+        Ok(())
+    }
+
     pub fn get_reminder(&self, id: &str) -> AppResult<Option<Reminder>> {
         Ok(self
             .conn
             .query_row(
                 "SELECT id, title, category, schedule_kind, schedule_json, timezone,
-                        enabled, next_due_at, created_at, updated_at
+                        enabled, next_due_at, created_at, updated_at, archived_at, system_kind
                  FROM reminders WHERE id = ?1",
                 [id],
                 reminder_from_row,
@@ -281,10 +500,7 @@ impl Repository {
             .optional()?)
     }
 
-    pub fn create_activity_occurrence(
-        &self,
-        now: DateTime<Utc>,
-    ) -> AppResult<Option<Occurrence>> {
+    pub fn create_activity_occurrence(&self, now: DateTime<Utc>) -> AppResult<Option<Occurrence>> {
         let exists: bool = self.conn.query_row(
             "SELECT EXISTS(
                 SELECT 1 FROM occurrences
@@ -314,6 +530,7 @@ impl Repository {
             status: "pending".into(),
             acted_at: None,
             snoozed_until: None,
+            resolution_reason: None,
         }))
     }
 
@@ -322,7 +539,7 @@ impl Repository {
             .conn
             .query_row(
                 "SELECT o.id, o.reminder_id, r.title, r.category, o.scheduled_at,
-                        o.status, o.acted_at, o.snoozed_until
+                        o.status, o.acted_at, o.snoozed_until, o.resolution_reason
                  FROM occurrences o
                  JOIN reminders r ON r.id = o.reminder_id
                  WHERE o.reminder_id = ?1
@@ -405,7 +622,8 @@ impl Repository {
         };
         let changed = transaction.execute(
             "UPDATE occurrences
-             SET status = 'completed', acted_at = ?1, snoozed_until = NULL
+             SET status = 'completed', acted_at = ?1, snoozed_until = NULL,
+                 resolution_reason = 'manual'
              WHERE id = ?2 AND status IN ('pending', 'overdue', 'snoozed')",
             params![now, id],
         )?;
@@ -421,10 +639,11 @@ impl Repository {
     }
 
     pub fn claim_due(&mut self, now: DateTime<Utc>) -> AppResult<Vec<DueOccurrence>> {
-        let pause_until = self
-            .get_settings()?
+        let settings = self.get_settings()?;
+        let pause_until = settings
             .pause_until
-            .and_then(|value| DateTime::parse_from_rfc3339(&value).ok())
+            .as_deref()
+            .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
             .map(|value| value.with_timezone(&Utc));
         if pause_until.is_some_and(|until| until > now) {
             return Ok(Vec::new());
@@ -433,9 +652,10 @@ impl Repository {
         let due_reminders = {
             let mut statement = self.conn.prepare(
                 "SELECT id, title, category, schedule_kind, schedule_json, timezone,
-                        enabled, next_due_at, created_at, updated_at
+                        enabled, next_due_at, created_at, updated_at, archived_at, system_kind
                  FROM reminders
-                 WHERE enabled = 1 AND next_due_at IS NOT NULL AND next_due_at <= ?1
+                 WHERE enabled = 1 AND archived_at IS NULL
+                   AND next_due_at IS NOT NULL AND next_due_at <= ?1
                  ORDER BY next_due_at ASC",
             )?;
             let rows = statement.query_map([now.to_rfc3339()], reminder_from_row)?;
@@ -450,6 +670,14 @@ impl Repository {
                 .as_ref()
                 .ok_or_else(|| AppError::Time("due reminder has no due time".into()))?;
             let occurrence_id = Uuid::new_v4().to_string();
+            let scheduled = DateTime::parse_from_rfc3339(scheduled_at)
+                .map_err(|error| AppError::Time(error.to_string()))?
+                .with_timezone(&Utc);
+            let missed = settings.missed_reminder_policy == "skipOld"
+                && now.signed_duration_since(scheduled)
+                    > Duration::minutes(i64::from(
+                        settings.missed_reminder_grace_minutes.clamp(15, 240),
+                    ));
             let has_active_water = reminder.category == "water"
                 && transaction.query_row(
                     "SELECT EXISTS(
@@ -462,6 +690,14 @@ impl Repository {
                 )?;
             let inserted = if has_active_water {
                 0
+            } else if missed {
+                transaction.execute(
+                    "INSERT OR IGNORE INTO occurrences(
+                        id, reminder_id, scheduled_at, status, acted_at,
+                        resolution_reason, created_at
+                     ) VALUES(?1, ?2, ?3, 'skipped', ?4, 'missed', ?4)",
+                    params![occurrence_id, reminder.id, scheduled_at, now.to_rfc3339()],
+                )?
             } else {
                 transaction.execute(
                     "INSERT OR IGNORE INTO occurrences(
@@ -494,10 +730,12 @@ impl Repository {
                         reminder_title: reminder.title,
                         category: reminder.category,
                         scheduled_at: scheduled_at.clone(),
-                        status: "pending".into(),
-                        acted_at: None,
+                        status: if missed { "skipped" } else { "pending" }.into(),
+                        acted_at: missed.then(|| now.to_rfc3339()),
                         snoozed_until: None,
+                        resolution_reason: missed.then(|| "missed".into()),
                     },
+                    notify: !missed,
                 });
             }
         }
@@ -505,7 +743,7 @@ impl Repository {
         let snoozed_due = {
             let mut statement = transaction.prepare(
                 "SELECT o.id, o.reminder_id, r.title, r.category, o.scheduled_at,
-                        o.status, o.acted_at, o.snoozed_until
+                        o.status, o.acted_at, o.snoozed_until, o.resolution_reason
                  FROM occurrences o
                  JOIN reminders r ON r.id = o.reminder_id
                  WHERE o.status = 'snoozed'
@@ -522,14 +760,18 @@ impl Repository {
             transaction.execute(
                 "UPDATE occurrences
                  SET status = 'pending', snoozed_until = NULL, acted_at = NULL,
-                     notification_id = NULL
+                     notification_id = NULL, resolution_reason = NULL
                  WHERE id = ?1 AND status = 'snoozed'",
                 [&occurrence.id],
             )?;
             occurrence.status = "pending".into();
             occurrence.acted_at = None;
             occurrence.snoozed_until = None;
-            claimed.push(DueOccurrence { occurrence });
+            occurrence.resolution_reason = None;
+            claimed.push(DueOccurrence {
+                occurrence,
+                notify: true,
+            });
         }
         transaction.commit()?;
         Ok(claimed)
@@ -551,7 +793,8 @@ impl Repository {
             .map(|value| value.to_rfc3339());
         let changed = self.conn.execute(
             "UPDATE occurrences
-             SET status = ?1, acted_at = ?2, snoozed_until = ?3
+             SET status = ?1, acted_at = ?2, snoozed_until = ?3,
+                 resolution_reason = CASE WHEN ?1 = 'snoozed' THEN NULL ELSE 'manual' END
              WHERE id = ?4 AND status IN ('pending', 'overdue', 'snoozed')",
             params![status, now.to_rfc3339(), snoozed_until, id],
         )?;
@@ -577,7 +820,8 @@ impl Repository {
         )?;
         transaction.execute(
             "UPDATE occurrences
-             SET status = 'completed', acted_at = ?1, snoozed_until = NULL
+             SET status = 'completed', acted_at = ?1, snoozed_until = NULL,
+                 resolution_reason = 'manual'
              WHERE id = (
                  SELECT o.id
                  FROM occurrences o
@@ -595,9 +839,7 @@ impl Repository {
 
     pub fn record_pet_interaction(&self, kind: &str) -> AppResult<PetCareSnapshot> {
         if !["food", "water", "treat", "wand", "pet", "ball"].contains(&kind) {
-            return Err(AppError::Validation(
-                "unsupported pet interaction".into(),
-            ));
+            return Err(AppError::Validation("unsupported pet interaction".into()));
         }
         self.conn.execute(
             "INSERT INTO pet_interactions(id, kind, created_at) VALUES(?1, ?2, ?3)",
@@ -776,7 +1018,7 @@ impl Repository {
             .query_row(
                 "SELECT id, title
                  FROM reminders
-                 WHERE category = 'water'
+                 WHERE system_kind = 'water' AND archived_at IS NULL
                  ORDER BY created_at ASC
                  LIMIT 1",
                 [],
@@ -821,6 +1063,355 @@ impl Repository {
         Ok(())
     }
 
+    #[cfg(windows)]
+    pub fn list_task_watch_attention_deferrals(
+        &self,
+        now_unix_ms: i64,
+    ) -> AppResult<Vec<TaskWatchAttentionDeferral>> {
+        if now_unix_ms < 0 {
+            return Err(AppError::Validation(
+                "task watch deferral clock is invalid".into(),
+            ));
+        }
+        let mut statement = self.conn.prepare(
+            "SELECT source, state, deferred_until_unix_ms
+             FROM task_watch_attention_deferrals
+             WHERE deferred_until_unix_ms > ?1
+             ORDER BY source, state",
+        )?;
+        let rows = statement.query_map([now_unix_ms], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })?;
+        let mut deferrals = Vec::new();
+        for row in rows {
+            let (source, state, deferred_until_unix_ms) = row?;
+            deferrals.push(TaskWatchAttentionDeferral {
+                source: parse_task_watch_source(&source).ok_or_else(|| {
+                    AppError::Validation("task watch deferral source is invalid".into())
+                })?,
+                state: parse_task_watch_state(&state).ok_or_else(|| {
+                    AppError::Validation("task watch deferral state is invalid".into())
+                })?,
+                deferred_until_unix_ms,
+            });
+        }
+        Ok(deferrals)
+    }
+
+    #[cfg(windows)]
+    pub fn list_due_task_watch_attention_deferrals(
+        &self,
+        now_unix_ms: i64,
+    ) -> AppResult<Vec<TaskWatchAttentionDeferral>> {
+        if now_unix_ms < 0 {
+            return Err(AppError::Validation(
+                "task watch deferral clock is invalid".into(),
+            ));
+        }
+        let raw = {
+            let mut statement = self.conn.prepare(
+                "SELECT source, state, deferred_until_unix_ms
+                 FROM task_watch_attention_deferrals
+                 WHERE deferred_until_unix_ms <= ?1
+                 ORDER BY deferred_until_unix_ms, source, state",
+            )?;
+            let rows = statement
+                .query_map([now_unix_ms], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
+        };
+        let mut due = Vec::new();
+        for (source, state, deferred_until_unix_ms) in raw {
+            due.push(TaskWatchAttentionDeferral {
+                source: parse_task_watch_source(&source).ok_or_else(|| {
+                    AppError::Validation("task watch deferral source is invalid".into())
+                })?,
+                state: parse_task_watch_state(&state).ok_or_else(|| {
+                    AppError::Validation("task watch deferral state is invalid".into())
+                })?,
+                deferred_until_unix_ms,
+            });
+        }
+        Ok(due)
+    }
+
+    #[cfg(windows)]
+    pub fn acknowledge_due_task_watch_attention_deferrals(
+        &mut self,
+        due: &[TaskWatchAttentionDeferral],
+    ) -> AppResult<usize> {
+        let transaction = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut removed = 0;
+        for deferral in due {
+            removed += transaction.execute(
+                "DELETE FROM task_watch_attention_deferrals
+                 WHERE source = ?1 AND state = ?2 AND deferred_until_unix_ms = ?3",
+                params![
+                    task_watch_source_name(deferral.source),
+                    task_watch_state_name(deferral.state).ok_or_else(|| {
+                        AppError::Validation("task watch state cannot be deferred".into())
+                    })?,
+                    deferral.deferred_until_unix_ms,
+                ],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(removed)
+    }
+
+    #[cfg(windows)]
+    pub fn defer_task_watch_attention(
+        &mut self,
+        source: crate::companion_core::TaskSource,
+        state: yuanyuan_protocol::TaskState,
+        minutes: u32,
+        now_unix_ms: i64,
+    ) -> AppResult<i64> {
+        if now_unix_ms < 0 || !matches!(minutes, 10 | 30 | 60) {
+            return Err(AppError::Validation(
+                "task watch deferral request is invalid".into(),
+            ));
+        }
+        let state_name = task_watch_state_name(state)
+            .ok_or_else(|| AppError::Validation("task watch state cannot be deferred".into()))?;
+        let deferred_until_unix_ms = now_unix_ms
+            .checked_add(i64::from(minutes) * 60 * 1_000)
+            .ok_or_else(|| AppError::Validation("task watch deferral is too long".into()))?;
+        let transaction = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        transaction.execute(
+            "DELETE FROM task_watch_attention_deferrals
+             WHERE deferred_until_unix_ms <= ?1",
+            [now_unix_ms],
+        )?;
+        transaction.execute(
+            "INSERT INTO task_watch_attention_deferrals(
+                source, state, deferred_until_unix_ms, updated_at_unix_ms
+             ) VALUES(?1, ?2, ?3, ?4)
+             ON CONFLICT(source, state) DO UPDATE SET
+                deferred_until_unix_ms = excluded.deferred_until_unix_ms,
+                updated_at_unix_ms = excluded.updated_at_unix_ms",
+            params![
+                task_watch_source_name(source),
+                state_name,
+                deferred_until_unix_ms,
+                now_unix_ms,
+            ],
+        )?;
+        transaction.commit()?;
+        Ok(deferred_until_unix_ms)
+    }
+
+    #[cfg(windows)]
+    pub fn clear_task_watch_attention_deferral(
+        &mut self,
+        source: crate::companion_core::TaskSource,
+        state: yuanyuan_protocol::TaskState,
+    ) -> AppResult<bool> {
+        let state_name = task_watch_state_name(state)
+            .ok_or_else(|| AppError::Validation("task watch state cannot be deferred".into()))?;
+        Ok(self.conn.execute(
+            "DELETE FROM task_watch_attention_deferrals
+             WHERE source = ?1 AND state = ?2",
+            params![task_watch_source_name(source), state_name],
+        )? > 0)
+    }
+
+    #[cfg(windows)]
+    pub fn observe_terminal_attention_budget(
+        &mut self,
+        observations: &[crate::companion_attention::TerminalObservation],
+        now_unix_ms: i64,
+        suppress_presentation: bool,
+    ) -> AppResult<Option<crate::companion_attention::TerminalSummary>> {
+        use crate::companion_attention::{
+            parse_task_outcome, parse_task_source, task_outcome_name, task_source_name,
+            AttentionBudgetRecord,
+        };
+
+        if now_unix_ms < 0 {
+            return Err(AppError::Validation(
+                "companion attention clock is invalid".into(),
+            ));
+        }
+        let transaction = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Deferred)?;
+        let raw = transaction.query_row(
+            "SELECT
+                last_observed_terminal_at_unix_ms,
+                deferred_count, deferred_source, deferred_outcome,
+                deferred_latest_at_unix_ms,
+                visible_count, visible_source, visible_outcome,
+                visible_until_unix_ms, last_summary_shown_at_unix_ms
+             FROM companion_attention_budget WHERE id = 1",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
+                    row.get::<_, i64>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                    row.get::<_, Option<String>>(7)?,
+                    row.get::<_, Option<i64>>(8)?,
+                    row.get::<_, Option<i64>>(9)?,
+                ))
+            },
+        )?;
+        let mut record = AttentionBudgetRecord {
+            last_observed_terminal_at_unix_ms: raw.0,
+            deferred_count: u16::try_from(raw.1)
+                .map_err(|_| AppError::Validation("companion attention state is invalid".into()))?,
+            deferred_source: raw.2.as_deref().and_then(parse_task_source),
+            deferred_outcome: raw.3.as_deref().and_then(parse_task_outcome),
+            deferred_latest_at_unix_ms: raw.4,
+            visible_count: u16::try_from(raw.5)
+                .map_err(|_| AppError::Validation("companion attention state is invalid".into()))?,
+            visible_source: raw.6.as_deref().and_then(parse_task_source),
+            visible_outcome: raw.7.as_deref().and_then(parse_task_outcome),
+            visible_until_unix_ms: raw.8,
+            last_summary_shown_at_unix_ms: raw.9,
+        };
+        if !record.is_valid()
+            || (raw.2.is_some() != record.deferred_source.is_some())
+            || (raw.3.is_some() != record.deferred_outcome.is_some())
+            || (raw.6.is_some() != record.visible_source.is_some())
+            || (raw.7.is_some() != record.visible_outcome.is_some())
+        {
+            return Err(AppError::Validation(
+                "companion attention state is invalid".into(),
+            ));
+        }
+
+        let original = record.clone();
+        let summary =
+            record.observe_terminal_summaries(observations, now_unix_ms, suppress_presentation);
+        if !record.is_valid() {
+            return Err(AppError::Validation(
+                "companion attention state is invalid".into(),
+            ));
+        }
+        if record == original {
+            return Ok(summary);
+        }
+        let updated = transaction.execute(
+            "UPDATE companion_attention_budget SET
+                last_observed_terminal_at_unix_ms = ?1,
+                deferred_count = ?2,
+                deferred_source = ?3,
+                deferred_outcome = ?4,
+                deferred_latest_at_unix_ms = ?5,
+                visible_count = ?6,
+                visible_source = ?7,
+                visible_outcome = ?8,
+                visible_until_unix_ms = ?9,
+                last_summary_shown_at_unix_ms = ?10,
+                updated_at_unix_ms = ?11
+             WHERE id = 1 AND schema_version = 1",
+            params![
+                record.last_observed_terminal_at_unix_ms,
+                i64::from(record.deferred_count),
+                record.deferred_source.map(task_source_name),
+                record.deferred_outcome.map(task_outcome_name),
+                record.deferred_latest_at_unix_ms,
+                i64::from(record.visible_count),
+                record.visible_source.map(task_source_name),
+                record.visible_outcome.map(task_outcome_name),
+                record.visible_until_unix_ms,
+                record.last_summary_shown_at_unix_ms,
+                now_unix_ms,
+            ],
+        )?;
+        if updated != 1 {
+            return Err(AppError::Validation(
+                "companion attention state is unavailable".into(),
+            ));
+        }
+        transaction.commit()?;
+        Ok(summary)
+    }
+
+    #[cfg(windows)]
+    pub fn try_consume_proactive_attention(
+        &mut self,
+        kind: &str,
+        intensity: &str,
+        now_unix_ms: i64,
+        local_day: &str,
+    ) -> AppResult<bool> {
+        if !matches!(kind, "focus_finished" | "reunion") {
+            return Err(AppError::Validation(
+                "unsupported proactive companion event".into(),
+            ));
+        }
+        let (daily_limit, hourly_limit) = match intensity {
+            "quiet" => return Ok(false),
+            "everyday" => (3_i64, 1_i64),
+            "close" => (6_i64, 2_i64),
+            _ => {
+                return Err(AppError::Validation("invalid companion intensity".into()));
+            }
+        };
+        if now_unix_ms < 0 || NaiveDate::parse_from_str(local_day, "%Y-%m-%d").is_err() {
+            return Err(AppError::Validation(
+                "proactive companion clock is invalid".into(),
+            ));
+        }
+
+        let transaction = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let shown_today: i64 = transaction.query_row(
+            "SELECT COUNT(*) FROM companion_proactive_attention
+             WHERE local_day = ?1 AND shown_at_unix_ms <= ?2",
+            params![local_day, now_unix_ms],
+            |row| row.get(0),
+        )?;
+        let rolling_hour_start = now_unix_ms.saturating_sub(60 * 60 * 1_000);
+        let shown_last_hour: i64 = transaction.query_row(
+            "SELECT COUNT(*) FROM companion_proactive_attention
+             WHERE shown_at_unix_ms > ?1 AND shown_at_unix_ms <= ?2",
+            params![rolling_hour_start, now_unix_ms],
+            |row| row.get(0),
+        )?;
+        if shown_today >= daily_limit || shown_last_hour >= hourly_limit {
+            return Ok(false);
+        }
+
+        transaction.execute(
+            "DELETE FROM companion_proactive_attention WHERE shown_at_unix_ms < ?1",
+            [now_unix_ms.saturating_sub(8 * 24 * 60 * 60 * 1_000)],
+        )?;
+        let inserted = transaction.execute(
+            "INSERT INTO companion_proactive_attention(kind, shown_at_unix_ms, local_day)
+             VALUES(?1, ?2, ?3)",
+            params![kind, now_unix_ms, local_day],
+        )?;
+        if inserted != 1 {
+            return Err(AppError::Validation(
+                "proactive companion budget is unavailable".into(),
+            ));
+        }
+        transaction.commit()?;
+        Ok(true)
+    }
+
     pub fn mark_overdue(&self) -> AppResult<()> {
         self.conn.execute(
             "UPDATE occurrences SET status = 'overdue'
@@ -829,6 +1420,187 @@ impl Repository {
         )?;
         Ok(())
     }
+}
+
+fn apply_migrations(connection: &Connection) -> AppResult<()> {
+    let schema_version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if schema_version > 11 {
+        return Err(AppError::Validation(format!(
+            "database schema version {schema_version} is newer than supported version 11"
+        )));
+    }
+    if schema_version < 1 {
+        execute_migration(connection, include_str!("../migrations/001_initial.sql"))?;
+    }
+    if schema_version < 2 {
+        execute_migration(
+            connection,
+            include_str!("../migrations/002_focus_sessions.sql"),
+        )?;
+    }
+    if schema_version < 3 {
+        execute_migration(
+            connection,
+            include_str!("../migrations/003_pet_interactions.sql"),
+        )?;
+    }
+    if schema_version < 4 {
+        execute_migration(
+            connection,
+            include_str!("../migrations/004_ball_interaction.sql"),
+        )?;
+    }
+    if schema_version < 5 {
+        execute_migration(
+            connection,
+            include_str!("../migrations/005_occurrence_history.sql"),
+        )?;
+    }
+    if schema_version < 6 {
+        execute_migration(
+            connection,
+            include_str!("../migrations/006_activity_tracking.sql"),
+        )?;
+    }
+    if schema_version < 7 {
+        execute_migration(
+            connection,
+            include_str!("../migrations/007_reminder_management.sql"),
+        )?;
+    }
+    if schema_version < 8 {
+        execute_migration(
+            connection,
+            include_str!("../migrations/008_companion_attention_budget.sql"),
+        )?;
+    }
+    if schema_version < 9 {
+        execute_migration(
+            connection,
+            include_str!("../migrations/009_companion_proactive_attention.sql"),
+        )?;
+    }
+    if schema_version < 10 {
+        execute_migration(
+            connection,
+            include_str!("../migrations/010_companion_reunion_attention.sql"),
+        )?;
+    }
+    if schema_version < 11 {
+        execute_migration(
+            connection,
+            include_str!("../migrations/011_task_watch_attention_deferrals.sql"),
+        )?;
+    }
+    Ok(())
+}
+
+fn execute_migration(connection: &Connection, sql: &str) -> AppResult<()> {
+    if let Err(error) = connection.execute_batch(sql) {
+        // Several historical migration files own their BEGIN/COMMIT boundary. SQLite
+        // leaves that transaction open when a statement in execute_batch fails. A
+        // subsequent safety restore on the same connection would otherwise appear to
+        // succeed while still exposing the half-migrated schema.
+        if !connection.is_autocommit() {
+            let _ = connection.execute_batch("ROLLBACK");
+        }
+        return Err(error.into());
+    }
+    Ok(())
+}
+
+fn validate_backup_database(path: &Path) -> AppResult<()> {
+    if !path.is_file() {
+        return Err(AppError::Validation("backup file does not exist".into()));
+    }
+    let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    validate_connection(&connection)
+}
+
+fn validate_connection(connection: &Connection) -> AppResult<()> {
+    let integrity: String = connection.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+    if integrity != "ok" {
+        return Err(AppError::Validation(format!(
+            "backup integrity check failed: {integrity}"
+        )));
+    }
+    let schema_version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if !(1..=11).contains(&schema_version) {
+        return Err(AppError::Validation(format!(
+            "unsupported backup schema version {schema_version}"
+        )));
+    }
+    for table in ["settings", "reminders", "occurrences"] {
+        let exists: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+            [table],
+            |row| row.get(0),
+        )?;
+        if !exists {
+            return Err(AppError::Validation(format!(
+                "backup is missing required table {table}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn task_watch_source_name(source: crate::companion_core::TaskSource) -> &'static str {
+    match source {
+        crate::companion_core::TaskSource::Codex => "codex",
+        crate::companion_core::TaskSource::ClaudeCode => "claude_code",
+    }
+}
+
+#[cfg(windows)]
+fn parse_task_watch_source(value: &str) -> Option<crate::companion_core::TaskSource> {
+    match value {
+        "codex" => Some(crate::companion_core::TaskSource::Codex),
+        "claude_code" => Some(crate::companion_core::TaskSource::ClaudeCode),
+        _ => None,
+    }
+}
+
+#[cfg(windows)]
+fn task_watch_state_name(state: yuanyuan_protocol::TaskState) -> Option<&'static str> {
+    match state {
+        yuanyuan_protocol::TaskState::Running => Some("running"),
+        yuanyuan_protocol::TaskState::WaitingUser => Some("waiting_user"),
+        yuanyuan_protocol::TaskState::Failed => Some("failed"),
+        yuanyuan_protocol::TaskState::Stalled => Some("stalled"),
+        yuanyuan_protocol::TaskState::Unknown => Some("unknown"),
+        _ => None,
+    }
+}
+
+#[cfg(windows)]
+fn parse_task_watch_state(value: &str) -> Option<yuanyuan_protocol::TaskState> {
+    match value {
+        "running" => Some(yuanyuan_protocol::TaskState::Running),
+        "waiting_user" => Some(yuanyuan_protocol::TaskState::WaitingUser),
+        "failed" => Some(yuanyuan_protocol::TaskState::Failed),
+        "stalled" => Some(yuanyuan_protocol::TaskState::Stalled),
+        "unknown" => Some(yuanyuan_protocol::TaskState::Unknown),
+        _ => None,
+    }
+}
+
+fn resolve_active_occurrences(
+    connection: &Connection,
+    reminder_id: &str,
+    acted_at: &str,
+    reason: &str,
+) -> AppResult<()> {
+    connection.execute(
+        "UPDATE occurrences
+         SET status = 'skipped', acted_at = ?1, snoozed_until = NULL,
+             notification_id = NULL, resolution_reason = ?2
+         WHERE reminder_id = ?3
+           AND status IN ('pending', 'overdue', 'snoozed')",
+        params![acted_at, reason, reminder_id],
+    )?;
+    Ok(())
 }
 
 fn reminder_from_row(row: &Row<'_>) -> rusqlite::Result<Reminder> {
@@ -843,6 +1615,8 @@ fn reminder_from_row(row: &Row<'_>) -> rusqlite::Result<Reminder> {
         next_due_at: row.get(7)?,
         created_at: row.get(8)?,
         updated_at: row.get(9)?,
+        archived_at: row.get(10)?,
+        system_kind: row.get(11)?,
     })
 }
 
@@ -856,6 +1630,7 @@ fn occurrence_from_row(row: &Row<'_>) -> rusqlite::Result<Occurrence> {
         status: row.get(5)?,
         acted_at: row.get(6)?,
         snoozed_until: row.get(7)?,
+        resolution_reason: row.get(8)?,
     })
 }
 
@@ -890,12 +1665,38 @@ fn validate_input(input: &CreateReminderInput) -> AppResult<()> {
             "interval must be between 15 and 240 minutes".into(),
         ));
     }
+    match input.schedule_kind.as_str() {
+        "once" | "daily" | "weekly" => {
+            parse_local_datetime(input.at_local.as_deref().ok_or_else(|| {
+                AppError::Validation("scheduled reminders require atLocal".into())
+            })?)?;
+        }
+        "interval" => {
+            parse_time(input.active_start_local.as_deref().unwrap_or("09:00"))?;
+            parse_time(input.active_end_local.as_deref().unwrap_or("18:00"))?;
+        }
+        _ => {}
+    }
+    if input.schedule_kind != "once" {
+        let weekdays = input.weekdays.as_deref().unwrap_or(&[]);
+        if weekdays.is_empty() || weekdays.iter().any(|day| *day > 6) {
+            return Err(AppError::Validation(
+                "recurring reminders require valid weekdays".into(),
+            ));
+        }
+    }
     Ok(())
 }
 
 fn validate_settings(settings: &AppSettings) -> AppResult<()> {
     if !["always", "system", "off"].contains(&settings.animation_mode.as_str()) {
         return Err(AppError::Validation("invalid animation mode".into()));
+    }
+    if !["quiet", "everyday", "close"].contains(&settings.companion_intensity.as_str()) {
+        return Err(AppError::Validation("invalid companion intensity".into()));
+    }
+    if !["motion_only", "adaptive", "always"].contains(&settings.companion_label_mode.as_str()) {
+        return Err(AppError::Validation("invalid companion label mode".into()));
     }
     if !(0.4..=2.0).contains(&settings.animation_speed) {
         return Err(AppError::Validation(
@@ -924,6 +1725,16 @@ fn validate_settings(settings: &AppSettings) -> AppResult<()> {
     if !(15..=240).contains(&settings.activity_interval_minutes) {
         return Err(AppError::Validation(
             "activity interval is outside range".into(),
+        ));
+    }
+    if !["notify", "skipOld"].contains(&settings.missed_reminder_policy.as_str()) {
+        return Err(AppError::Validation(
+            "invalid missed reminder policy".into(),
+        ));
+    }
+    if !(15..=240).contains(&settings.missed_reminder_grace_minutes) {
+        return Err(AppError::Validation(
+            "missed reminder grace period is outside range".into(),
         ));
     }
     Ok(())
@@ -1066,6 +1877,28 @@ mod tests {
     use super::*;
 
     #[test]
+    fn stable_database_has_no_basic_support_or_emotion_history_table() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-no-support-history-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let repository = Repository::open(&path).unwrap();
+        let table_count: i64 = repository
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND (name LIKE '%support%' OR name LIKE '%emotion%' OR name LIKE '%mood%')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(table_count, 0);
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
     fn once_schedule_stops_after_firing() {
         let input = CreateReminderInput {
             title: "test".into(),
@@ -1181,6 +2014,42 @@ mod tests {
     }
 
     #[test]
+    fn companion_label_mode_is_validated_and_persisted() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-label-mode-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let repository = Repository::open(&path).unwrap();
+
+        let error = repository
+            .update_settings(serde_json::json!({
+                "companionLabelMode": "future-mode"
+            }))
+            .unwrap_err();
+        assert!(error.to_string().contains("invalid companion label mode"));
+        assert_eq!(
+            repository.get_settings().unwrap().companion_label_mode,
+            "adaptive"
+        );
+
+        let updated = repository
+            .update_settings(serde_json::json!({
+                "companionLabelMode": "always"
+            }))
+            .unwrap();
+        assert_eq!(updated.companion_label_mode, "always");
+        assert_eq!(
+            repository.get_settings().unwrap().companion_label_mode,
+            "always"
+        );
+
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
     fn focus_session_replaces_and_cancels_the_active_timer() {
         let path = std::env::temp_dir().join(format!(
             "yuanyuan-reminder-focus-{}.sqlite3",
@@ -1251,6 +2120,64 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
         let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[cfg(feature = "runtime-qa")]
+    #[test]
+    fn runtime_qa_due_override_records_the_actual_claim_time() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-runtime-qa-latency-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let mut repository = Repository::open(&path).unwrap();
+        let reminder = repository
+            .create_reminder(CreateReminderInput {
+                title: "运行验收事项".into(),
+                category: "work".into(),
+                schedule_kind: "once".into(),
+                at_local: Some(
+                    (Local::now() + Duration::hours(1))
+                        .format("%Y-%m-%dT%H:%M")
+                        .to_string(),
+                ),
+                every_minutes: None,
+                active_start_local: None,
+                active_end_local: None,
+                weekdays: None,
+            })
+            .unwrap();
+        let scheduled = Utc::now() - Duration::seconds(1);
+        repository
+            .set_runtime_qa_reminder_due(&reminder.id, scheduled)
+            .unwrap();
+        let claimed_at = Utc::now();
+        let due = repository.claim_due(claimed_at).unwrap();
+        assert_eq!(due.len(), 1);
+        let (stored_scheduled, stored_claimed, status) = repository
+            .runtime_qa_reminder_claim(&reminder.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(status, "pending");
+        assert_eq!(
+            DateTime::parse_from_rfc3339(&stored_scheduled)
+                .unwrap()
+                .with_timezone(&Utc),
+            scheduled
+        );
+        assert!(
+            DateTime::parse_from_rfc3339(&stored_claimed)
+                .unwrap()
+                .with_timezone(&Utc)
+                >= claimed_at
+        );
+        drop(repository);
+        for candidate in [
+            path.clone(),
+            path.with_extension("sqlite3-wal"),
+            path.with_extension("sqlite3-shm"),
+        ] {
+            let _ = fs::remove_file(candidate);
+        }
     }
 
     #[test]
@@ -1330,10 +2257,7 @@ mod tests {
         let oldest_id = Uuid::new_v4().to_string();
         let newest_id = Uuid::new_v4().to_string();
         let now = Utc::now();
-        for (id, scheduled_at) in [
-            (&oldest_id, now - Duration::minutes(10)),
-            (&newest_id, now),
-        ] {
+        for (id, scheduled_at) in [(&oldest_id, now - Duration::minutes(10)), (&newest_id, now)] {
             repository
                 .conn
                 .execute(
@@ -1435,7 +2359,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 6);
+        assert_eq!(version, 11);
         drop(repository);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
@@ -1444,10 +2368,8 @@ mod tests {
 
     #[test]
     fn pet_interactions_are_validated_and_counted() {
-        let path = std::env::temp_dir().join(format!(
-            "yuanyuan-reminder-care-{}.sqlite3",
-            Uuid::new_v4()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("yuanyuan-reminder-care-{}.sqlite3", Uuid::new_v4()));
         let repository = Repository::open(&path).unwrap();
         repository.record_pet_interaction("food").unwrap();
         repository.record_pet_interaction("treat").unwrap();
@@ -1506,11 +2428,7 @@ mod tests {
                 .execute(
                     "INSERT INTO pet_interactions(id, kind, created_at)
                      VALUES(?1, ?2, ?3)",
-                    params![
-                        Uuid::new_v4().to_string(),
-                        kind,
-                        created_at.to_rfc3339()
-                    ],
+                    params![Uuid::new_v4().to_string(), kind, created_at.to_rfc3339()],
                 )
                 .unwrap();
         }
@@ -1634,26 +2552,16 @@ mod tests {
                 "INSERT INTO occurrences(
                     id, reminder_id, scheduled_at, status, created_at
                  ) VALUES(?1, ?2, ?3, 'pending', ?3)",
-                params![
-                    water_occurrence_id,
-                    water_reminder_id,
-                    now.to_rfc3339()
-                ],
+                params![water_occurrence_id, water_reminder_id, now.to_rfc3339()],
             )
             .unwrap();
-        let activity = repository
-            .create_activity_occurrence(now)
-            .unwrap()
-            .unwrap();
+        let activity = repository.create_activity_occurrence(now).unwrap().unwrap();
 
         assert!(repository.take_ready_activity_alert().unwrap().is_none());
         repository
             .update_occurrence(&water_occurrence_id, "completed", None)
             .unwrap();
-        let released = repository
-            .take_ready_activity_alert()
-            .unwrap()
-            .unwrap();
+        let released = repository.take_ready_activity_alert().unwrap().unwrap();
         assert_eq!(released.id, activity.id);
         assert!(repository.take_ready_activity_alert().unwrap().is_none());
 
@@ -1661,5 +2569,803 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
         let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
+    fn reminder_management_resolves_active_items_and_protects_system_reminders() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-management-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let mut repository = Repository::open(&path).unwrap();
+        let input = CreateReminderInput {
+            title: "Original title".into(),
+            category: "work".into(),
+            schedule_kind: "daily".into(),
+            at_local: Some("2030-01-01T10:00".into()),
+            every_minutes: None,
+            active_start_local: None,
+            active_end_local: None,
+            weekdays: Some(vec![1, 2, 3, 4, 5]),
+        };
+        let reminder = repository.create_reminder(input.clone()).unwrap();
+        let occurrence_id = Uuid::new_v4().to_string();
+        repository
+            .conn
+            .execute(
+                "INSERT INTO occurrences(id, reminder_id, scheduled_at, status, created_at)
+                 VALUES(?1, ?2, ?3, 'pending', ?3)",
+                params![occurrence_id, reminder.id, Utc::now().to_rfc3339()],
+            )
+            .unwrap();
+
+        let mut edited = input;
+        edited.title = "Edited title".into();
+        let updated = repository.update_reminder(&reminder.id, edited).unwrap();
+        assert_eq!(updated.title, "Edited title");
+        let resolution: (String, Option<String>) = repository
+            .conn
+            .query_row(
+                "SELECT status, resolution_reason FROM occurrences WHERE id = ?1",
+                [&occurrence_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            resolution,
+            ("skipped".into(), Some("reminder-edited".into()))
+        );
+
+        assert!(
+            !repository
+                .set_reminder_enabled(&reminder.id, false)
+                .unwrap()
+                .enabled
+        );
+        assert!(
+            repository
+                .set_reminder_enabled(&reminder.id, true)
+                .unwrap()
+                .enabled
+        );
+        repository.archive_reminder(&reminder.id).unwrap();
+        assert!(repository
+            .get_reminder(&reminder.id)
+            .unwrap()
+            .unwrap()
+            .archived_at
+            .is_some());
+        assert!(repository
+            .list_today(false)
+            .unwrap()
+            .reminders
+            .iter()
+            .all(|item| item.id != reminder.id));
+
+        let system_water_id: String = repository
+            .conn
+            .query_row(
+                "SELECT id FROM reminders WHERE system_kind = 'water'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(repository
+            .set_reminder_enabled(&system_water_id, false)
+            .is_err());
+        assert!(repository
+            .archive_reminder(SYSTEM_ACTIVITY_REMINDER_ID)
+            .is_err());
+
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
+    fn missed_policy_skips_old_occurrences_without_notifying() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-missed-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let mut repository = Repository::open(&path).unwrap();
+        repository
+            .update_settings(serde_json::json!({
+                "missedReminderPolicy": "skipOld",
+                "missedReminderGraceMinutes": 30
+            }))
+            .unwrap();
+        let reminder = repository
+            .create_reminder(CreateReminderInput {
+                title: "Old work reminder".into(),
+                category: "work".into(),
+                schedule_kind: "interval".into(),
+                at_local: None,
+                every_minutes: Some(60),
+                active_start_local: Some("00:00".into()),
+                active_end_local: Some("23:59".into()),
+                weekdays: Some(vec![0, 1, 2, 3, 4, 5, 6]),
+            })
+            .unwrap();
+        let now = Utc::now();
+        repository
+            .conn
+            .execute(
+                "UPDATE reminders SET next_due_at = ?1 WHERE id = ?2",
+                params![(now - Duration::minutes(31)).to_rfc3339(), reminder.id],
+            )
+            .unwrap();
+
+        let claimed = repository.claim_due(now).unwrap();
+        let missed = claimed
+            .iter()
+            .find(|item| item.occurrence.reminder_id == reminder.id)
+            .unwrap();
+        assert!(!missed.notify);
+        assert_eq!(missed.occurrence.status, "skipped");
+        assert_eq!(
+            missed.occurrence.resolution_reason.as_deref(),
+            Some("missed")
+        );
+
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
+    fn reminder_full_flow_supports_thirty_minute_snooze_and_history() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-full-flow-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let mut repository = Repository::open(&path).unwrap();
+        let reminder = repository
+            .create_reminder(CreateReminderInput {
+                title: "Full flow".into(),
+                category: "work".into(),
+                schedule_kind: "interval".into(),
+                at_local: None,
+                every_minutes: Some(60),
+                active_start_local: Some("00:00".into()),
+                active_end_local: Some("23:59".into()),
+                weekdays: Some(vec![0, 1, 2, 3, 4, 5, 6]),
+            })
+            .unwrap();
+        let now = Utc::now();
+        repository
+            .conn
+            .execute(
+                "UPDATE reminders SET next_due_at = ?1 WHERE id = ?2",
+                params![(now - Duration::seconds(1)).to_rfc3339(), reminder.id],
+            )
+            .unwrap();
+        let first = repository
+            .claim_due(now)
+            .unwrap()
+            .into_iter()
+            .find(|item| item.occurrence.reminder_id == reminder.id)
+            .unwrap();
+        assert!(first.notify);
+        repository
+            .update_occurrence(&first.occurrence.id, "snoozed", Some(30))
+            .unwrap();
+        let second = repository.claim_due(now + Duration::minutes(31)).unwrap();
+        assert!(second
+            .iter()
+            .any(|item| item.occurrence.id == first.occurrence.id && item.notify));
+        assert!(!repository
+            .complete_occurrence(&first.occurrence.id)
+            .unwrap());
+        let history = repository
+            .list_history(None, Some("completed"), Some("work"), Some("Full"), 20)
+            .unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].resolution_reason.as_deref(), Some("manual"));
+
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
+    fn migration_eleven_upgrades_an_existing_v9_budget_without_losing_data() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-v7-migration-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let connection = Connection::open(&path).unwrap();
+        for migration in [
+            include_str!("../migrations/001_initial.sql"),
+            include_str!("../migrations/002_focus_sessions.sql"),
+            include_str!("../migrations/003_pet_interactions.sql"),
+            include_str!("../migrations/004_ball_interaction.sql"),
+            include_str!("../migrations/005_occurrence_history.sql"),
+            include_str!("../migrations/006_activity_tracking.sql"),
+        ] {
+            connection.execute_batch(migration).unwrap();
+        }
+        let input = CreateReminderInput {
+            title: "Existing water".into(),
+            category: "water".into(),
+            schedule_kind: "interval".into(),
+            at_local: None,
+            every_minutes: Some(60),
+            active_start_local: Some("09:00".into()),
+            active_end_local: Some("18:00".into()),
+            weekdays: Some(vec![0, 1, 2, 3, 4, 5, 6]),
+        };
+        let water_id = Uuid::new_v4().to_string();
+        let now = Utc::now().to_rfc3339();
+        connection
+            .execute(
+                "INSERT INTO reminders(
+                    id, title, category, schedule_kind, schedule_json, timezone,
+                    enabled, next_due_at, created_at, updated_at
+                 ) VALUES(?1, ?2, 'water', 'interval', ?3, 'local', 1, ?4, ?4, ?4)",
+                params![
+                    water_id,
+                    input.title,
+                    serde_json::to_string(&input).unwrap(),
+                    now
+                ],
+            )
+            .unwrap();
+        connection
+            .execute_batch(include_str!("../migrations/007_reminder_management.sql"))
+            .unwrap();
+        connection
+            .execute_batch(include_str!(
+                "../migrations/008_companion_attention_budget.sql"
+            ))
+            .unwrap();
+        connection
+            .execute_batch(include_str!(
+                "../migrations/009_companion_proactive_attention.sql"
+            ))
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO companion_proactive_attention(kind, shown_at_unix_ms, local_day)
+                 VALUES('focus_finished', 1000, '2026-08-05')",
+                [],
+            )
+            .unwrap();
+        let before_upgrade: u32 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(before_upgrade, 9);
+        drop(connection);
+
+        let repository = Repository::open(&path).unwrap();
+        let version: u32 = repository
+            .conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 11);
+        let water = repository.get_reminder(&water_id).unwrap().unwrap();
+        assert_eq!(water.system_kind.as_deref(), Some("water"));
+        assert!(water.archived_at.is_none());
+        assert_eq!(
+            repository
+                .get_reminder(SYSTEM_ACTIVITY_REMINDER_ID)
+                .unwrap()
+                .unwrap()
+                .system_kind
+                .as_deref(),
+            Some("activity")
+        );
+        let attention_rows: i64 = repository
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM companion_attention_budget",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(attention_rows, 1);
+        let proactive_rows: i64 = repository
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM companion_proactive_attention",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(proactive_rows, 1);
+        repository
+            .conn
+            .execute(
+                "INSERT INTO companion_proactive_attention(kind, shown_at_unix_ms, local_day)
+                 VALUES('reunion', 2000, '2026-08-05')",
+                [],
+            )
+            .unwrap();
+
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn migration_eleven_upgrades_v10_and_adds_only_the_sanitized_deferral_table() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-v10-deferral-migration-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let connection = Connection::open(&path).unwrap();
+        for migration in [
+            include_str!("../migrations/001_initial.sql"),
+            include_str!("../migrations/002_focus_sessions.sql"),
+            include_str!("../migrations/003_pet_interactions.sql"),
+            include_str!("../migrations/004_ball_interaction.sql"),
+            include_str!("../migrations/005_occurrence_history.sql"),
+            include_str!("../migrations/006_activity_tracking.sql"),
+            include_str!("../migrations/007_reminder_management.sql"),
+            include_str!("../migrations/008_companion_attention_budget.sql"),
+            include_str!("../migrations/009_companion_proactive_attention.sql"),
+            include_str!("../migrations/010_companion_reunion_attention.sql"),
+        ] {
+            connection.execute_batch(migration).unwrap();
+        }
+        let before: u32 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(before, 10);
+        drop(connection);
+
+        let repository = Repository::open(&path).unwrap();
+        let after: u32 = repository
+            .conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(after, 11);
+        let columns = repository
+            .conn
+            .prepare("PRAGMA table_info(task_watch_attention_deferrals)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(
+            columns,
+            [
+                "source",
+                "state",
+                "deferred_until_unix_ms",
+                "updated_at_unix_ms"
+            ]
+        );
+
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn task_watch_deferral_is_bounded_persistent_one_shot_and_renewal_safe() {
+        use crate::companion_core::TaskSource;
+        use yuanyuan_protocol::TaskState;
+
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-task-watch-deferral-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let mut repository = Repository::open(&path).unwrap();
+        assert!(repository
+            .defer_task_watch_attention(TaskSource::Codex, TaskState::Succeeded, 10, 1_000)
+            .is_err());
+        assert!(repository
+            .defer_task_watch_attention(TaskSource::Codex, TaskState::Running, 11, 1_000)
+            .is_err());
+        assert!(repository
+            .defer_task_watch_attention(TaskSource::Codex, TaskState::Running, 10, -1)
+            .is_err());
+
+        assert_eq!(
+            repository
+                .defer_task_watch_attention(TaskSource::Codex, TaskState::Running, 10, 1_000)
+                .unwrap(),
+            601_000
+        );
+        drop(repository);
+
+        let mut repository = Repository::open(&path).unwrap();
+        let active = repository
+            .list_task_watch_attention_deferrals(2_000)
+            .unwrap();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].source, TaskSource::Codex);
+        assert_eq!(active[0].state, TaskState::Running);
+        assert_eq!(active[0].deferred_until_unix_ms, 601_000);
+
+        repository
+            .defer_task_watch_attention(TaskSource::ClaudeCode, TaskState::Failed, 10, 2_000)
+            .unwrap();
+        let due = repository
+            .list_due_task_watch_attention_deferrals(601_500)
+            .unwrap();
+        assert_eq!(due.len(), 1);
+        assert_eq!(due[0].source, TaskSource::Codex);
+
+        repository
+            .defer_task_watch_attention(TaskSource::Codex, TaskState::Running, 30, 601_500)
+            .unwrap();
+        assert_eq!(
+            repository
+                .acknowledge_due_task_watch_attention_deferrals(&due)
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            repository
+                .list_task_watch_attention_deferrals(601_500)
+                .unwrap()
+                .len(),
+            2
+        );
+
+        let due = repository
+            .list_due_task_watch_attention_deferrals(602_000)
+            .unwrap();
+        assert_eq!(due.len(), 1);
+        assert_eq!(due[0].source, TaskSource::ClaudeCode);
+        assert_eq!(
+            repository
+                .acknowledge_due_task_watch_attention_deferrals(&due)
+                .unwrap(),
+            1
+        );
+        assert!(repository
+            .list_due_task_watch_attention_deferrals(602_000)
+            .unwrap()
+            .is_empty());
+        assert!(repository
+            .clear_task_watch_attention_deferral(TaskSource::Codex, TaskState::Running)
+            .unwrap());
+        assert!(!repository
+            .clear_task_watch_attention_deferral(TaskSource::Codex, TaskState::Running)
+            .unwrap());
+
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn terminal_attention_budget_survives_restart_without_task_identity_or_duplicate_summary() {
+        use crate::{
+            companion_attention::TerminalObservation,
+            companion_core::{TaskOutcome, TaskSource},
+        };
+
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-attention-budget-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let mut repository = Repository::open(&path).unwrap();
+        let first = TerminalObservation {
+            source: TaskSource::ClaudeCode,
+            outcome: TaskOutcome::Succeeded,
+            updated_at_unix_ms: 1_000,
+        };
+        assert!(repository
+            .observe_terminal_attention_budget(&[first], 1_000, true)
+            .unwrap()
+            .is_none());
+        drop(repository);
+
+        let mut repository = Repository::open(&path).unwrap();
+        let restored = repository
+            .observe_terminal_attention_budget(&[first], 2_000, false)
+            .unwrap()
+            .unwrap();
+        assert_eq!(restored.count, 1);
+        assert_eq!(restored.outcome, TaskOutcome::Succeeded);
+        let updated_before_repeat: i64 = repository
+            .conn
+            .query_row(
+                "SELECT updated_at_unix_ms FROM companion_attention_budget WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(repository
+            .observe_terminal_attention_budget(&[first], 3_000, false)
+            .unwrap()
+            .is_some());
+        let updated_after_repeat: i64 = repository
+            .conn
+            .query_row(
+                "SELECT updated_at_unix_ms FROM companion_attention_budget WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(updated_after_repeat, updated_before_repeat);
+        let schema: String = repository
+            .conn
+            .query_row(
+                "SELECT sql FROM sqlite_master
+                 WHERE type = 'table' AND name = 'companion_attention_budget'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        for forbidden in ["task_key", "title", "workspace", "body", "prompt"] {
+            assert!(!schema.contains(forbidden));
+        }
+
+        let second = TerminalObservation {
+            source: TaskSource::Codex,
+            outcome: TaskOutcome::Failed,
+            updated_at_unix_ms: 40_000,
+        };
+        assert!(repository
+            .observe_terminal_attention_budget(&[second], 40_000, false)
+            .unwrap()
+            .is_none());
+        drop(repository);
+
+        let mut repository = Repository::open(&path).unwrap();
+        let after_cooldown = repository
+            .observe_terminal_attention_budget(&[], 602_000, false)
+            .unwrap()
+            .unwrap();
+        assert_eq!(after_cooldown.count, 1);
+        assert_eq!(after_cooldown.outcome, TaskOutcome::Failed);
+
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn terminal_attention_budget_write_failure_rolls_back_and_can_retry() {
+        use crate::{
+            companion_attention::TerminalObservation,
+            companion_core::{TaskOutcome, TaskSource},
+        };
+
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-attention-rollback-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let mut repository = Repository::open(&path).unwrap();
+        repository
+            .conn
+            .execute_batch(
+                "CREATE TRIGGER fail_attention_update
+                 BEFORE UPDATE ON companion_attention_budget
+                 BEGIN
+                    SELECT RAISE(ABORT, 'injected attention failure');
+                 END;",
+            )
+            .unwrap();
+        let observation = TerminalObservation {
+            source: TaskSource::Codex,
+            outcome: TaskOutcome::Failed,
+            updated_at_unix_ms: 10_000,
+        };
+        assert!(repository
+            .observe_terminal_attention_budget(&[observation], 10_000, false)
+            .is_err());
+        let unchanged: (i64, i64, Option<i64>) = repository
+            .conn
+            .query_row(
+                "SELECT last_observed_terminal_at_unix_ms, visible_count,
+                        last_summary_shown_at_unix_ms
+                 FROM companion_attention_budget WHERE id = 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(unchanged, (0, 0, None));
+
+        repository
+            .conn
+            .execute_batch("DROP TRIGGER fail_attention_update")
+            .unwrap();
+        let retried = repository
+            .observe_terminal_attention_budget(&[observation], 10_001, false)
+            .unwrap()
+            .unwrap();
+        assert_eq!(retried.count, 1);
+        assert_eq!(retried.outcome, TaskOutcome::Failed);
+
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn proactive_attention_enforces_intensity_hour_and_day_limits_without_content() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-proactive-budget-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let mut repository = Repository::open(&path).unwrap();
+        let hour = 60 * 60 * 1_000;
+
+        assert!(!repository
+            .try_consume_proactive_attention("focus_finished", "quiet", 1_000, "2026-08-05")
+            .unwrap());
+        assert!(repository
+            .try_consume_proactive_attention("focus_finished", "everyday", 10_000, "2026-08-05")
+            .unwrap());
+        assert!(!repository
+            .try_consume_proactive_attention(
+                "focus_finished",
+                "everyday",
+                9_999 + hour,
+                "2026-08-05"
+            )
+            .unwrap());
+        assert!(repository
+            .try_consume_proactive_attention("reunion", "everyday", 10_000 + hour, "2026-08-05")
+            .unwrap());
+        assert!(repository
+            .try_consume_proactive_attention(
+                "focus_finished",
+                "everyday",
+                10_000 + 2 * hour,
+                "2026-08-05"
+            )
+            .unwrap());
+        assert!(!repository
+            .try_consume_proactive_attention(
+                "focus_finished",
+                "everyday",
+                10_000 + 3 * hour,
+                "2026-08-05"
+            )
+            .unwrap());
+        assert!(repository
+            .try_consume_proactive_attention(
+                "focus_finished",
+                "close",
+                10_000 + 24 * hour,
+                "2026-08-06"
+            )
+            .unwrap());
+        assert!(repository
+            .try_consume_proactive_attention(
+                "focus_finished",
+                "close",
+                10_001 + 24 * hour,
+                "2026-08-06"
+            )
+            .unwrap());
+        assert!(!repository
+            .try_consume_proactive_attention(
+                "focus_finished",
+                "close",
+                10_002 + 24 * hour,
+                "2026-08-06"
+            )
+            .unwrap());
+
+        let schema: String = repository
+            .conn
+            .query_row(
+                "SELECT sql FROM sqlite_master
+                 WHERE type = 'table' AND name = 'companion_proactive_attention'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        for forbidden in [
+            "task_key",
+            "title",
+            "workspace",
+            "body",
+            "prompt",
+            "message",
+        ] {
+            assert!(!schema.contains(forbidden));
+        }
+
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn proactive_attention_insert_failure_rolls_back_and_can_retry() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-proactive-rollback-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let mut repository = Repository::open(&path).unwrap();
+        repository
+            .conn
+            .execute_batch(
+                "CREATE TRIGGER fail_proactive_insert
+                 BEFORE INSERT ON companion_proactive_attention
+                 BEGIN
+                    SELECT RAISE(ABORT, 'injected proactive failure');
+                 END;",
+            )
+            .unwrap();
+        assert!(repository
+            .try_consume_proactive_attention("focus_finished", "everyday", 10_000, "2026-08-05")
+            .is_err());
+        let unchanged: i64 = repository
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM companion_proactive_attention",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(unchanged, 0);
+        repository
+            .conn
+            .execute_batch("DROP TRIGGER fail_proactive_insert")
+            .unwrap();
+        assert!(repository
+            .try_consume_proactive_attention("focus_finished", "everyday", 10_001, "2026-08-05")
+            .unwrap());
+
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
+    fn real_upgrade_fixture_is_healthy_when_provided() {
+        let Ok(source_path) = std::env::var("YUANYUAN_UPGRADE_FIXTURE") else {
+            return;
+        };
+        let source = Connection::open_with_flags(&source_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .expect("real upgrade fixture should open read-only");
+        let integrity: String = source
+            .query_row("PRAGMA quick_check", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(integrity, "ok");
+
+        let copy_path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-real-upgrade-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        source
+            .backup(MAIN_DB, &copy_path, None::<fn(Progress)>)
+            .unwrap();
+        drop(source);
+
+        let repository = Repository::open(&copy_path).unwrap();
+        let version: u32 = repository
+            .conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 11);
+        repository.get_settings().unwrap();
+        repository.list_today(false).unwrap();
+        repository.get_pet_care().unwrap();
+        repository
+            .list_history(Some(30), None, None, None, 20)
+            .unwrap();
+
+        drop(repository);
+        let _ = std::fs::remove_file(&copy_path);
+        let _ = std::fs::remove_file(copy_path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(copy_path.with_extension("sqlite3-shm"));
     }
 }

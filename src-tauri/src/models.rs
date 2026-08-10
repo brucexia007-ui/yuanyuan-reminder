@@ -13,6 +13,8 @@ pub struct Reminder {
     pub next_due_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    pub archived_at: Option<String>,
+    pub system_kind: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,6 +28,7 @@ pub struct Occurrence {
     pub status: String,
     pub acted_at: Option<String>,
     pub snoozed_until: Option<String>,
+    pub resolution_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -54,6 +57,16 @@ pub struct FocusSession {
 #[serde(rename_all = "camelCase")]
 pub struct FocusState {
     pub session: Option<FocusSession>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BasicSupportSession {
+    pub id: String,
+    pub path: String,
+    pub duration_minutes: u32,
+    pub started_at: String,
+    pub ends_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -94,6 +107,8 @@ pub struct CreateReminderInput {
 #[serde(default)]
 pub struct AppSettings {
     pub animation_mode: String,
+    pub companion_intensity: String,
+    pub companion_label_mode: String,
     pub animation_speed: f64,
     pub cursor_follow: bool,
     pub always_on_top: bool,
@@ -113,12 +128,16 @@ pub struct AppSettings {
     pub activity_start: String,
     pub activity_end: String,
     pub activity_interval_minutes: u32,
+    pub missed_reminder_policy: String,
+    pub missed_reminder_grace_minutes: u32,
 }
 
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
             animation_mode: "always".into(),
+            companion_intensity: "everyday".into(),
+            companion_label_mode: "adaptive".into(),
             animation_speed: 1.0,
             cursor_follow: true,
             always_on_top: true,
@@ -138,8 +157,19 @@ impl Default for AppSettings {
             activity_start: "09:00".into(),
             activity_end: "18:00".into(),
             activity_interval_minutes: 60,
+            missed_reminder_policy: "notify".into(),
+            missed_reminder_grace_minutes: 120,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupInfo {
+    pub file_name: String,
+    pub created_at: String,
+    pub size_bytes: u64,
+    pub automatic: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -158,13 +188,11 @@ pub struct PetIntent {
 }
 
 impl PetIntent {
-    pub fn transient(
+    pub fn motion_only(
         kind: &str,
         priority: u8,
         animation: &str,
         route: &str,
-        title: impl Into<String>,
-        message: impl Into<String>,
         occurrence_id: Option<String>,
         seconds: i64,
     ) -> Self {
@@ -174,35 +202,13 @@ impl PetIntent {
             priority,
             animation: animation.into(),
             route: route.into(),
-            title: title.into(),
-            message: message.into(),
+            title: String::new(),
+            message: String::new(),
             occurrence_id,
             persistent: false,
             expires_at: Some(
                 (chrono::Utc::now() + chrono::Duration::seconds(seconds)).to_rfc3339(),
             ),
-        }
-    }
-
-    pub fn persistent(
-        kind: &str,
-        priority: u8,
-        animation: &str,
-        route: &str,
-        title: impl Into<String>,
-        message: impl Into<String>,
-    ) -> Self {
-        Self {
-            id: uuid::Uuid::new_v4().to_string(),
-            kind: kind.into(),
-            priority,
-            animation: animation.into(),
-            route: route.into(),
-            title: title.into(),
-            message: message.into(),
-            occurrence_id: None,
-            persistent: true,
-            expires_at: None,
         }
     }
 }
@@ -216,6 +222,7 @@ pub struct CursorDirectionEvent {
 #[derive(Debug, Clone)]
 pub struct DueOccurrence {
     pub occurrence: Occurrence,
+    pub notify: bool,
 }
 
 #[cfg(test)]
@@ -225,12 +232,49 @@ mod tests {
     #[test]
     fn legacy_settings_receive_activity_defaults() {
         let settings: AppSettings =
-            serde_json::from_value(serde_json::json!({ "animationMode": "off" }))
-                .unwrap();
+            serde_json::from_value(serde_json::json!({ "animationMode": "off" })).unwrap();
         assert_eq!(settings.animation_mode, "off");
+        assert_eq!(settings.companion_intensity, "everyday");
+        assert_eq!(settings.companion_label_mode, "adaptive");
         assert!(settings.activity_enabled);
         assert_eq!(settings.activity_start, "09:00");
         assert_eq!(settings.activity_end, "18:00");
         assert_eq!(settings.activity_interval_minutes, 60);
+        assert_eq!(settings.missed_reminder_policy, "notify");
+        assert_eq!(settings.missed_reminder_grace_minutes, 120);
+    }
+
+    #[test]
+    fn motion_only_intents_carry_no_dialogue_text() {
+        let intent = PetIntent::motion_only("success", 110, "jumping", "today", None, 7);
+        assert!(intent.title.is_empty());
+        assert!(intent.message.is_empty());
+        let serialized = serde_json::to_value(intent).unwrap();
+        assert_eq!(serialized["title"], "");
+        assert_eq!(serialized["message"], "");
+    }
+
+    #[test]
+    fn basic_support_session_serializes_only_ephemeral_control_fields() {
+        let session = BasicSupportSession {
+            id: "support-1".into(),
+            path: "stay_close".into(),
+            duration_minutes: 5,
+            started_at: "2026-08-05T09:00:00Z".into(),
+            ends_at: "2026-08-05T09:05:00Z".into(),
+        };
+        let serialized = serde_json::to_value(session).unwrap();
+        assert_eq!(
+            serialized
+                .as_object()
+                .unwrap()
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>(),
+            ["durationMinutes", "endsAt", "id", "path", "startedAt"]
+        );
+        assert!(serialized.get("reason").is_none());
+        assert!(serialized.get("emotion").is_none());
+        assert!(serialized.get("text").is_none());
     }
 }

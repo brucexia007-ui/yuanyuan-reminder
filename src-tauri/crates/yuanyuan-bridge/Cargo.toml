@@ -1,0 +1,46 @@
+[package]
+name = "yuanyuan-bridge"
+version = "0.1.0"
+description = "Fail-open task event bridge core for Yuanyuan"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[features]
+default = []
+pid-reuse-qa = []
+
+[[bin]]
+name = "yuanyuan-pid-reuse-qa"
+path = "src/bin/pid_reuse_qa.rs"
+required-features = ["pid-reuse-qa"]
+
+[dependencies]
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+getrandom = "0.3"
+hmac = "0.12"
+rusqlite = { version = "0.37", features = ["bundled"] }
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+thiserror = "2"
+yuanyuan-connectors = { path = "../yuanyuan-connectors" }
+yuanyuan-protocol = { path = "../yuanyuan-protocol" }
+zeroize = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.60", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Security_Credentials",
+  "Win32_Security_Authorization",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_IO",
+  "Win32_System_Pipes",
+  "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+tempfile = "3"

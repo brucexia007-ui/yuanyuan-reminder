@@ -3,14 +3,29 @@ import {
   isPermissionGranted,
   requestPermission,
 } from "@tauri-apps/plugin-notification";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  cloneElement,
+  isValidElement,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   completeOccurrence,
   cancelFocus,
+  createBackup,
   createReminder,
+  deferTaskWatchAttention,
+  deleteReminder,
+  getBasicSupportState,
   getFocusState,
   getPetCare,
   getSettings,
+  getTaskWatchSnapshot,
+  listBackups,
   listHistory,
   listToday,
   onBackendEvent,
@@ -19,15 +34,24 @@ import {
   recordWater,
   requestSleep,
   requestWake,
+  resumeTaskWatchAttention,
+  restoreBackup,
+  setReminderEnabled,
   skipOccurrence,
   snoozeOccurrence,
+  startBasicSupport,
   startFocus,
   startPetInteraction,
+  stopBasicSupport,
   tauriAvailable,
+  updateReminder,
   updateSettings,
 } from "../lib/backend";
 import type {
   AppSettings,
+  BackupInfo,
+  BasicSupportPath,
+  BasicSupportSession,
   CreateReminderInput,
   FocusState,
   Occurrence,
@@ -37,8 +61,14 @@ import type {
   Reminder,
   ReminderCategory,
   ScheduleKind,
+  TaskWatchSnapshot,
+  TaskWatchSource,
+  TaskWatchState,
   TodaySnapshot,
 } from "../types";
+import { loadDashboard, type DashboardModule } from "./dashboardLoader";
+import { AiCompanionStatusCard } from "./AiCompanionStatus";
+import { ConnectorDiscoveryStatusCard } from "./ConnectorDiscoveryStatus";
 import { plannedDueLabel, plannedReminders } from "./todayReminders";
 import "./panel.css";
 
@@ -54,6 +84,8 @@ const emptySnapshot: TodaySnapshot = {
 
 const fallbackSettings: AppSettings = {
   animationMode: "always",
+  companionIntensity: "everyday",
+  companionLabelMode: "adaptive",
   animationSpeed: 1,
   cursorFollow: true,
   alwaysOnTop: true,
@@ -71,6 +103,8 @@ const fallbackSettings: AppSettings = {
   activityStart: "09:00",
   activityEnd: "18:00",
   activityIntervalMinutes: 60,
+  missedReminderPolicy: "notify",
+  missedReminderGraceMinutes: 120,
 };
 
 const emptyFocusState: FocusState = { session: null };
@@ -85,6 +119,28 @@ const emptyCareSnapshot: PetCareSnapshot = {
   lastInteractionAt: null,
 };
 
+const emptyTaskWatchSnapshot: TaskWatchSnapshot = {
+  schemaVersion: 2,
+  available: false,
+  observedCount: 0,
+  needsUserCount: 0,
+  states: [],
+};
+
+const initialModuleState: Record<DashboardModule, boolean> = {
+  today: true,
+  settings: true,
+  focus: true,
+  care: true,
+};
+
+const initialModuleErrors: Record<DashboardModule, string | null> = {
+  today: null,
+  settings: null,
+  focus: null,
+  care: null,
+};
+
 export function TaskPanel() {
   const panelWindow = useMemo(
     () => (tauriAvailable() ? getCurrentWindow() : null),
@@ -92,7 +148,7 @@ export function TaskPanel() {
   );
   const [tab, setTab] = useState<Tab>(() => {
     const requested = new URLSearchParams(window.location.search).get("tab");
-    return requested && ["today", "focus", "care", "history", "add", "settings"].includes(requested)
+    return requested && ["today", "taskwatch", "focus", "care", "history", "manage", "add", "settings"].includes(requested)
       ? (requested as Tab)
       : "today";
   });
@@ -100,37 +156,154 @@ export function TaskPanel() {
   const [settings, setSettings] = useState<AppSettings>(fallbackSettings);
   const [focusState, setFocusState] = useState<FocusState>(emptyFocusState);
   const [care, setCare] = useState<PetCareSnapshot>(emptyCareSnapshot);
-  const [loading, setLoading] = useState(true);
+  const [taskWatch, setTaskWatch] = useState<TaskWatchSnapshot>(emptyTaskWatchSnapshot);
+  const [taskWatchLoading, setTaskWatchLoading] = useState(true);
+  const [taskWatchError, setTaskWatchError] = useState<string | null>(null);
+  const [moduleLoading, setModuleLoading] = useState(initialModuleState);
+  const [moduleErrors, setModuleErrors] = useState(initialModuleErrors);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
+  const refreshToday = useCallback(async () => {
+    setModuleLoading((current) => ({ ...current, today: true }));
     try {
-      const [today, currentSettings, currentFocus, currentCare] = await Promise.all([
-        listToday(),
-        getSettings(),
-        getFocusState(),
-        getPetCare(),
-      ]);
-      setSnapshot(today);
-      setSettings(currentSettings);
-      setFocusState(currentFocus);
-      setCare(currentCare);
+      setSnapshot(await listToday());
+      setModuleErrors((current) => ({ ...current, today: null }));
     } catch (error) {
-      setNotice(`暂时无法读取提醒：${String(error)}`);
+      setModuleErrors((current) => ({ ...current, today: String(error) }));
     } finally {
-      setLoading(false);
+      setModuleLoading((current) => ({ ...current, today: false }));
     }
   }, []);
 
+  const refreshSettings = useCallback(async () => {
+    setModuleLoading((current) => ({ ...current, settings: true }));
+    try {
+      setSettings(await getSettings());
+      setModuleErrors((current) => ({ ...current, settings: null }));
+    } catch (error) {
+      setModuleErrors((current) => ({ ...current, settings: String(error) }));
+    } finally {
+      setModuleLoading((current) => ({ ...current, settings: false }));
+    }
+  }, []);
+
+  const refreshFocus = useCallback(async () => {
+    setModuleLoading((current) => ({ ...current, focus: true }));
+    try {
+      setFocusState(await getFocusState());
+      setModuleErrors((current) => ({ ...current, focus: null }));
+    } catch (error) {
+      setModuleErrors((current) => ({ ...current, focus: String(error) }));
+    } finally {
+      setModuleLoading((current) => ({ ...current, focus: false }));
+    }
+  }, []);
+
+  const refreshCare = useCallback(async () => {
+    setModuleLoading((current) => ({ ...current, care: true }));
+    try {
+      setCare(await getPetCare());
+      setModuleErrors((current) => ({ ...current, care: null }));
+    } catch (error) {
+      setModuleErrors((current) => ({ ...current, care: String(error) }));
+    } finally {
+      setModuleLoading((current) => ({ ...current, care: false }));
+    }
+  }, []);
+
+  const refreshTaskWatch = useCallback(async () => {
+    setTaskWatchLoading(true);
+    try {
+      setTaskWatch(await getTaskWatchSnapshot());
+      setTaskWatchError(null);
+    } catch (error) {
+      setTaskWatchError(String(error));
+    } finally {
+      setTaskWatchLoading(false);
+    }
+  }, []);
+
+  const deferTaskWatch = useCallback(
+    async (source: TaskWatchSource, state: TaskWatchState) => {
+      try {
+        setTaskWatch(await deferTaskWatchAttention(source, state, 10));
+        setTaskWatchError(null);
+        setNotice("已暂停圆圆对这组状态的主动提示 10 分钟，任务仍保留在守望台。");
+      } catch {
+        setNotice("暂时没能暂停主动提示，来源任务没有受到影响。");
+      }
+    },
+    [],
+  );
+
+  const resumeTaskWatch = useCallback(
+    async (source: TaskWatchSource, state: TaskWatchState) => {
+      try {
+        setTaskWatch(await resumeTaskWatchAttention(source, state));
+        setTaskWatchError(null);
+        setNotice("圆圆会重新留意这组状态。");
+      } catch {
+        setNotice("暂时没能恢复主动提示，来源任务没有受到影响。");
+      }
+    },
+    [],
+  );
+
+  const refreshAll = useCallback(async () => {
+    setModuleLoading(initialModuleState);
+    const [result, watchResult] = await Promise.all([
+      loadDashboard({
+        today: listToday,
+        settings: getSettings,
+        focus: getFocusState,
+        care: getPetCare,
+      }),
+      getTaskWatchSnapshot().then(
+        (value) => ({ ok: true as const, value }),
+        (error) => ({ ok: false as const, error: String(error) }),
+      ),
+    ]);
+    if (result.today.ok) setSnapshot(result.today.value);
+    if (result.settings.ok) setSettings(result.settings.value);
+    if (result.focus.ok) setFocusState(result.focus.value);
+    if (result.care.ok) setCare(result.care.value);
+    setModuleErrors({
+      today: result.today.ok ? null : result.today.error,
+      settings: result.settings.ok ? null : result.settings.error,
+      focus: result.focus.ok ? null : result.focus.error,
+      care: result.care.ok ? null : result.care.error,
+    });
+    setModuleLoading({ today: false, settings: false, focus: false, care: false });
+    if (watchResult.ok) {
+      setTaskWatch(watchResult.value);
+      setTaskWatchError(null);
+    } else {
+      setTaskWatchError(watchResult.error);
+    }
+    setTaskWatchLoading(false);
+  }, []);
+
+  const refresh = refreshToday;
+
   useEffect(() => {
-    void refresh();
+    void refreshAll();
     const cleanups: Array<() => void> = [];
     void Promise.all([
-      onBackendEvent<void>("occurrence-updated", refresh),
-      onBackendEvent<void>("reminder-due", refresh),
-      onBackendEvent<AppSettings>("settings-updated", setSettings),
-      onBackendEvent<FocusState>("focus-updated", setFocusState),
-      onBackendEvent<PetCareSnapshot>("pet-care-updated", setCare),
+      onBackendEvent<void>("occurrence-updated", refreshToday),
+      onBackendEvent<void>("reminder-due", refreshToday),
+      onBackendEvent<void>("reminders-updated", refreshToday),
+      onBackendEvent<AppSettings>("settings-updated", (value) => {
+        setSettings(value);
+        setModuleErrors((current) => ({ ...current, settings: null }));
+      }),
+      onBackendEvent<FocusState>("focus-updated", (value) => {
+        setFocusState(value);
+        setModuleErrors((current) => ({ ...current, focus: null }));
+      }),
+      onBackendEvent<PetCareSnapshot>("pet-care-updated", (value) => {
+        setCare(value);
+        setModuleErrors((current) => ({ ...current, care: null }));
+      }),
       onBackendEvent<{ route: Tab }>("panel-route", ({ route }) => setTab(route)),
     ]).then((unlisten) => cleanups.push(...unlisten));
 
@@ -142,7 +315,7 @@ export function TaskPanel() {
       cleanups.forEach((cleanup) => cleanup());
       window.removeEventListener("keydown", keydown);
     };
-  }, [panelWindow, refresh]);
+  }, [panelWindow, refreshAll, refreshToday]);
 
   useEffect(() => {
     let cancelled = false;
@@ -158,7 +331,7 @@ export function TaskPanel() {
         1,
       );
       timer = window.setTimeout(() => {
-        void refresh().finally(() => {
+        void Promise.all([refreshToday(), refreshCare()]).finally(() => {
           if (!cancelled) scheduleNextLocalDay();
         });
       }, Math.max(1_000, next.getTime() - now.getTime()));
@@ -168,7 +341,11 @@ export function TaskPanel() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [refresh]);
+  }, [refreshCare, refreshToday]);
+
+  useEffect(() => {
+    if (tab === "taskwatch") void refreshTaskWatch();
+  }, [refreshTaskWatch, tab]);
 
   useEffect(() => {
     void (async () => {
@@ -189,6 +366,25 @@ export function TaskPanel() {
     }
   };
 
+  const activeModule: DashboardModule | null =
+    tab === "today" || tab === "manage"
+      ? "today"
+      : tab === "focus"
+        ? "focus"
+        : tab === "care"
+          ? "care"
+          : tab === "settings"
+            ? "settings"
+            : null;
+  const retryActiveModule =
+    activeModule === "today"
+      ? refreshToday
+      : activeModule === "focus"
+        ? refreshFocus
+        : activeModule === "care"
+          ? refreshCare
+          : refreshSettings;
+
   return (
     <main className="panel-shell">
       <header className="panel-header">
@@ -197,12 +393,16 @@ export function TaskPanel() {
           <h1>
             {tab === "today"
               ? "今天"
+              : tab === "taskwatch"
+                ? "任务守望"
               : tab === "focus"
                 ? "专注"
                 : tab === "care"
                   ? "陪圆圆"
                   : tab === "history"
                     ? "历史记录"
+                    : tab === "manage"
+                      ? "提醒管理"
                 : tab === "add"
                   ? "新提醒"
                   : "设置"}
@@ -227,10 +427,18 @@ export function TaskPanel() {
         </div>
       )}
 
-      <nav className="segmented" aria-label="圆圆提醒页面">
+      <nav
+        className={`segmented ${taskWatch.available ? "has-task-watch" : ""}`}
+        aria-label="圆圆提醒页面"
+      >
         <TabButton active={tab === "today"} onClick={() => setTab("today")}>
           今日
         </TabButton>
+        {taskWatch.available && (
+          <TabButton active={tab === "taskwatch"} onClick={() => setTab("taskwatch")}>
+            守望
+          </TabButton>
+        )}
         <TabButton active={tab === "focus"} onClick={() => setTab("focus")}>
           专注
         </TabButton>
@@ -239,6 +447,9 @@ export function TaskPanel() {
         </TabButton>
         <TabButton active={tab === "history"} onClick={() => setTab("history")}>
           历史
+        </TabButton>
+        <TabButton active={tab === "manage"} onClick={() => setTab("manage")}>
+          管理
         </TabButton>
         <TabButton active={tab === "add"} onClick={() => setTab("add")}>
           新建
@@ -249,8 +460,37 @@ export function TaskPanel() {
       </nav>
 
       <section className="panel-content">
-        {loading ? (
+        {activeModule && moduleLoading[activeModule] ? (
           <div className="empty-state">圆圆正在整理今天的安排…</div>
+        ) : activeModule && moduleErrors[activeModule] ? (
+          <ModuleLoadError
+            module={activeModule}
+            error={moduleErrors[activeModule]!}
+            onRetry={retryActiveModule}
+          />
+        ) : tab === "taskwatch" ? (
+          taskWatchLoading ? (
+            <div className="empty-state">圆圆正在看看任务牌…</div>
+          ) : taskWatchError ? (
+            <div className="empty-state module-error" role="alert">
+              <strong>任务守望台暂时未能读取</strong>
+              <span>来源任务不会受影响，也不会自动重试或修改来源配置。</span>
+              <button
+                className="primary compact"
+                type="button"
+                onClick={() => void refreshTaskWatch()}
+              >
+                重新查看
+              </button>
+            </div>
+          ) : (
+            <TaskWatchView
+              snapshot={taskWatch}
+              onRefresh={refreshTaskWatch}
+              onDefer={deferTaskWatch}
+              onResume={resumeTaskWatch}
+            />
+          )
         ) : tab === "today" ? (
           <TodayView snapshot={snapshot} refresh={refresh} setTab={setTab} />
         ) : tab === "focus" ? (
@@ -269,6 +509,14 @@ export function TaskPanel() {
           />
         ) : tab === "history" ? (
           <HistoryView />
+        ) : tab === "manage" ? (
+          <ManageView
+            reminders={snapshot.reminders}
+            settings={settings}
+            onRefresh={refreshToday}
+            onNotice={setNotice}
+            onOpenSettings={() => setTab("settings")}
+          />
         ) : tab === "add" ? (
           <AddView
             onSaved={async () => {
@@ -286,6 +534,153 @@ export function TaskPanel() {
         )}
       </section>
     </main>
+  );
+}
+
+const taskWatchSourceLabels = {
+  codex: "Codex",
+  claude_code: "Claude Code",
+} as const;
+
+const taskWatchStateLabels = {
+  queued: "排队中",
+  running: "守望中",
+  waiting_user: "需要你",
+  succeeded: "已完成",
+  failed: "没成功",
+  cancelled: "已收起",
+  stalled: "可能停住",
+  unknown: "状态不明",
+} as const;
+
+export function TaskWatchView({
+  snapshot,
+  onRefresh,
+  onDefer,
+  onResume,
+}: {
+  snapshot: TaskWatchSnapshot;
+  onRefresh: () => Promise<void>;
+  onDefer: (source: TaskWatchSource, state: TaskWatchState) => Promise<void>;
+  onResume: (source: TaskWatchSource, state: TaskWatchState) => Promise<void>;
+}) {
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const deferrableStates = new Set<TaskWatchState>([
+    "running",
+    "waiting_user",
+    "failed",
+    "stalled",
+    "unknown",
+  ]);
+  const runAttentionAction = async (
+    source: TaskWatchSource,
+    state: TaskWatchState,
+    deferred: boolean,
+  ) => {
+    const key = `${source}-${state}`;
+    setBusyKey(key);
+    try {
+      await (deferred ? onResume(source, state) : onDefer(source, state));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+  return (
+    <div className="task-watch-stack">
+      <section className="task-watch-overview" aria-labelledby="task-watch-title">
+        <div>
+          <p className="card-kicker">只看状态，不看正文</p>
+          <h2 id="task-watch-title">圆圆的任务守望台</h2>
+          <p>
+            这里只显示来源、固定状态和数量，不显示任务标题、项目路径、任务标识或精确活动时间。
+          </p>
+          <p>“稍后提醒”只暂停圆圆的主动提示，任务会一直保留在这里。</p>
+        </div>
+        <button className="secondary compact" type="button" onClick={() => void onRefresh()}>
+          重新查看
+        </button>
+      </section>
+
+      {!snapshot.available ? (
+        <div className="empty-state">
+          还没有可信任务状态。圆圆不会自行修改 Codex 或 Claude Code 的配置。
+        </div>
+      ) : snapshot.states.length === 0 ? (
+        <div className="empty-state">目前没有最近24小时内可守望的任务。</div>
+      ) : (
+        <section aria-labelledby="task-watch-states-title">
+          <div className="section-heading task-watch-heading">
+            <h2 id="task-watch-states-title">最近状态</h2>
+            <span>
+              共 {snapshot.observedCount} 项
+              {snapshot.needsUserCount > 0 ? `，${snapshot.needsUserCount} 项需要你` : ""}
+            </span>
+          </div>
+          <ul className="task-watch-list">
+            {snapshot.states.map((item) => {
+              const key = `${item.source}-${item.state}`;
+              const deferred = item.deferredUntilUnixMs !== null;
+              return (
+                <li
+                  key={key}
+                  className={`task-watch-state state-${item.state}`}
+                  aria-label={`${taskWatchSourceLabels[item.source]}，${taskWatchStateLabels[item.state]}，${item.count}项${deferred ? "，已暂缓主动提醒" : ""}`}
+                >
+                  <span className="task-watch-source">{taskWatchSourceLabels[item.source]}</span>
+                  <strong>{taskWatchStateLabels[item.state]}</strong>
+                  <b>{item.count}</b>
+                  {deferrableStates.has(item.state) && (
+                    <div className="task-watch-attention-action">
+                      {deferred && <span>已暂缓主动提醒</span>}
+                      <button
+                        type="button"
+                        disabled={busyKey !== null}
+                        aria-label={`${deferred ? "恢复" : "10 分钟后再"}提醒 ${taskWatchSourceLabels[item.source]} ${taskWatchStateLabels[item.state]}这组状态`}
+                        onClick={() =>
+                          void runAttentionAction(item.source, item.state, deferred)
+                        }
+                      >
+                        {busyKey === key
+                          ? "处理中…"
+                          : deferred
+                            ? "恢复提醒"
+                            : "10 分钟后再提醒"}
+                      </button>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+    </div>
+  );
+}
+
+function ModuleLoadError({
+  module,
+  error,
+  onRetry,
+}: {
+  module: DashboardModule;
+  error: string;
+  onRetry: () => Promise<void>;
+}) {
+  const label = {
+    today: "今日提醒",
+    settings: "设置",
+    focus: "专注计时",
+    care: "互动记录",
+  }[module];
+  return (
+    <div className="empty-state module-error" role="alert">
+      <strong>{label}暂时未能加载</strong>
+      <span>{error}</span>
+      <button className="primary compact" type="button" onClick={() => void onRetry()}>
+        重新读取
+      </button>
+    </div>
   );
 }
 
@@ -338,6 +733,27 @@ const careActions: Array<{
   },
 ];
 
+const basicSupportDetails: Record<
+  BasicSupportPath,
+  { title: string; description: string; durations: number[] }
+> = {
+  stay_close: {
+    title: "只陪我一会",
+    description: "圆圆安静靠近，不追问",
+    durations: [2, 5, 10],
+  },
+  move_together: {
+    title: "陪我动一动",
+    description: "圆圆先伸懒腰，不计分",
+    durations: [1, 3, 5, 10],
+  },
+  give_space: {
+    title: "先别管我",
+    description: "圆圆退开，不再主动回看",
+    durations: [5, 15, 30, 60],
+  },
+};
+
 function CareView({
   care,
   focusActive,
@@ -352,6 +768,97 @@ function CareView({
   onInteractiveStarted: () => void;
 }) {
   const [working, setWorking] = useState<PetInteractionKind | null>(null);
+  const [support, setSupport] = useState<BasicSupportSession | null>(null);
+  const [supportChooserOpen, setSupportChooserOpen] = useState(false);
+  const [selectedSupport, setSelectedSupport] =
+    useState<BasicSupportPath | null>(null);
+  const [supportDuration, setSupportDuration] = useState(5);
+  const [supportWorking, setSupportWorking] = useState(false);
+  const [supportNow, setSupportNow] = useState(Date.now());
+  const supportOpenButtonRef = useRef<HTMLButtonElement>(null);
+  const firstSupportPathRef = useRef<HTMLButtonElement>(null);
+  const supportEndButtonRef = useRef<HTMLButtonElement>(null);
+  const supportFocusRequest = useRef<"chooser" | "end" | "open" | null>(null);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten = () => {};
+    void getBasicSupportState().then((session) => {
+      if (!disposed) setSupport(session);
+    });
+    void onBackendEvent<BasicSupportSession | null>(
+      "basic-support-updated",
+      (session) => setSupport(session),
+    ).then((cleanup) => {
+      if (disposed) cleanup();
+      else unlisten = cleanup;
+    });
+    return () => {
+      disposed = true;
+      unlisten();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!support) return;
+    setSupportNow(Date.now());
+    const timer = window.setInterval(() => setSupportNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [support]);
+
+  useEffect(() => {
+    const request = supportFocusRequest.current;
+    const target =
+      request === "chooser"
+        ? firstSupportPathRef.current
+        : request === "end"
+          ? supportEndButtonRef.current
+          : request === "open"
+            ? supportOpenButtonRef.current
+            : null;
+    if (!target) return;
+    target.focus();
+    supportFocusRequest.current = null;
+  });
+
+  const chooseSupport = (path: BasicSupportPath) => {
+    setSelectedSupport(path);
+    setSupportDuration(basicSupportDetails[path].durations[0]);
+  };
+
+  const beginSupport = async () => {
+    if (!selectedSupport) return;
+    if (focusActive) {
+      onNotice("请先结束当前专注计时，再让圆圆陪你一会。");
+      return;
+    }
+    setSupportWorking(true);
+    supportFocusRequest.current = "end";
+    try {
+      setSupport(await startBasicSupport(selectedSupport, supportDuration));
+      setSupportChooserOpen(false);
+      setSelectedSupport(null);
+    } catch (error) {
+      supportFocusRequest.current = null;
+      onNotice(String(error));
+    } finally {
+      setSupportWorking(false);
+    }
+  };
+
+  const endSupport = async () => {
+    setSupportWorking(true);
+    supportFocusRequest.current = "open";
+    try {
+      await stopBasicSupport();
+      setSupport(null);
+    } catch (error) {
+      supportFocusRequest.current = null;
+      onNotice(String(error));
+    } finally {
+      setSupportWorking(false);
+    }
+  };
 
   const begin = async (
     kind: PetInteractionKind,
@@ -397,6 +904,110 @@ function CareView({
           </p>
         </div>
       </article>
+
+      <section className="basic-support-card" aria-labelledby="basic-support-title">
+        <div className="basic-support-heading">
+          <div>
+            <p className="card-kicker">由你主动开始</p>
+            <h2 id="basic-support-title">陪陪我</h2>
+            <p>不判断你的情绪，不调用模型，也不保存原因。</p>
+          </div>
+          <span aria-hidden="true">◌</span>
+        </div>
+
+        {support ? (
+          <div className="basic-support-active">
+            <div role="status" aria-live="polite">
+              <strong>{basicSupportDetails[support.path].title}</strong>
+              <span>{basicSupportDetails[support.path].description}</span>
+            </div>
+            <time dateTime={support.endsAt}>
+              {Math.max(
+                0,
+                Math.ceil((new Date(support.endsAt).getTime() - supportNow) / 60_000),
+              )} 分钟内
+            </time>
+            <button
+              ref={supportEndButtonRef}
+              type="button"
+              disabled={supportWorking}
+              onClick={() => void endSupport()}
+            >
+              结束本次陪伴
+            </button>
+          </div>
+        ) : !supportChooserOpen ? (
+          <button
+            ref={supportOpenButtonRef}
+            className="basic-support-open"
+            type="button"
+            disabled={focusActive}
+            onClick={() => {
+              supportFocusRequest.current = "chooser";
+              setSupportChooserOpen(true);
+            }}
+          >
+            {focusActive ? "专注结束后可以使用" : "打开三张陪伴小牌"}
+          </button>
+        ) : (
+          <div className="basic-support-chooser">
+            <div className="basic-support-paths" aria-label="选择陪伴方式">
+              {(Object.keys(basicSupportDetails) as BasicSupportPath[]).map((path, index) => (
+                <button
+                  ref={index === 0 ? firstSupportPathRef : undefined}
+                  type="button"
+                  key={path}
+                  aria-pressed={selectedSupport === path}
+                  onClick={() => chooseSupport(path)}
+                >
+                  <strong>{basicSupportDetails[path].title}</strong>
+                  <span>{basicSupportDetails[path].description}</span>
+                </button>
+              ))}
+            </div>
+            {selectedSupport && (
+              <div className="basic-support-duration">
+                <span>这次持续</span>
+                <div aria-label="选择陪伴时长">
+                  {basicSupportDetails[selectedSupport].durations.map((minutes) => (
+                    <button
+                      type="button"
+                      key={minutes}
+                      aria-pressed={supportDuration === minutes}
+                      onClick={() => setSupportDuration(minutes)}
+                    >
+                      {minutes} 分钟
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="basic-support-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  supportFocusRequest.current = "open";
+                  setSupportChooserOpen(false);
+                  setSelectedSupport(null);
+                }}
+              >
+                取消
+              </button>
+              <button
+                className="primary"
+                type="button"
+                disabled={!selectedSupport || supportWorking}
+                onClick={() => void beginSupport()}
+              >
+                开始
+              </button>
+            </div>
+          </div>
+        )}
+        <p className="basic-support-boundary">
+          本次状态只在内存中运行；关闭应用即结束，不形成心情记录或连续打卡。
+        </p>
+      </section>
 
       <div className="care-grid">
         {careActions.map((action) => (
@@ -845,6 +1456,17 @@ function HistoryRecordCard({ record }: { record: Occurrence }) {
       : record.category === "personal"
         ? "生活"
         : "喝水";
+  const resultLabel = completed
+    ? "已完成"
+    : record.resolutionReason === "missed"
+      ? "过期自动跳过"
+      : record.resolutionReason === "reminder-edited"
+        ? "编辑提醒时归档"
+        : record.resolutionReason === "reminder-disabled"
+          ? "暂停提醒时归档"
+          : record.resolutionReason === "reminder-deleted"
+            ? "删除提醒时归档"
+            : "已跳过";
   return (
     <article className={`history-card ${completed ? "completed" : "skipped"}`}>
       <div className="history-result" aria-hidden="true">
@@ -860,7 +1482,7 @@ function HistoryRecordCard({ record }: { record: Occurrence }) {
           <h3>{record.reminderTitle}</h3>
         </div>
         <p>
-          {completed ? "已完成" : "已跳过"} · {category} ·{" "}
+          {resultLabel} · {category} ·{" "}
           {actedAt.toLocaleTimeString("zh-CN", {
             hour: "2-digit",
             minute: "2-digit",
@@ -938,6 +1560,7 @@ function OccurrenceCard({
 }) {
   const due = new Date(occurrence.snoozedUntil ?? occurrence.scheduledAt);
   const activity = occurrence.reminderId === "system-activity-reminder";
+  const [snoozeMinutes, setSnoozeMinutes] = useState(10);
   return (
     <article className={`task-card status-${occurrence.status}`}>
       <div className="task-time">
@@ -972,15 +1595,26 @@ function OccurrenceCard({
           >
             {activity ? "活动完成" : "完成"}
           </button>
-          <button
-            type="button"
-            onClick={async () => {
-              await snoozeOccurrence(occurrence.id);
-              await refresh();
-            }}
-          >
-            10 分钟后
-          </button>
+          <label className="snooze-control">
+            <span className="sr-only">稍后提醒时长</span>
+            <select
+              value={snoozeMinutes}
+              onChange={(event) => setSnoozeMinutes(Number(event.target.value))}
+            >
+              {[5, 10, 30, 60].map((minutes) => (
+                <option key={minutes} value={minutes}>{minutes} 分钟</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={async () => {
+                await snoozeOccurrence(occurrence.id, snoozeMinutes);
+                await refresh();
+              }}
+            >
+              稍后
+            </button>
+          </label>
           <button
             type="button"
             onClick={async () => {
@@ -996,38 +1630,219 @@ function OccurrenceCard({
   );
 }
 
-function AddView({ onSaved }: { onSaved: () => Promise<void> }) {
-  const [title, setTitle] = useState("");
-  const [category, setCategory] = useState<ReminderCategory>("work");
-  const [scheduleKind, setScheduleKind] = useState<ScheduleKind>("once");
-  const [atLocal, setAtLocal] = useState(() => {
-    const date = new Date(Date.now() + 60 * 60 * 1000);
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
-      date.getDate(),
-    ).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(
-      date.getMinutes(),
-    ).padStart(2, "0")}`;
-  });
-  const [everyMinutes, setEveryMinutes] = useState(60);
+function ManageView({
+  reminders,
+  settings,
+  onRefresh,
+  onNotice,
+  onOpenSettings,
+}: {
+  reminders: Reminder[];
+  settings: AppSettings;
+  onRefresh: () => Promise<void>;
+  onNotice: (notice: string) => void;
+  onOpenSettings: () => void;
+}) {
+  const [editing, setEditing] = useState<Reminder | null>(null);
+  const [workingId, setWorkingId] = useState<string | null>(null);
+  const visible = reminders.filter((reminder) => !reminder.archivedAt);
+
+  if (editing) {
+    return (
+      <div className="stack">
+        <div className="section-heading manage-edit-heading">
+          <div>
+            <p className="card-kicker">编辑提醒</p>
+            <h2>{editing.title}</h2>
+          </div>
+          <button type="button" onClick={() => setEditing(null)}>取消</button>
+        </div>
+        <AddView
+          key={editing.id}
+          reminder={editing}
+          onSaved={async () => {
+            await onRefresh();
+            setEditing(null);
+            onNotice("提醒修改已生效，旧的待处理实例已自动归档。");
+          }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="stack manage-list">
+      <div className="manage-intro">
+        <strong>全部提醒</strong>
+        <span>普通提醒可以编辑、暂停或删除；喝水与活动提醒在设置中管理。</span>
+      </div>
+      {visible.map((reminder) => {
+        const system = reminder.systemKind !== null;
+        const effectiveEnabled =
+          reminder.systemKind === "activity" ? settings.activityEnabled : reminder.enabled;
+        return (
+          <article className={`manage-card ${effectiveEnabled ? "enabled" : "disabled"}`} key={reminder.id}>
+            <div className="manage-card-main">
+              <div className="task-title-row">
+                <span className={`category-dot ${reminder.systemKind === "activity" ? "activity" : reminder.category}`} />
+                <h3>{reminder.title}</h3>
+                {system && <span className="system-badge">系统</span>}
+              </div>
+              <p>{reminderScheduleLabel(reminder, settings)} · {effectiveEnabled ? "已启用" : "已暂停"}</p>
+            </div>
+            <div className="manage-actions">
+              {system ? (
+                <button type="button" onClick={onOpenSettings}>前往设置</button>
+              ) : (
+                <>
+                  <button type="button" onClick={() => setEditing(reminder)}>编辑</button>
+                  <button
+                    type="button"
+                    disabled={workingId === reminder.id}
+                    onClick={async () => {
+                      setWorkingId(reminder.id);
+                      try {
+                        await setReminderEnabled(reminder.id, !reminder.enabled);
+                        await onRefresh();
+                      } catch (error) {
+                        onNotice(`操作失败：${String(error)}`);
+                      } finally {
+                        setWorkingId(null);
+                      }
+                    }}
+                  >
+                    {reminder.enabled ? "暂停" : "启用"}
+                  </button>
+                  <button
+                    className="danger-text"
+                    type="button"
+                    disabled={workingId === reminder.id}
+                    onClick={async () => {
+                      if (!window.confirm(`确定删除“${reminder.title}”吗？历史记录仍会保留。`)) return;
+                      setWorkingId(reminder.id);
+                      try {
+                        await deleteReminder(reminder.id);
+                        await onRefresh();
+                        onNotice("提醒已删除，已有历史记录仍然保留。");
+                      } catch (error) {
+                        onNotice(`删除失败：${String(error)}`);
+                      } finally {
+                        setWorkingId(null);
+                      }
+                    }}
+                  >
+                    删除
+                  </button>
+                </>
+              )}
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function reminderScheduleLabel(reminder: Reminder, settings?: AppSettings): string {
+  let input: Partial<CreateReminderInput> = {};
+  try {
+    input = JSON.parse(reminder.scheduleJson) as CreateReminderInput;
+  } catch {
+    return "时间配置待修复";
+  }
+  if (reminder.systemKind === "activity" && settings) {
+    return `每 ${settings.activityIntervalMinutes} 分钟 · ${settings.activityStart}–${settings.activityEnd}`;
+  }
+  if (reminder.systemKind === "water" && settings) {
+    return `每 ${settings.waterIntervalMinutes} 分钟 · ${settings.waterStart}–${settings.waterEnd}`;
+  }
+  if (reminder.scheduleKind === "once") {
+    if (!input.atLocal) return "单次提醒";
+    const date = new Date(input.atLocal);
+    return Number.isNaN(date.getTime())
+      ? `单次 · ${input.atLocal}`
+      : date.toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
+  if (reminder.scheduleKind === "interval") {
+    return `每 ${input.everyMinutes ?? 60} 分钟 · ${input.activeStartLocal ?? "09:00"}–${input.activeEndLocal ?? "18:00"}`;
+  }
+  const time = input.atLocal?.slice(-5) ?? "--:--";
+  return reminder.scheduleKind === "daily" ? `每天 ${time}` : `每周指定日期 ${time}`;
+}
+
+function defaultReminderDateTime() {
+  const date = new Date(Date.now() + 60 * 60 * 1000);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate(),
+  ).padStart(2, "0")}T${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes(),
+  ).padStart(2, "0")}`;
+}
+
+function normalizeReminderDateTime(value?: string | null) {
+  if (!value) return defaultReminderDateTime();
+  if (/^\d{2}:\d{2}$/.test(value)) {
+    return `${defaultReminderDateTime().slice(0, 10)}T${value}`;
+  }
+  return value;
+}
+
+function parseReminderSchedule(reminder?: Reminder): Partial<CreateReminderInput> {
+  if (!reminder) return {};
+  try {
+    return JSON.parse(reminder.scheduleJson) as CreateReminderInput;
+  } catch {
+    return {};
+  }
+}
+
+function AddView({
+  onSaved,
+  reminder,
+}: {
+  onSaved: () => Promise<void>;
+  reminder?: Reminder;
+}) {
+  const initial = parseReminderSchedule(reminder);
+  const [title, setTitle] = useState(reminder?.title ?? "");
+  const [category, setCategory] = useState<ReminderCategory>(reminder?.category ?? "work");
+  const [scheduleKind, setScheduleKind] = useState<ScheduleKind>(reminder?.scheduleKind ?? "once");
+  const [atLocal, setAtLocal] = useState(normalizeReminderDateTime(initial.atLocal));
+  const [everyMinutes, setEveryMinutes] = useState(initial.everyMinutes ?? 60);
+  const [activeStartLocal, setActiveStartLocal] = useState(initial.activeStartLocal ?? "09:00");
+  const [activeEndLocal, setActiveEndLocal] = useState(initial.activeEndLocal ?? "18:00");
+  const [weekdays, setWeekdays] = useState(initial.weekdays ?? [1, 2, 3, 4, 5]);
+  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!title.trim()) return;
+    if (scheduleKind !== "once" && weekdays.length === 0) {
+      setError("请至少选择一天。");
+      return;
+    }
     setSaving(true);
+    setError(null);
     const input: CreateReminderInput = {
       title: title.trim(),
       category,
       scheduleKind,
       atLocal,
       everyMinutes,
-      activeStartLocal: "09:00",
-      activeEndLocal: "18:00",
-      weekdays: [1, 2, 3, 4, 5],
+      activeStartLocal,
+      activeEndLocal,
+      weekdays,
     };
-    await createReminder(input);
-    setSaving(false);
-    await onSaved();
+    try {
+      if (reminder) await updateReminder(reminder.id, input);
+      else await createReminder(input);
+      await onSaved();
+    } catch (submitError) {
+      setError(String(submitError));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -1066,19 +1881,27 @@ function AddView({ onSaved }: { onSaved: () => Promise<void> }) {
         </select>
       </label>
       {scheduleKind === "interval" ? (
-        <label>
-          <span>提醒间隔</span>
-          <select
-            value={everyMinutes}
-            onChange={(event) => setEveryMinutes(Number(event.target.value))}
-          >
-            {[30, 45, 60, 90, 120].map((minutes) => (
-              <option key={minutes} value={minutes}>
-                每 {minutes} 分钟
-              </option>
-            ))}
-          </select>
-        </label>
+        <>
+          <label>
+            <span>提醒间隔</span>
+            <select
+              value={everyMinutes}
+              onChange={(event) => setEveryMinutes(Number(event.target.value))}
+            >
+              {[15, 30, 45, 60, 90, 120, 180, 240].map((minutes) => (
+                <option key={minutes} value={minutes}>每 {minutes} 分钟</option>
+              ))}
+            </select>
+          </label>
+          <div className="form-field">
+            <span>生效时段</span>
+            <div className="time-pair">
+              <input type="time" value={activeStartLocal} onChange={(event) => setActiveStartLocal(event.target.value)} />
+              <span>至</span>
+              <input type="time" value={activeEndLocal} onChange={(event) => setActiveEndLocal(event.target.value)} />
+            </div>
+          </div>
+        </>
       ) : (
         <label>
           <span>{scheduleKind === "once" ? "日期和时间" : "首次时间"}</span>
@@ -1089,8 +1912,27 @@ function AddView({ onSaved }: { onSaved: () => Promise<void> }) {
           />
         </label>
       )}
+      {scheduleKind !== "once" && (
+        <fieldset className="weekday-field">
+          <legend>重复日期</legend>
+          <div className="weekday-buttons">
+            {["日", "一", "二", "三", "四", "五", "六"].map((label, day) => (
+              <button
+                className={weekdays.includes(day) ? "active" : ""}
+                type="button"
+                key={day}
+                aria-pressed={weekdays.includes(day)}
+                onClick={() => setWeekdays((current) => current.includes(day) ? current.filter((value) => value !== day) : [...current, day].sort())}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+      )}
+      {error && <div className="form-error" role="alert">{error}</div>}
       <button className="primary large" type="submit" disabled={saving || !title.trim()}>
-        {saving ? "正在保存…" : "交给圆圆提醒"}
+        {saving ? "正在保存…" : reminder ? "保存修改" : "交给圆圆提醒"}
       </button>
     </form>
   );
@@ -1105,6 +1947,27 @@ function SettingsView({
   onChange: (patch: Partial<AppSettings>) => Promise<void>;
   onNotice: (notice: string) => void;
 }) {
+  const [backups, setBackups] = useState<BackupInfo[]>([]);
+  const [backupLoading, setBackupLoading] = useState(true);
+  const [backupError, setBackupError] = useState<string | null>(null);
+  const [backupWorking, setBackupWorking] = useState(false);
+
+  const refreshBackups = useCallback(async () => {
+    setBackupLoading(true);
+    try {
+      setBackups(await listBackups());
+      setBackupError(null);
+    } catch (error) {
+      setBackupError(String(error));
+    } finally {
+      setBackupLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshBackups();
+  }, [refreshBackups]);
+
   return (
     <div className="settings-list">
       <SettingRow title="圆圆动画" description="不受 Windows 动画关闭影响">
@@ -1119,6 +1982,42 @@ function SettingsView({
           <option value="always">始终播放</option>
           <option value="system">跟随系统</option>
           <option value="off">关闭动画</option>
+        </select>
+      </SettingRow>
+      <SettingRow
+        title="陪伴亲密度"
+        description="只控制圆圆主动靠近或庆祝，不影响你设置的提醒"
+      >
+        <select
+          value={settings.companionIntensity}
+          onChange={(event) =>
+            void onChange({
+              companionIntensity: event.target
+                .value as AppSettings["companionIntensity"],
+            })
+          }
+        >
+          <option value="quiet">安静陪伴（不主动打扰）</option>
+          <option value="everyday">日常陪伴（每天最多 3 次）</option>
+          <option value="close">亲密陪伴（每天最多 6 次）</option>
+        </select>
+      </SettingRow>
+      <SettingRow
+        title="道具标签"
+        description="文字只贴在任务牌等工具上，不会变成圆圆的对白"
+      >
+        <select
+          value={settings.companionLabelMode}
+          onChange={(event) =>
+            void onChange({
+              companionLabelMode: event.target
+                .value as AppSettings["companionLabelMode"],
+            })
+          }
+        >
+          <option value="motion_only">纯动作</option>
+          <option value="adaptive">需要时显示</option>
+          <option value="always">始终显示</option>
         </select>
       </SettingRow>
       <SettingRow title="动画速度" description="调节所有动作的播放节奏">
@@ -1157,12 +2056,14 @@ function SettingsView({
         <div className="time-pair">
           <input
             type="time"
+            aria-label="安静时段开始"
             value={settings.quietStart}
             onChange={(event) => void onChange({ quietStart: event.target.value })}
           />
           <span>至</span>
           <input
             type="time"
+            aria-label="安静时段结束"
             value={settings.quietEnd}
             onChange={(event) => void onChange({ quietEnd: event.target.value })}
           />
@@ -1186,12 +2087,14 @@ function SettingsView({
         <div className="time-pair">
           <input
             type="time"
+            aria-label="喝水时段开始"
             value={settings.waterStart}
             onChange={(event) => void onChange({ waterStart: event.target.value })}
           />
           <span>至</span>
           <input
             type="time"
+            aria-label="喝水时段结束"
             value={settings.waterEnd}
             onChange={(event) => void onChange({ waterEnd: event.target.value })}
           />
@@ -1224,6 +2127,7 @@ function SettingsView({
         <div className="time-pair">
           <input
             type="time"
+            aria-label="活动时段开始"
             disabled={!settings.activityEnabled}
             value={settings.activityStart}
             onChange={(event) =>
@@ -1233,6 +2137,7 @@ function SettingsView({
           <span>至</span>
           <input
             type="time"
+            aria-label="活动时段结束"
             disabled={!settings.activityEnabled}
             value={settings.activityEnd}
             onChange={(event) =>
@@ -1261,12 +2166,115 @@ function SettingsView({
           ))}
         </select>
       </SettingRow>
+      <SettingRow
+        title="错过提醒"
+        description="电脑关机或休眠后，对已经过去很久的事项如何处理"
+      >
+        <select
+          value={settings.missedReminderPolicy}
+          onChange={(event) =>
+            void onChange({
+              missedReminderPolicy: event.target.value as AppSettings["missedReminderPolicy"],
+            })
+          }
+        >
+          <option value="notify">恢复后仍提醒</option>
+          <option value="skipOld">自动归入已跳过</option>
+        </select>
+      </SettingRow>
+      {settings.missedReminderPolicy === "skipOld" && (
+        <SettingRow
+          title="过期宽限"
+          description="超过这段时间才视为错过，并在历史中标记原因"
+        >
+          <select
+            value={settings.missedReminderGraceMinutes}
+            onChange={(event) =>
+              void onChange({ missedReminderGraceMinutes: Number(event.target.value) })
+            }
+          >
+            {[15, 30, 60, 120, 240].map((minutes) => (
+              <option key={minutes} value={minutes}>{minutes} 分钟</option>
+            ))}
+          </select>
+        </SettingRow>
+      )}
       <SettingRow title="开机启动" description="登录 Windows 后自动陪伴">
         <Toggle
           checked={settings.autostart}
           onChange={(checked) => void onChange({ autostart: checked })}
         />
       </SettingRow>
+      <AiCompanionStatusCard onNotice={onNotice} />
+      <ConnectorDiscoveryStatusCard />
+      <section className="backup-section">
+        <div className="backup-heading">
+          <div>
+            <strong>数据备份</strong>
+            <small>每天启动时自动备份，自动备份保留最近 14 份；恢复前还会再保存当前数据。</small>
+          </div>
+          <button
+            className="primary compact"
+            type="button"
+            disabled={backupWorking}
+            onClick={async () => {
+              setBackupWorking(true);
+              try {
+                await createBackup();
+                await refreshBackups();
+                onNotice("手动备份已创建。");
+              } catch (error) {
+                setBackupError(String(error));
+              } finally {
+                setBackupWorking(false);
+              }
+            }}
+          >
+            立即备份
+          </button>
+        </div>
+        {backupError ? (
+          <div className="backup-error" role="alert">
+            <span>{backupError}</span>
+            <button type="button" onClick={() => void refreshBackups()}>重试</button>
+          </div>
+        ) : backupLoading ? (
+          <p className="backup-empty">正在读取备份…</p>
+        ) : backups.length === 0 ? (
+          <p className="backup-empty">尚无备份，点击“立即备份”创建第一份。</p>
+        ) : (
+          <div className="backup-list">
+            {backups.map((backup) => (
+              <div className="backup-item" key={backup.fileName}>
+                <div>
+                  <strong>{backup.automatic ? "自动备份" : backup.fileName.startsWith("manual-before-restore-") ? "恢复前备份" : "手动备份"}</strong>
+                  <small>
+                    {new Date(backup.createdAt).toLocaleString("zh-CN")} · {formatBackupSize(backup.sizeBytes)}
+                  </small>
+                </div>
+                <button
+                  type="button"
+                  disabled={backupWorking}
+                  onClick={async () => {
+                    if (!window.confirm("恢复后，当前数据会先自动备份，再替换为所选版本。确定继续吗？")) return;
+                    setBackupWorking(true);
+                    try {
+                      await restoreBackup(backup.fileName);
+                      onNotice("数据已恢复，正在重新加载界面。");
+                      window.setTimeout(() => window.location.reload(), 250);
+                    } catch (error) {
+                      setBackupError(`恢复失败：${String(error)}`);
+                      setBackupWorking(false);
+                    }
+                  }}
+                >
+                  恢复
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
       <div className="settings-actions">
         <button type="button" onClick={() => void requestSleep()}>
           让圆圆睡觉
@@ -1291,6 +2299,12 @@ function SettingsView({
   );
 }
 
+function formatBackupSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function SettingRow({
   title,
   description,
@@ -1300,13 +2314,32 @@ function SettingRow({
   description: string;
   children: React.ReactNode;
 }) {
+  const titleId = useId();
+  const descriptionId = useId();
+  const accessibleChild = isValidElement<{
+    "aria-labelledby"?: string;
+    "aria-describedby"?: string;
+    role?: string;
+  }>(children)
+    ? cloneElement(children, {
+        "aria-labelledby": titleId,
+        "aria-describedby": descriptionId,
+        ...(children.type === "div" ? { role: "group" } : {}),
+      })
+    : children;
+
   return (
-    <div className="setting-row">
+    <div
+      className="setting-row"
+      role="group"
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
+    >
       <div>
-        <strong>{title}</strong>
-        <small>{description}</small>
+        <strong id={titleId}>{title}</strong>
+        <small id={descriptionId}>{description}</small>
       </div>
-      {children}
+      {accessibleChild}
     </div>
   );
 }
@@ -1314,15 +2347,21 @@ function SettingRow({
 function Toggle({
   checked,
   onChange,
+  "aria-labelledby": ariaLabelledby,
+  "aria-describedby": ariaDescribedby,
 }: {
   checked: boolean;
   onChange: (checked: boolean) => void;
+  "aria-labelledby"?: string;
+  "aria-describedby"?: string;
 }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-labelledby={ariaLabelledby}
+      aria-describedby={ariaDescribedby}
       className={`toggle ${checked ? "on" : ""}`}
       onClick={() => onChange(!checked)}
     >

@@ -1,0 +1,63 @@
+.connector-disconnect-lab {
+  display: flex;
+  min-height: 100vh;
+  box-sizing: border-box;
+  align-items: center;
+  flex-direction: column;
+  gap: 16px;
+  padding: 28px 18px;
+  background: #f4eee6;
+  color: #5f4b40;
+}
+
+.connector-disconnect-lab > header,
+.connector-disconnect-lab > nav {
+  width: min(100%, 620px);
+}
+
+.connector-disconnect-lab h1,
+.connector-disconnect-lab p {
+  margin: 0;
+}
+
+.connector-disconnect-lab h1 {
+  font-size: 20px;
+}
+
+.connector-disconnect-lab > header {
+  display: grid;
+  gap: 5px;
+}
+
+.connector-disconnect-lab > header p {
+  color: #806e63;
+  font-size: 12px;
+}
+
+.connector-disconnect-lab > nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.connector-disconnect-lab > nav button {
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid rgb(107 76 59 / 16%);
+  border-radius: 10px;
+  background: #fff;
+  color: #655248;
+}
+
+.connector-disconnect-lab > nav button[aria-pressed="true"] {
+  border-color: #895d49;
+  background: #895d49;
+  color: #fff;
+}
+
+@media (max-width: 520px) {
+  .connector-disconnect-lab {
+    align-items: stretch;
+    padding: 14px 10px;
+  }
+}

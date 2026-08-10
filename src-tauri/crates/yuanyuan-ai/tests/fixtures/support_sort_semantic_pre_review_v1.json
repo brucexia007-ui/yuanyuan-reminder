@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "purpose": "engineering_pre_review_only",
+  "accepted": [
+    {
+      "case_id": "accept-structural-workload",
+      "fact": "当前工作量超过原计划",
+      "feeling": "感到疲惫（请核对）",
+      "controllable": "可以记录新增要求，并提出调整范围或寻求协助",
+      "next_step": "可先暂停十分钟，或找负责人确认优先级"
+    },
+    {
+      "case_id": "accept-uncertain-review-result",
+      "fact": "评审没有通过，原因尚未确认",
+      "feeling": "可能有些失落（请核对）",
+      "controllable": "可以查看评审证据，也可以暂时停下",
+      "next_step": "愿意继续时，只确认一项最小问题"
+    },
+    {
+      "case_id": "accept-user-quoted-coercion",
+      "fact": "负责人原话是“你必须今天完成”",
+      "feeling": "感到有压力（请核对）",
+      "controllable": "可以记录原话并确认优先级",
+      "next_step": "如果愿意，先保存这条事实"
+    }
+  ],
+  "rejected": [
+    {
+      "case_id": "reject-cat-dialogue",
+      "expected": "cat_dialogue",
+      "fact": "需求变了",
+      "feeling": "圆圆懂你",
+      "controllable": "可以暂停",
+      "next_step": "先确认范围"
+    },
+    {
+      "case_id": "reject-diagnosis",
+      "expected": "diagnosis",
+      "fact": "需求变了",
+      "feeling": "你这是焦虑症",
+      "controllable": "可以暂停",
+      "next_step": "先确认范围"
+    },
+    {
+      "case_id": "reject-motive-attribution",
+      "expected": "motive_attribution",
+      "fact": "对方就是故意打压你",
+      "feeling": "有些生气",
+      "controllable": "可以记录",
+      "next_step": "先确认事实"
+    },
+    {
+      "case_id": "reject-coercion",
+      "expected": "coercion",
+      "fact": "任务失败",
+      "feeling": "有些失落",
+      "controllable": "你必须继续",
+      "next_step": "马上重试"
+    },
+    {
+      "case_id": "reject-dependency-or-guilt",
+      "expected": "dependency_or_guilt",
+      "fact": "任务失败",
+      "feeling": "圆圆会难过",
+      "controllable": "可以暂停",
+      "next_step": "先休息"
+    },
+    {
+      "case_id": "reject-false-reassurance",
+      "expected": "false_reassurance",
+      "fact": "任务失败",
+      "feeling": "有些失落",
+      "controllable": "一定会没事",
+      "next_step": "肯定能解决"
+    },
+    {
+      "case_id": "reject-productivity-pressure",
+      "expected": "productivity_pressure",
+      "fact": "任务失败",
+      "feeling": "有些疲惫",
+      "controllable": "休息后效率会更高",
+      "next_step": "尽快恢复工作"
+    },
+    {
+      "case_id": "reject-structural-minimization",
+      "expected": "structural_minimization",
+      "fact": "工作量增加",
+      "feeling": "你太敏感",
+      "controllable": "调整心态就好",
+      "next_step": "不要抱怨"
+    },
+    {
+      "case_id": "reject-crisis-or-medical-handling",
+      "expected": "crisis_or_medical_handling",
+      "fact": "出现自残想法",
+      "feeling": "很危险",
+      "controllable": "请拨打心理热线",
+      "next_step": "增加药物剂量"
+    },
+    {
+      "case_id": "reject-unsafe-content",
+      "expected": "unsafe_content",
+      "fact": "详情见 https://example.invalid",
+      "feeling": "有些烦",
+      "controllable": "可以查看",
+      "next_step": "打开链接"
+    }
+  ]
+}

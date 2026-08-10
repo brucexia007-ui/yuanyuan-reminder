@@ -39,19 +39,19 @@
     infinite;
 }
 
-.pet-intent-bubble.alert-banner.activity-banner {
+.pet-system-card.alert-banner.activity-banner {
   border-color: rgb(121 157 112 / 24%);
   background:
     radial-gradient(circle at 92% 10%, rgb(213 242 209 / 64%), transparent 27%),
     rgb(255 253 249 / 98%);
 }
 
-.pet-intent-bubble.alert-banner.activity-banner::after {
+.pet-system-card.alert-banner.activity-banner::after {
   display: none;
   content: none;
 }
 
-.pet-intent-bubble.alert-banner.activity-banner small {
+.pet-system-card.alert-banner.activity-banner small {
   background: #e7f1df;
   color: #5f7f56;
 }
@@ -78,43 +78,49 @@
   display: none;
 }
 
-.pet-intent-bubble {
+.pet-system-card {
   position: absolute;
   z-index: 5;
   top: 6px;
   right: 6px;
-  display: flex;
-  width: auto;
-  max-width: 54px;
-  min-height: 24px;
+  display: grid;
+  width: min(156px, calc(100% - 12px));
+  max-width: calc(100% - 12px);
+  min-height: 42px;
+  grid-template-columns: auto minmax(0, 1fr);
   box-sizing: border-box;
   align-items: center;
-  padding: 4px 8px;
-  border: 1px solid rgb(87 68 54 / 12%);
-  border-radius: 999px;
-  background: rgb(255 252 247 / 88%);
+  padding: 7px 9px;
+  border: 1px solid rgb(87 68 54 / 18%);
+  border-left-width: 3px;
+  border-radius: 10px;
+  background: rgb(249 246 240 / 96%);
   color: #4d3d32;
   box-shadow: 0 4px 12px rgb(60 44 33 / 12%);
   cursor: pointer;
   overflow: hidden;
   text-align: left;
-  transition:
-    max-width 140ms ease,
-    border-radius 140ms ease,
-    background 140ms ease;
+  transition: background 140ms ease;
 }
 
-.pet-intent-bubble:hover,
-.pet-intent-bubble:focus-visible {
-  max-width: min(78%, 150px);
-  border-radius: 12px;
-  background: rgb(255 252 247 / 97%);
+.pet-system-card:hover,
+.pet-system-card:focus-visible {
+  background: rgb(255 253 249 / 99%);
   outline: none;
 }
 
-.pet-intent-bubble.alert-banner,
-.pet-intent-bubble.alert-banner:hover,
-.pet-intent-bubble.alert-banner:focus-visible {
+.pet-system-card[data-information-surface="timer"] {
+  border-left-color: #769b70;
+}
+
+.pet-system-card[data-information-surface="tool"] {
+  border-left-color: #9b7b5b;
+  background: rgb(248 244 237 / 97%);
+}
+
+.pet-system-card.alert-banner,
+.pet-system-card.alert-banner:hover,
+.pet-system-card.alert-banner:focus-visible {
   top: 10px;
   right: 10px;
   left: 10px;
@@ -122,6 +128,7 @@
   max-width: none;
   display: grid;
   min-height: 78px;
+  grid-template-columns: 1fr;
   padding: 13px 14px;
   border: 1px solid rgb(113 83 59 / 15%);
   border-radius: 23px;
@@ -134,12 +141,12 @@
     both;
 }
 
-.pet-intent-bubble.alert-banner.has-actions {
+.pet-system-card.alert-banner.has-actions {
   min-height: 112px;
   padding: 12px 14px;
 }
 
-.pet-intent-bubble.alert-banner::after {
+.pet-system-card.alert-banner::after {
   display: none;
   content: none;
 }
@@ -174,18 +181,18 @@
   font-size: 11px;
 }
 
-.pet-alert-copy .pet-bubble-detail {
+.pet-alert-copy .pet-card-detail {
   max-width: none;
   margin-left: 0;
   opacity: 1;
 }
 
-.pet-alert-copy .pet-bubble-detail strong {
+.pet-alert-copy .pet-card-detail strong {
   font-size: 16px;
   line-height: 1.25;
 }
 
-.pet-alert-copy .pet-bubble-detail > span {
+.pet-alert-copy .pet-card-detail > span {
   margin-top: 4px;
   color: #705f52;
   font-size: 12px;
@@ -197,6 +204,34 @@
   gap: 7px;
   margin-top: 9px;
   padding-left: 48px;
+}
+
+.pet-alert-snooze {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.pet-alert-snooze select {
+  min-height: 28px;
+  padding: 4px 5px;
+  border: 1px solid rgb(103 78 59 / 16%);
+  border-radius: 999px;
+  background: #fff;
+  color: #604c3e;
+  font: inherit;
+  font-size: 10px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .pet-alert-actions button {
@@ -229,50 +264,39 @@
   opacity: 0.55;
 }
 
-.pet-intent-bubble.bubble-left {
+.pet-system-card.card-left {
   right: auto;
   left: 6px;
 }
 
-.pet-intent-bubble small {
+.pet-system-card small {
   flex: 0 0 auto;
   font-size: 9px;
   font-weight: 760;
   white-space: nowrap;
 }
 
-.pet-bubble-detail {
+.pet-card-detail {
   display: flex;
   min-width: 0;
-  max-width: 0;
+  max-width: none;
   flex-direction: column;
-  margin-left: 0;
-  opacity: 0;
-  overflow: hidden;
-  transition:
-    max-width 140ms ease,
-    margin-left 140ms ease,
-    opacity 100ms ease;
-}
-
-.pet-intent-bubble:hover .pet-bubble-detail,
-.pet-intent-bubble:focus-visible .pet-bubble-detail {
-  max-width: 118px;
   margin-left: 7px;
   opacity: 1;
+  overflow: hidden;
 }
 
-.pet-bubble-detail > * {
+.pet-card-detail > * {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.pet-bubble-detail strong {
+.pet-card-detail strong {
   font-size: 10px;
 }
 
-.pet-bubble-detail > span {
+.pet-card-detail > span {
   color: #7d695b;
   font-size: 8px;
 }
@@ -282,6 +306,8 @@
 }
 
 .sprite-animator {
+  position: relative;
+  z-index: 2;
   width: 100%;
   height: 100%;
   background-repeat: no-repeat;
@@ -290,6 +316,342 @@
   filter: drop-shadow(0 4px 8px rgb(84 65 52 / 14%));
   transform-origin: center bottom;
   transition: transform 65ms linear;
+}
+
+.companion-prop-stage {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  pointer-events: none;
+}
+
+.companion-prop-open {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.companion-prop-open:focus-visible {
+  outline: 3px solid #6f8f78;
+  outline-offset: -4px;
+  border-radius: 14px;
+}
+
+.companion-prop {
+  position: absolute;
+  display: block;
+  box-sizing: border-box;
+  color: #58463a;
+  filter: drop-shadow(0 4px 5px rgb(68 48 34 / 18%));
+  font-family: "Microsoft YaHei UI", sans-serif;
+  animation: companion-prop-arrive 280ms cubic-bezier(0.18, 0.84, 0.28, 1.14)
+    both;
+}
+
+.companion-prop-computer {
+  right: 3px;
+  bottom: 7px;
+  width: 65px;
+  height: 47px;
+}
+
+.companion-computer-screen {
+  position: absolute;
+  inset: 0 5px 9px;
+  display: flex;
+  box-sizing: border-box;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid #715c4b;
+  border-radius: 5px;
+  background:
+    radial-gradient(circle at 70% 25%, rgb(255 255 255 / 45%), transparent 30%),
+    #c9dfd0;
+  line-height: 1.05;
+}
+
+.companion-computer-screen small {
+  color: #597060;
+  font-size: 7px;
+  font-weight: 700;
+}
+
+.companion-computer-screen strong {
+  margin-top: 2px;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.companion-computer-base {
+  position: absolute;
+  right: 0;
+  bottom: 4px;
+  left: 0;
+  height: 7px;
+  transform: perspective(12px) rotateX(14deg);
+  border-radius: 1px 1px 7px 7px;
+  background: #8a705b;
+}
+
+.companion-prop-bell {
+  top: 40px;
+  right: 15px;
+  width: 28px;
+  height: 31px;
+  transform-origin: 50% 10%;
+}
+
+.companion-prop-bell span {
+  position: absolute;
+  inset: 5px 4px 4px;
+  border-radius: 12px 12px 8px 8px;
+  background: linear-gradient(110deg, #f8d878, #c69b3d 68%, #f2cb65);
+}
+
+.companion-prop-bell span::before {
+  position: absolute;
+  top: -5px;
+  left: 7px;
+  width: 7px;
+  height: 6px;
+  border-radius: 5px 5px 2px 2px;
+  background: #b88b34;
+  content: "";
+}
+
+.companion-prop-bell span::after {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  left: -3px;
+  height: 5px;
+  border-radius: 999px;
+  background: #a87b2f;
+  content: "";
+}
+
+.attention-ring_once .companion-prop-bell {
+  animation: companion-bell-ring 720ms ease-in-out 120ms 1 both;
+}
+
+.companion-prop-task-card {
+  bottom: 9px;
+  left: 2px;
+  width: 52px;
+  min-height: 42px;
+  padding: 8px 5px 5px 11px;
+  transform: rotate(-3deg);
+  border: 1px solid rgb(102 76 56 / 19%);
+  border-radius: 5px;
+  background: linear-gradient(145deg, #fffaf0, #f1dfc7);
+}
+
+.companion-prop-task-card i {
+  position: absolute;
+  top: 8px;
+  left: 5px;
+  width: 3px;
+  height: 23px;
+  border-radius: 99px;
+  background: #db9a76;
+}
+
+.companion-prop-task-card strong,
+.companion-prop-task-card small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.companion-prop-task-card strong {
+  font-size: 9px;
+}
+
+.companion-prop-task-card small {
+  margin-top: 2px;
+  color: #8a6f5c;
+  font-size: 7px;
+}
+
+.companion-prop-task-card b,
+.companion-prop-basket b {
+  position: absolute;
+  top: -7px;
+  right: -6px;
+  min-width: 17px;
+  height: 17px;
+  box-sizing: border-box;
+  padding: 2px 4px;
+  border-radius: 999px;
+  background: #c76655;
+  color: #fff;
+  font-size: 8px;
+  line-height: 13px;
+  text-align: center;
+}
+
+.move-prop-forward .companion-prop-task-card {
+  animation: companion-card-forward 440ms cubic-bezier(0.18, 0.84, 0.28, 1.12)
+    both;
+}
+
+.companion-prop-basket {
+  bottom: 5px;
+  left: 8px;
+  width: 48px;
+  height: 28px;
+  border: 3px solid #a7784d;
+  border-top-width: 2px;
+  border-radius: 4px 4px 10px 10px;
+  background: repeating-linear-gradient(
+    90deg,
+    #d4a66f 0 6px,
+    #b98554 6px 9px
+  );
+}
+
+.companion-prop-basket span {
+  position: absolute;
+  right: 7px;
+  bottom: 20px;
+  left: 7px;
+  height: 17px;
+  border: 3px solid #a7784d;
+  border-bottom: 0;
+  border-radius: 16px 16px 0 0;
+}
+
+.queue-in-basket .companion-prop-task-card {
+  animation: companion-card-put-away 540ms ease-in-out both;
+}
+
+.companion-prop-prompter {
+  top: 8px;
+  left: 4px;
+  width: 70px;
+  height: 45px;
+  padding: 7px 7px 10px;
+  transform: rotate(-2deg);
+  border: 4px solid #725c4b;
+  border-radius: 7px;
+  background: #f8efdb;
+  text-align: center;
+}
+
+.companion-prop-prompter::after {
+  position: absolute;
+  bottom: -12px;
+  left: 28px;
+  width: 7px;
+  height: 10px;
+  border-radius: 0 0 3px 3px;
+  background: #725c4b;
+  content: "";
+}
+
+.companion-prop-prompter span {
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.companion-prop-system-card {
+  top: 8px;
+  right: 3px;
+  display: flex;
+  width: 66px;
+  height: 43px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 2px solid #829789;
+  border-radius: 8px;
+  background: #edf4ed;
+}
+
+.companion-prop-system-card i {
+  display: grid;
+  width: 15px;
+  height: 15px;
+  place-items: center;
+  border-radius: 50%;
+  background: #76947e;
+  color: #fff;
+  font-size: 9px;
+  font-style: normal;
+}
+
+.companion-prop-system-card strong {
+  font-size: 9px;
+}
+
+.motion-reduced .companion-prop,
+.motion-reduced.attention-ring_once .companion-prop-bell,
+.motion-reduced.move-prop-forward .companion-prop-task-card,
+.motion-reduced.queue-in-basket .companion-prop-task-card {
+  animation: none;
+}
+
+@keyframes companion-prop-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(7px) scale(0.94);
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes companion-bell-ring {
+  0%,
+  100% {
+    transform: rotate(0);
+  }
+
+  25% {
+    transform: rotate(14deg);
+  }
+
+  50% {
+    transform: rotate(-12deg);
+  }
+
+  75% {
+    transform: rotate(7deg);
+  }
+}
+
+@keyframes companion-card-forward {
+  from {
+    opacity: 0;
+    transform: translate(18px, 8px) rotate(7deg) scale(0.78);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(0) rotate(-3deg) scale(1);
+  }
+}
+
+@keyframes companion-card-put-away {
+  0% {
+    opacity: 1;
+    transform: translate(0) rotate(-3deg) scale(1);
+  }
+
+  78%,
+  100% {
+    opacity: 0.3;
+    transform: translate(13px, 25px) rotate(6deg) scale(0.65);
+  }
 }
 
 .pet-hit-region.petting-active {
@@ -518,5 +880,43 @@
 
   80% {
     transform: translateY(0) scaleY(0.985);
+  }
+}
+
+@media (forced-colors: active) {
+  .pet-system-card,
+  .pet-system-card.alert-banner,
+  .pet-system-card.alert-banner.activity-banner {
+    border-color: CanvasText;
+    background: Canvas;
+    color: CanvasText;
+    box-shadow: none;
+    forced-color-adjust: none;
+  }
+
+  .pet-alert-copy,
+  .pet-alert-actions button,
+  .pet-alert-snooze select {
+    border-color: ButtonText;
+    background: ButtonFace;
+    color: ButtonText;
+  }
+
+  .pet-alert-actions button.primary {
+    border-color: Highlight;
+    background: Highlight;
+    color: HighlightText;
+    forced-color-adjust: none;
+  }
+
+  .pet-system-card:focus-visible,
+  .companion-prop-open:focus-visible,
+  .pet-alert-copy:focus-visible,
+  .pet-alert-actions button:focus-visible:not(:disabled),
+  .pet-alert-snooze select:focus-visible,
+  .pet-head-zone:focus-visible,
+  .resize-handle:focus-visible {
+    outline: 3px solid Highlight;
+    outline-offset: 2px;
   }
 }

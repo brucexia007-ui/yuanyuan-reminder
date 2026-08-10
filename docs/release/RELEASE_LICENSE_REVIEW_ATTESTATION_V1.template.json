@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "mode": "release_license_review_attestation",
+  "reviewedAt": null,
+  "packetSha256": null,
+  "candidateManifestSha256": null,
+  "reviewer": {
+    "name": null,
+    "role": null,
+    "organization": null,
+    "humanReviewer": false
+  },
+  "context": {
+    "distributionChannel": null,
+    "publisherSubject": null,
+    "targetRegions": [],
+    "commercialUse": null
+  },
+  "decisions": {
+    "assetsRightsConfirmed": false,
+    "channelAndTrademarkTermsReviewed": false,
+    "distributionMaterialsMatchReviewed": false,
+    "fallbackMappingsReviewed": false,
+    "licenseExpressionsReviewed": false,
+    "mplSourceAvailabilityReviewed": false,
+    "noticeAndAttributionReviewed": false,
+    "professionalLegalReviewCompleted": false,
+    "thirdPartyModificationsDeclared": false,
+    "commercialAssetPermission": null
+  },
+  "unresolvedFindings": [],
+  "evidenceReferences": [
+    "docs/P0_THIRD_PARTY_LICENSE_QA_2026-08-09.md"
+  ],
+  "attestationText": "I attest that the named reviewer completed the candidate-specific license, NOTICE, source-availability, asset-rights, channel, trademark, and applicable professional legal review described by this packet, and that no unresolved finding remains."
+}

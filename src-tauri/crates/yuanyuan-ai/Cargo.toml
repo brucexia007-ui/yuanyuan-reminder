@@ -1,0 +1,49 @@
+[package]
+name = "yuanyuan-ai"
+version = "0.1.0"
+description = "Isolated task-watching and intelligence process for Yuanyuan"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[features]
+default = []
+retention-qa = []
+crash-privacy-qa = []
+
+[[bin]]
+name = "yuanyuan-retention-qa"
+path = "src/bin/retention_qa.rs"
+required-features = ["retention-qa"]
+
+[[bin]]
+name = "yuanyuan-crash-privacy-qa"
+path = "src/bin/crash_privacy_qa.rs"
+required-features = ["crash-privacy-qa"]
+
+[dependencies]
+getrandom = "0.3"
+rusqlite = { version = "0.37", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+zeroize = "1"
+yuanyuan-bridge = { path = "../yuanyuan-bridge" }
+yuanyuan-protocol = { path = "../yuanyuan-protocol" }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.60", features = [
+  "Win32_Foundation",
+  "Win32_Storage_FileSystem",
+  "Win32_System_ErrorReporting",
+  "Win32_System_IO",
+  "Win32_System_Pipes",
+  "Win32_System_Registry",
+  "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+tempfile = "3"
+yuanyuan-connectors = { path = "../yuanyuan-connectors" }

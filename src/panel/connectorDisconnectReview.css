@@ -1,0 +1,213 @@
+.connector-disconnect-review {
+  display: flex;
+  width: min(100%, 620px);
+  box-sizing: border-box;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid rgb(107 76 59 / 16%);
+  border-radius: 16px;
+  background: #fffaf3;
+  color: #5f4b40;
+}
+
+.connector-disconnect-review > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.connector-disconnect-review > header > div,
+.connector-disconnect-step,
+.connector-disconnect-result {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.connector-disconnect-review strong {
+  font-size: 13px;
+}
+
+.connector-disconnect-review small,
+.connector-disconnect-review p,
+.connector-disconnect-review li,
+.connector-disconnect-review label {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.connector-disconnect-review small,
+.connector-disconnect-review p,
+.connector-disconnect-review li {
+  color: #806e63;
+}
+
+.connector-disconnect-close {
+  min-width: 44px;
+  min-height: 36px;
+  border: 1px solid rgb(107 76 59 / 14%);
+  border-radius: 10px;
+  background: #fff;
+  color: #655248;
+}
+
+.connector-disconnect-modes {
+  display: grid;
+  min-width: 0;
+  min-inline-size: 0;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  margin: 0;
+}
+
+.connector-disconnect-modes legend {
+  padding: 0;
+  margin-bottom: 7px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.connector-disconnect-modes label {
+  display: grid;
+  width: 100%;
+  box-sizing: border-box;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgb(107 76 59 / 12%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 72%);
+  cursor: pointer;
+}
+
+.connector-disconnect-modes label:has(input:checked) {
+  border-color: #9c7762;
+  box-shadow: 0 0 0 2px rgb(156 119 98 / 10%);
+}
+
+.connector-disconnect-modes input,
+.connector-disconnect-acknowledgement input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: #895d49;
+}
+
+.connector-disconnect-modes span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.connector-disconnect-modes small,
+.connector-disconnect-summary,
+.connector-disconnect-notice,
+.connector-disconnect-result,
+.connector-disconnect-acknowledgement span {
+  overflow-wrap: anywhere;
+}
+
+.connector-disconnect-summary,
+.connector-disconnect-notice,
+.connector-disconnect-result {
+  padding: 11px;
+  border: 1px solid rgb(107 76 59 / 12%);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.connector-disconnect-summary ol,
+.connector-disconnect-progress {
+  display: grid;
+  gap: 5px;
+  padding-left: 20px;
+  margin: 7px 0 0;
+}
+
+.connector-disconnect-notice.danger,
+.connector-disconnect-result.danger {
+  border-color: rgb(157 70 58 / 30%);
+  background: #fff5f2;
+}
+
+.connector-disconnect-result.warning {
+  border-color: rgb(169 115 46 / 28%);
+  background: #fff9ea;
+}
+
+.connector-disconnect-result.success {
+  border-color: rgb(77 130 91 / 24%);
+  background: #f4fbf4;
+}
+
+.connector-disconnect-acknowledgement {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 10px;
+  border-radius: 11px;
+  background: rgb(137 93 73 / 7%);
+  cursor: pointer;
+}
+
+.connector-disconnect-gate,
+.connector-disconnect-invariant,
+.connector-disconnect-authority {
+  font-weight: 650;
+}
+
+.connector-disconnect-danger-button,
+.connector-disconnect-result button {
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 11px;
+  background: #995849;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.connector-disconnect-danger-button:disabled,
+.connector-disconnect-result button:disabled {
+  cursor: default;
+  opacity: 0.46;
+}
+
+.connector-disconnect-progress li[data-state="complete"],
+.connector-disconnect-progress li[data-state="skipped"] {
+  color: #4f7557;
+}
+
+.connector-disconnect-invariant {
+  padding-top: 9px;
+  border-top: 1px solid rgb(107 76 59 / 10%);
+}
+
+@media (max-width: 520px) {
+  .connector-disconnect-review {
+    width: 100%;
+    padding: 13px;
+    border-radius: 13px;
+  }
+
+  .connector-disconnect-review > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .connector-disconnect-close {
+    align-self: flex-end;
+  }
+
+  .connector-disconnect-modes label {
+    padding: 9px;
+  }
+}

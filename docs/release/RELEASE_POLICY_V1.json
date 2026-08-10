@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "product": {
+    "identifier": "com.yuanyuan.reminder",
+    "name": "圆圆提醒"
+  },
+  "distribution": {
+    "selectedChannel": "pending",
+    "allowedChannels": [
+      "microsoft_store",
+      "artifact_signing_public_trust",
+      "ca_code_signing_certificate"
+    ]
+  },
+  "signing": {
+    "publisherSubject": null,
+    "fileDigest": "sha256",
+    "timestampProtocol": "rfc3161",
+    "timestampDigest": "sha256",
+    "timestampUrl": null,
+    "requireOneCertificatePerRelease": true
+  },
+  "releaseArtifacts": [
+    "stable_core",
+    "nsis_installed_core",
+    "nsis_installer"
+  ],
+  "excludedPrototypeArtifacts": [
+    "bridge_prototype",
+    "ai_prototype"
+  ],
+  "manualReleaseGates": {
+    "minimumThirdPartySecurityProducts": 2,
+    "requireDefenderScan": true,
+    "requireSmartScreenCleanMachineObservation": true,
+    "requireUpgradeRollbackDrill": true,
+    "requireLicenseReview": true,
+    "requireRfc3161ProtocolEvidence": true,
+    "requireAccessibilityAcceptance": true
+  }
+}

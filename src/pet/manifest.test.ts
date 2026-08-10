@@ -70,6 +70,15 @@ describe("圆圆动画清单", () => {
     expect(animation.loopStart).toBe(0);
   });
 
+  it("没成功动作只播放一次，不让圆圆持续表现沮丧", () => {
+    expect(fallbackManifest.animations.failed.loopStart).toBeNull();
+  });
+
+  it("需要用户和检查动作只播放一次，不持续催促", () => {
+    expect(fallbackManifest.animations["alert-glass-paws"].loopStart).toBeNull();
+    expect(fallbackManifest.animations.review.loopStart).toBeNull();
+  });
+
   it("五组生活动作使用独立图集并保持八帧完整过渡", () => {
     for (const name of [
       "grooming",
@@ -128,7 +137,7 @@ describe("圆圆动画清单", () => {
     expect(fallbackManifest.animations["ball-carry"].row).toBe(18);
     expect(fallbackManifest.animations["ball-drop"].row).toBe(19);
     expect(fallbackManifest.animations["alert-glass-paws"].row).toBe(20);
-    expect(fallbackManifest.animations["alert-glass-paws"].loopStart).toBe(0);
+    expect(fallbackManifest.animations["alert-glass-paws"].loopStart).toBeNull();
   });
 
   it("keeps the complete grooming routine around eleven seconds", () => {

@@ -15,6 +15,8 @@ function reminder(patch: Partial<Reminder> = {}): Reminder {
     nextDueAt: "2026-07-25T10:30:00+08:00",
     createdAt: "2026-07-25T09:00:00+08:00",
     updatedAt: "2026-07-25T09:00:00+08:00",
+    archivedAt: null,
+    systemKind: null,
     ...patch,
   };
 }
@@ -29,6 +31,7 @@ function occurrence(patch: Partial<Occurrence> = {}): Occurrence {
     status: "pending",
     actedAt: null,
     snoozedUntil: null,
+    resolutionReason: null,
     ...patch,
   };
 }

@@ -91,10 +91,10 @@ export const fallbackManifest: PetManifest = {
       durations: [150, 115, 105, 110, 150, 110, 105, 125],
       loopStart: 0,
     },
-    failed: { ...row(5, 8, 180, 320), loopStart: 3 },
+    failed: { ...row(5, 8, 180, 320), loopStart: null },
     waiting: row(6, 6, 180, 320),
     running: row(7, 6, 150, 240),
-    review: row(8, 6, 180, 300),
+    review: { ...row(8, 6, 180, 300), loopStart: null },
     "sleep-enter": {
       ...row(0, 8, 120, 180),
       sheet: "sleep",
@@ -190,7 +190,7 @@ export const fallbackManifest: PetManifest = {
     },
     "alert-glass-paws": {
       ...lifeRow(20, [190, 150, 145, 190, 170, 150, 145, 210]),
-      loopStart: 0,
+      loopStart: null,
     },
   },
 };

@@ -1,6 +1,11 @@
+[workspace]
+members = ["crates/yuanyuan-protocol", "crates/yuanyuan-bridge", "crates/yuanyuan-ai", "crates/yuanyuan-connectors"]
+default-members = [".", "crates/yuanyuan-protocol", "crates/yuanyuan-bridge", "crates/yuanyuan-ai", "crates/yuanyuan-connectors"]
+resolver = "2"
+
 [package]
 name = "yuanyuan-reminder"
-version = "1.3.2"
+version = "1.4.0"
 description = "独立运行的圆圆桌面提醒工具"
 authors = ["Yuanyuan"]
 edition = "2021"
@@ -11,18 +16,46 @@ repository = "https://github.com/brucexia007-ui/yuanyuan-reminder"
 name = "yuanyuan_reminder_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+default = []
+runtime-qa = []
+migration-qa = []
+
+[[bin]]
+name = "yuanyuan-task-watch-fixture"
+path = "src/bin/task_watch_fixture.rs"
+required-features = ["runtime-qa"]
+
+[[bin]]
+name = "yuanyuan-runtime-qa-fixture"
+path = "src/bin/runtime_qa_fixture.rs"
+required-features = ["runtime-qa"]
+
+[[bin]]
+name = "yuanyuan-database-migration-qa"
+path = "src/bin/database_migration_qa.rs"
+required-features = ["migration-qa"]
+
+[[bin]]
+name = "yuanyuan-database-migration-qa-capture"
+path = "src/bin/database_runtime_fixture.rs"
+required-features = ["migration-qa"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde", "clock"] }
+dirs = "6"
 iana-time-zone = "0.1"
 parking_lot = "0.12"
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.37", features = ["bundled", "backup"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-autostart = "2"
+tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-single-instance = "2"
 thiserror = "2"
@@ -31,15 +64,30 @@ tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 tokio = { version = "1", features = ["time"] }
 uuid = { version = "1", features = ["v4", "serde"] }
+zeroize = "1"
 
 [target.'cfg(windows)'.dependencies]
+yuanyuan-ai = { path = "crates/yuanyuan-ai" }
+yuanyuan-bridge = { path = "crates/yuanyuan-bridge" }
+yuanyuan-connectors = { path = "crates/yuanyuan-connectors" }
+yuanyuan-protocol = { path = "crates/yuanyuan-protocol" }
 windows-sys = { version = "0.60", features = [
   "Win32_Foundation",
+  "Win32_Security_Cryptography",
+  "Win32_Security_Cryptography_Catalog",
+  "Win32_Security_Cryptography_Sip",
+  "Win32_Security_WinTrust",
+  "Win32_Storage_FileSystem",
+  "Win32_Storage_Packaging_Appx",
+  "Win32_System_Registry",
   "Win32_System_Shutdown",
   "Win32_System_SystemInformation",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_WindowsAndMessaging",
 ] }
+
+[dev-dependencies]
+tempfile = "3"
 
 [profile.release]
 strip = "symbols"

@@ -1,0 +1,148 @@
+{
+  "manifest_version": 1,
+  "captured_at": null,
+  "provenance": "Current official Codex and Claude Code hook documentation reviewed 2026-08-04; every payload remains synthetic until real redacted capture",
+  "release_evidence": false,
+  "fixtures": [
+    {
+      "path": "codex/notify_succeeded.json",
+      "source": "openai.codex",
+      "interface": "notify",
+      "source_version": "official_docs_reviewed_2026-08-04_payload_synthetic",
+      "event_semantics": "agent turn ended; mapped to succeeded only with partial evidence",
+      "authority": "partial",
+      "sensitive_fields": ["cwd", "input_messages", "last_assistant_message"],
+      "authenticity": "synthetic_contract"
+    },
+    {
+      "path": "codex/hook_running.json",
+      "source": "openai.codex",
+      "interface": "hooks",
+      "source_version": "official_docs_reviewed_2026-08-04_and_desktop_26.727.6591.0_vocabulary_observed_payload_synthetic",
+      "event_semantics": "session start maps to running with partial evidence",
+      "authority": "partial",
+      "sensitive_fields": ["cwd", "transcript_path"],
+      "authenticity": "synthetic_contract"
+    },
+    {
+      "path": "codex/hook_waiting_user.json",
+      "source": "openai.codex",
+      "interface": "hooks",
+      "source_version": "official_docs_reviewed_2026-08-04_payload_synthetic",
+      "event_semantics": "permission request requires user attention; connector returns no decision",
+      "authority": "authoritative_event_limited_compatibility",
+      "sensitive_fields": ["tool_input"],
+      "authenticity": "synthetic_contract"
+    },
+    {
+      "path": "codex/hook_stop_ambiguous.json",
+      "source": "openai.codex",
+      "interface": "hooks",
+      "source_version": "official_docs_reviewed_2026-08-04_payload_synthetic",
+      "event_semantics": "stop is not treated as proof of success or failure",
+      "authority": "partial",
+      "sensitive_fields": [],
+      "authenticity": "synthetic_contract"
+    },
+    {
+      "path": "codex/missing_identity.json",
+      "source": "openai.codex",
+      "interface": "hooks",
+      "source_version": "official_docs_reviewed_2026-08-04_payload_synthetic",
+      "event_semantics": "missing stable identity is ignored",
+      "authority": "none",
+      "sensitive_fields": [],
+      "authenticity": "synthetic_contract"
+    },
+    {
+      "path": "claude/task_created.json",
+      "source": "anthropic.claude-code",
+      "interface": "hooks",
+      "source_version": "official_docs_reviewed_2026-08-04_payload_synthetic",
+      "event_semantics": "task created maps to running",
+      "authority": "partial",
+      "sensitive_fields": [],
+      "authenticity": "synthetic_contract"
+    },
+    {
+      "path": "claude/permission_request.json",
+      "source": "anthropic.claude-code",
+      "interface": "hooks",
+      "source_version": "official_docs_reviewed_2026-08-04_payload_synthetic",
+      "event_semantics": "permission request maps to waiting_user without a decision",
+      "authority": "partial",
+      "sensitive_fields": ["tool_input"],
+      "authenticity": "synthetic_contract"
+    },
+    {
+      "path": "claude/task_completed_succeeded.json",
+      "source": "anthropic.claude-code",
+      "interface": "hooks",
+      "source_version": "official_docs_reviewed_2026-08-04_payload_synthetic",
+      "event_semantics": "TaskCompleted itself indicates completion; synthetic status is ignored",
+      "authority": "authoritative_event_limited_compatibility",
+      "sensitive_fields": [],
+      "authenticity": "synthetic_contract"
+    },
+    {
+      "path": "claude/task_completed_failed.json",
+      "source": "anthropic.claude-code",
+      "interface": "hooks",
+      "source_version": "official_docs_reviewed_2026-08-04_payload_synthetic",
+      "event_semantics": "undocumented synthetic failed status cannot override official TaskCompleted completion semantics",
+      "authority": "authoritative_event_limited_compatibility",
+      "sensitive_fields": [],
+      "authenticity": "synthetic_contract"
+    },
+    {
+      "path": "claude/task_completed_cancelled.json",
+      "source": "anthropic.claude-code",
+      "interface": "hooks",
+      "source_version": "official_docs_reviewed_2026-08-04_payload_synthetic",
+      "event_semantics": "undocumented synthetic cancelled status cannot override official TaskCompleted completion semantics",
+      "authority": "authoritative_event_limited_compatibility",
+      "sensitive_fields": [],
+      "authenticity": "synthetic_contract"
+    },
+    {
+      "path": "claude/post_tool_failure.json",
+      "source": "anthropic.claude-code",
+      "interface": "hooks",
+      "source_version": "official_docs_reviewed_2026-08-04_payload_synthetic",
+      "event_semantics": "tool failure keeps the task running and cannot prove task failure",
+      "authority": "partial",
+      "sensitive_fields": ["tool_input", "tool_response"],
+      "authenticity": "synthetic_contract"
+    },
+    {
+      "path": "claude/out_of_order_newer.json",
+      "source": "anthropic.claude-code",
+      "interface": "hooks",
+      "source_version": "official_docs_reviewed_2026-08-04_payload_synthetic",
+      "event_semantics": "newer half of an out-of-order pair preserves source sequence 8",
+      "authority": "partial",
+      "sensitive_fields": [],
+      "authenticity": "synthetic_contract"
+    },
+    {
+      "path": "claude/out_of_order_older.json",
+      "source": "anthropic.claude-code",
+      "interface": "hooks",
+      "source_version": "official_docs_reviewed_2026-08-04_payload_synthetic",
+      "event_semantics": "older half of an out-of-order pair preserves source sequence 7",
+      "authority": "partial",
+      "sensitive_fields": [],
+      "authenticity": "synthetic_contract"
+    },
+    {
+      "path": "claude/unknown_version_extra_fields.json",
+      "source": "anthropic.claude-code",
+      "interface": "hooks",
+      "source_version": "future-99",
+      "event_semantics": "unknown version with extra fields can only emit unknown provisional state",
+      "authority": "unknown",
+      "sensitive_fields": [],
+      "authenticity": "synthetic_contract"
+    }
+  ]
+}

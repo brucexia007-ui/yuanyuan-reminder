@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-08-05",
+  "releaseCandidateSha256": null,
+  "rfc3161ProtocolVerified": false,
+  "smartScreenCleanMachineObserved": false,
+  "thirdPartySecurityProductsVerified": 0,
+  "upgradeRollbackDrillVerified": false,
+  "licenseReviewVerified": false,
+  "accessibilityAcceptanceVerified": false,
+  "evidenceReferences": []
+}

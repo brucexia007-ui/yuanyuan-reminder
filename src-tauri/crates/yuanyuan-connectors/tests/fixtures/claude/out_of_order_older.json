@@ -1,0 +1,7 @@
+{
+  "hook_event_name": "TaskCreated",
+  "session_id": "claude-session-fixture-005",
+  "task_id": "claude-task-fixture-005",
+  "timestamp": "2026-08-04T09:17:00Z",
+  "sequence": 7
+}

@@ -1,0 +1,9 @@
+{
+  "type": "agent-turn-complete",
+  "thread-id": "codex-thread-fixture-001",
+  "cwd": "C:\\Users\\fixture\\private-project",
+  "input_messages": ["secret prompt"],
+  "last_assistant_message": "private source",
+  "timestamp": "2026-08-04T09:00:00Z",
+  "sequence": 10
+}

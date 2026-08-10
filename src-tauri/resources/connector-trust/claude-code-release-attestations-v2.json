@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 2,
+  "entries": [
+    {
+      "version": "2.1.211",
+      "platform": "win32-arm64",
+      "sha256": "a0f9bab0dbdda9b43a8765d54e329e44484d9dd7d4f40cf31db6eee27a2da41c",
+      "manifestSha256": "750cb326e4b6662c5a086acc970017d6f2da9279a1fa02d9f8a25eb053a43032",
+      "signingKeyFingerprint": "31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE"
+    },
+    {
+      "version": "2.1.211",
+      "platform": "win32-x64",
+      "sha256": "3d8509ae7de11d77dbdc711aa320fc6d5064ce795464a8670696611b57093caf",
+      "manifestSha256": "750cb326e4b6662c5a086acc970017d6f2da9279a1fa02d9f8a25eb053a43032",
+      "signingKeyFingerprint": "31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE"
+    }
+  ]
+}

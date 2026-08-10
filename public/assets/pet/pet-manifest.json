@@ -53,7 +53,7 @@
       "row": 5,
       "frames": [0, 1, 2, 3, 4, 5, 6, 7],
       "durations": [180, 180, 180, 180, 180, 180, 180, 320],
-      "loopStart": 3
+      "loopStart": null
     },
     "waiting": {
       "row": 6,
@@ -71,7 +71,7 @@
       "row": 8,
       "frames": [0, 1, 2, 3, 4, 5],
       "durations": [180, 180, 180, 180, 180, 300],
-      "loopStart": 0
+      "loopStart": null
     },
     "sleep-enter": {
       "sheet": "sleep",
@@ -246,7 +246,7 @@
       "row": 20,
       "frames": [0, 1, 2, 3, 4, 5, 6, 7],
       "durations": [190, 150, 145, 190, 170, 150, 145, 210],
-      "loopStart": 0
+      "loopStart": null
     }
   }
 }
