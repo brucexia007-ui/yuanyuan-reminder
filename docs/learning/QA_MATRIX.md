@@ -16,8 +16,8 @@
 | AI 连续服务并行退出 | `cargo test -p yuanyuan-ai --lib` | 修复测试等待与现有 3 秒硬传输预算不一致的竞态；默认并行 10/10 轮（每轮 116 项）及 workspace 复验通过，生产超时未放宽 |
 | 仓库总质量门 | `npm.cmd run verify` | 通过；迁移、保留、安全、发布证据合同、许可证和宠物包验证全部完成 |
 | pre-GEN 文件读取+纯解析性能与协作检查 | `learning-pack-parse-spike-20260824T175724Z.json` + 性能/隔离 verifier | 30/30；20,000 卡 JSON/CSV 同时达到 26,020,105/26,120,061 bytes，内部管线 P95 481.523/359.907 ms，峰值 working set 123,691,008/75,395,072 bytes；三类进度检查点、独立 16 KiB 解码输入与单卡内部取消探针（含 Unicode 规范化输入和 CSV 分隔符/可选字段扫描）、JSON 九阶段/CSV 八阶段、≤256 回调和 `complete/cards` 终态均经复核；6 项隔离门测试及当前 metadata/源码/配置/产物扫描证明未接入应用、Tauri、SQLite、网络或发布能力；零数据库写入。未覆盖 Tauri 后台/IPC/WebView、OS 单次读取阻塞、文件替换 token 或真实导入 |
-| 默认 Tauri 产物 | `npm.cmd run tauri build` | 通过；NSIS 构建成功，最终 `dist` 再验为学习关闭 |
-| 学习 Tauri 编译 | `VITE_FEATURE_LEARNING=1` 与 `tauri build --features learning` | 通过；仅内部构建验证，不可发布；随后已由默认关闭构建覆盖 |
+| 默认 Tauri 产物 | `npm.cmd run tauri build` + [QA-003](./QA_003_CLEAN_COMMIT_DUAL_BUILD_EVIDENCE.md) | 通过；从干净提交构建 Stable NSIS，最终 `dist` 再验为学习关闭 |
+| 学习 Tauri 编译 | `npm.cmd run learning:desktop:build` + [QA-003](./QA_003_CLEAN_COMMIT_DUAL_BUILD_EVIDENCE.md) | 通过；从同一干净提交构建内部 Preview NSIS，个人内容边界通过；随后由默认关闭构建覆盖 |
 | 个人词包与安装包 | `npm.cmd run learning:personal:prepare`、`learning:personal:desktop:build` | 通过；固定源 SHA-256，4533 卡、0 跳过；个人 NSIS 构建成功 |
 | 安装态数据库 | 安装并启动个人版后只读核验 | 通过；进程响应正常，`quick_check=ok`，schema v3，4533 卡，客观题与回看表存在 |
 | 格式与补丁卫生 | `cargo fmt --all -- --check`、`git diff --check` | 通过 |
