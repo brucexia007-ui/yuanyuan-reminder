@@ -23,9 +23,9 @@ function buildInputs() {
   const productionExpressions = [
     "MPL-2.0",
     "MIT",
-    ...Array.from({ length: 20 }, (_, index) => `License-${String(index).padStart(2, "0")}`),
+    ...Array.from({ length: 22 }, (_, index) => `License-${String(index).padStart(2, "0")}`),
   ].sort((left, right) => left.localeCompare(right, "en"));
-  const thirdParty = Array.from({ length: 301 }, (_, index) => ({
+  const thirdParty = Array.from({ length: 326 }, (_, index) => ({
     purl: `pkg:cargo/third-party-${String(index).padStart(3, "0")}@1.0.0`,
     scope: "required",
     licenses: [productionExpressions[index % productionExpressions.length]],
@@ -37,7 +37,7 @@ function buildInputs() {
     licenses: ["MIT"],
   }));
   const excludedExpressions = ["BSD-2-Clause", "CC-BY-4.0", "ISC", "MIT-0"];
-  const excluded = Array.from({ length: 201 }, (_, index) => ({
+  const excluded = Array.from({ length: 202 }, (_, index) => ({
     purl: `pkg:npm/excluded-${String(index).padStart(3, "0")}@1.0.0`,
     scope: "excluded",
     licenses: [excludedExpressions[index % excludedExpressions.length]],
@@ -79,16 +79,16 @@ function buildInputs() {
       url: `https://example.test/${encodeURIComponent(component.purl)}`,
     })),
   };
-  // Keep the frozen five-item MPL source contract exercised by the packet.
-  licensePolicy.sourceAvailability = licensePolicy.sourceAvailability.slice(0, 5);
-  for (let index = 5; index < mplComponents.length; index += 1) {
+  // Keep the frozen six-item MPL source contract exercised by the packet.
+  licensePolicy.sourceAvailability = licensePolicy.sourceAvailability.slice(0, 6);
+  for (let index = 6; index < mplComponents.length; index += 1) {
     mplComponents[index].licenses = [productionExpressions[1]];
   }
   const inventory = {
     schemaVersion: 1,
     productVersion: "1.4.0",
     reviewStatus: "not_performed",
-    summary: { components: 507, unresolved: 0, uniqueLicenseExpressions: 26 },
+    summary: { components: 533, unresolved: 0, uniqueLicenseExpressions: 28 },
     licenseExpressions: [...productionExpressions, ...excludedExpressions]
       .filter((value, index, array) => array.indexOf(value) === index)
       .sort((left, right) => left.localeCompare(right, "en")),
@@ -105,7 +105,7 @@ function buildInputs() {
       licenses: component.licenses.map((expression) => ({ expression })),
     })),
   };
-  const fallbackMappings = Array.from({ length: 11 }, (_, index) => ({
+  const fallbackMappings = Array.from({ length: 12 }, (_, index) => ({
     purl: `pkg:cargo/fallback-${index}@1.0.0`,
     selectedLicense: "MIT",
     reason: "reviewed_test_fallback",
@@ -138,7 +138,7 @@ function buildInputs() {
     sbom,
     materials,
     fallbackMappings,
-    archiveProductionComponents: 301,
+    archiveProductionComponents: 326,
   });
   return { manifest, manifestBytes, releasePolicy, packet };
 }
@@ -177,12 +177,12 @@ function buildAttestation(packet, packetSha256) {
 
 test("builds the frozen candidate-specific manual review contract", () => {
   const { packet } = buildInputs();
-  assert.equal(packet.inventory.lockedComponents, 507);
-  assert.equal(packet.inventory.productionComponents, 306);
-  assert.equal(packet.inventory.thirdPartyProductionComponents, 301);
-  assert.equal(packet.inventory.productionLicenseExpressions.length, 22);
-  assert.equal(packet.inventory.fallbackMappings.length, 11);
-  assert.equal(packet.inventory.mplSourceAvailability.length, 5);
+  assert.equal(packet.inventory.lockedComponents, 533);
+  assert.equal(packet.inventory.productionComponents, 331);
+  assert.equal(packet.inventory.thirdPartyProductionComponents, 326);
+  assert.equal(packet.inventory.productionLicenseExpressions.length, 24);
+  assert.equal(packet.inventory.fallbackMappings.length, 12);
+  assert.equal(packet.inventory.mplSourceAvailability.length, 6);
   assert.deepEqual(packet.reviewContract.requiredDecisionFields, LICENSE_REVIEW_DECISION_FIELDS);
 });
 

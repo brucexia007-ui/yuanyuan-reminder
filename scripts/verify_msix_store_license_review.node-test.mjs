@@ -25,13 +25,13 @@ function fixture() {
   const productionExpressions = [
     "MPL-2.0",
     "MIT",
-    ...Array.from({ length: 20 }, (_, index) => `License-${String(index).padStart(2, "0")}`),
+    ...Array.from({ length: 22 }, (_, index) => `License-${String(index).padStart(2, "0")}`),
   ].sort((left, right) => left.localeCompare(right, "en"));
   const nonMplExpressions = productionExpressions.filter((item) => item !== "MPL-2.0");
-  const thirdParty = Array.from({ length: 301 }, (_, index) => ({
+  const thirdParty = Array.from({ length: 326 }, (_, index) => ({
     purl: `pkg:cargo/third-party-${String(index).padStart(3, "0")}@1.0.0`,
     scope: "required",
-    licenses: [index < 5 ? "MPL-2.0" : nonMplExpressions[(index - 5) % nonMplExpressions.length]],
+    licenses: [index < 6 ? "MPL-2.0" : nonMplExpressions[(index - 6) % nonMplExpressions.length]],
   }));
   const firstParty = ["ai", "bridge", "connectors", "protocol", "reminder"].map(
     (name, index) => ({
@@ -41,7 +41,7 @@ function fixture() {
     }),
   );
   const excludedExpressions = ["BSD-2-Clause", "CC-BY-4.0", "ISC", "MIT-0"];
-  const excluded = Array.from({ length: 201 }, (_, index) => ({
+  const excluded = Array.from({ length: 202 }, (_, index) => ({
     purl: `pkg:npm/excluded-${String(index).padStart(3, "0")}@1.0.0`,
     scope: "excluded",
     licenses: [excludedExpressions[index % excludedExpressions.length]],
@@ -51,7 +51,7 @@ function fixture() {
     schemaVersion: 1,
     productVersion: "1.4.0",
     reviewStatus: "not_performed",
-    summary: { components: 507, unresolved: 0, uniqueLicenseExpressions: 26 },
+    summary: { components: 533, unresolved: 0, uniqueLicenseExpressions: 28 },
     licenseExpressions: [...productionExpressions, ...excludedExpressions].sort((left, right) =>
       left.localeCompare(right, "en"),
     ),
@@ -97,14 +97,14 @@ function fixture() {
     releaseTarget: "x86_64-pc-windows-msvc",
     noticeArchiveRequired: true,
     permittedProductionLicenseExpressions: productionExpressions,
-    sourceAvailability: thirdParty.slice(0, 5).map((component) => ({
+    sourceAvailability: thirdParty.slice(0, 6).map((component) => ({
       purl: component.purl,
       url: `https://example.test/${encodeURIComponent(component.purl)}`,
     })),
   };
   const sourceBytes = {
     assetsLicense: Buffer.from("asset license"),
-    licenseArchive: Buffer.from("Third-party production components: 301\nlicense archive"),
+    licenseArchive: Buffer.from("Third-party production components: 326\nlicense archive"),
     projectLicense: Buffer.from("MIT license"),
     thirdPartyNotices: Buffer.from("third-party notices"),
   };
@@ -139,7 +139,7 @@ function fixture() {
       })),
     },
     compliance: {
-      sbom: { totalComponents: 507, requiredComponents: 306 },
+      sbom: { totalComponents: 533, requiredComponents: 331 },
       licenseInventory: { unresolved: 0 },
       bundledLicensePaths: Object.keys(payloadPathToMaterial).sort(),
     },
@@ -168,7 +168,7 @@ function fixture() {
     licenseInventorySha256: sha256(materialArtifacts.licenseInventory),
   };
   materialArtifacts.storeReleaseManifest = jsonBytes(storeReleaseManifest);
-  const fallbackMappings = Array.from({ length: 11 }, (_, index) => ({
+  const fallbackMappings = Array.from({ length: 12 }, (_, index) => ({
     purl: `pkg:cargo/fallback-${index}@1.0.0`,
     selectedLicense: "MIT",
     reason: "reviewed_test_fallback",
@@ -186,7 +186,7 @@ function fixture() {
     sbom,
     materialArtifacts,
     fallbackMappings,
-    archiveProductionComponents: 301,
+    archiveProductionComponents: 326,
     generatorBytes: Buffer.from("Store license packet generator"),
   });
   const packetBytes = Buffer.from(canonicalMsixStoreLicenseReviewPacketText(packet));
@@ -248,12 +248,12 @@ function rejects(input, pattern) {
 
 test("builds and accepts the Store-specific frozen human license review", () => {
   const input = fixture();
-  assert.equal(input.packet.inventory.lockedComponents, 507);
-  assert.equal(input.packet.inventory.productionComponents, 306);
-  assert.equal(input.packet.inventory.thirdPartyProductionComponents, 301);
-  assert.equal(input.packet.inventory.productionLicenseExpressions.length, 22);
-  assert.equal(input.packet.inventory.fallbackMappings.length, 11);
-  assert.equal(input.packet.inventory.mplSourceAvailability.length, 5);
+  assert.equal(input.packet.inventory.lockedComponents, 533);
+  assert.equal(input.packet.inventory.productionComponents, 331);
+  assert.equal(input.packet.inventory.thirdPartyProductionComponents, 326);
+  assert.equal(input.packet.inventory.productionLicenseExpressions.length, 24);
+  assert.equal(input.packet.inventory.fallbackMappings.length, 12);
+  assert.equal(input.packet.inventory.mplSourceAvailability.length, 6);
   assert.equal(validateMsixStoreLicenseReviewAcceptance(input.document, input), input.document);
 });
 

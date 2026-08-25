@@ -19,6 +19,8 @@ npm.cmd run release:unified-candidate:freeze
 npm.cmd run release:unified-candidate:verify-current
 ```
 
+`npm.cmd run verify` 只验证源码、自动测试以及发布证据的结构合同。它不会复用或认可 `src-tauri/target/release` 中旧 v1.4 候选的哈希、探针结果和人工签字。签名、安全软件、SmartScreen、无障碍、升级回退与真实 Windows 人工证据必须在冻结精确的 v1.5 候选后重新生成并绑定该候选。
+
 准备实际发布时，最后一步改为：
 
 ```powershell

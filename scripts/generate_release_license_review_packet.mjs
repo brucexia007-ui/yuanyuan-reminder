@@ -189,9 +189,9 @@ export function createReleaseLicenseReviewPacket({
     typeof manifestSha256 !== "string" ||
     !/^[A-F0-9]{64}$/.test(manifestSha256) ||
     archiveProductionComponents !== thirdPartyProductionComponents ||
-    fallbackMappings.length !== 11 ||
-    licensePolicy.permittedProductionLicenseExpressions.length !== 22 ||
-    licensePolicy.sourceAvailability.length !== 5
+    fallbackMappings.length !== 12 ||
+    licensePolicy.permittedProductionLicenseExpressions.length !== 24 ||
+    licensePolicy.sourceAvailability.length !== 6
   ) {
     throw new Error("license_review_packet_frozen_inventory_count_mismatch");
   }

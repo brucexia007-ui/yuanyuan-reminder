@@ -33,6 +33,14 @@ const LICENSE_FALLBACKS = new Map([
     },
   ],
   [
+    "pkg:cargo/priority-queue@2.7.0",
+    {
+      sourcePurl: "pkg:cargo/cssparser@0.36.0",
+      selectedLicense: "MPL-2.0",
+      reason: "selected_standard_mpl_2_0_text",
+    },
+  ],
+  [
     "pkg:cargo/tauri-plugin@2.6.3",
     {
       sourcePurl: "pkg:cargo/tauri-build@2.6.3",
@@ -121,6 +129,7 @@ function normalizeLicenseText(bytes, purl, fileName) {
     .toString("utf8")
     .replace(/^\uFEFF/, "")
     .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+$/gm, "")
     .trimEnd();
 }
 
@@ -181,7 +190,9 @@ export function validateLicensePolicy(policy, entries) {
     return false;
   }
   const mplPurls = entries
-    .filter((entry) => entry.license === "MPL-2.0")
+    .filter(
+      (entry) => entry.license === "MPL-2.0" || entry.selectedLicense === "MPL-2.0",
+    )
     .map((entry) => entry.purl)
     .sort((left, right) => left.localeCompare(right, "en"));
   const sourcePurls = [];
@@ -408,7 +419,18 @@ export async function buildLicenseArchive() {
   const purls = new Set(entries.map((entry) => entry.purl));
   if (purls.size !== entries.length) throw new Error("duplicate production dependency purl");
   if (!validateLicensePolicy(licensePolicy, entries)) {
-    throw new Error("third-party production license policy is stale or inconsistent");
+    const expectedExpressions = [...new Set(entries.map((entry) => entry.license))].sort(
+      (left, right) => left.localeCompare(right, "en"),
+    );
+    const expectedSourcePurls = entries
+      .filter(
+        (entry) => entry.license === "MPL-2.0" || entry.selectedLicense === "MPL-2.0",
+      )
+      .map((entry) => entry.purl)
+      .sort((left, right) => left.localeCompare(right, "en"));
+    throw new Error(
+      `third-party production license policy is stale or inconsistent; expected expressions ${JSON.stringify(expectedExpressions)}; expected source purls ${JSON.stringify(expectedSourcePurls)}`,
+    );
   }
   const sourceAvailability = new Map(
     licensePolicy.sourceAvailability.map((item) => [item.purl, item.url]),

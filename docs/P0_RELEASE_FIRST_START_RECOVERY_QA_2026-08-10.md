@@ -52,7 +52,7 @@
 ```powershell
 npm.cmd run release:first-start-recovery
 npm.cmd run release:first-start-recovery:evidence:test
-npm.cmd run release:first-start-recovery:verify
+npm.cmd run history:v1-4:first-start-recovery:verify
 node scripts/generate_release_preflight.mjs
 ```
 

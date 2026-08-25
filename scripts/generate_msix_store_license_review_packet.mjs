@@ -166,11 +166,11 @@ function validateInventory({ storeReleaseManifest, licensePolicy, inventory, sbo
     inventory?.schemaVersion !== 1 ||
     inventory.productVersion !== productVersion ||
     inventory.reviewStatus !== "not_performed" ||
-    inventory.summary?.components !== 507 ||
+    inventory.summary?.components !== 533 ||
     inventory.summary?.unresolved !== 0 ||
     inventory.summary?.uniqueLicenseExpressions !== inventory.licenseExpressions?.length ||
     !Array.isArray(inventory.components) ||
-    inventory.components.length !== 507 ||
+    inventory.components.length !== 533 ||
     !Array.isArray(inventory.licenseExpressions) ||
     !Array.isArray(inventory.unresolvedComponents) ||
     inventory.unresolvedComponents.length !== 0 ||
@@ -183,9 +183,9 @@ function validateInventory({ storeReleaseManifest, licensePolicy, inventory, sbo
     licensePolicy.releaseTarget !== "x86_64-pc-windows-msvc" ||
     licensePolicy.noticeArchiveRequired !== true ||
     !Array.isArray(licensePolicy.permittedProductionLicenseExpressions) ||
-    licensePolicy.permittedProductionLicenseExpressions.length !== 22 ||
+    licensePolicy.permittedProductionLicenseExpressions.length !== 24 ||
     !Array.isArray(licensePolicy.sourceAvailability) ||
-    licensePolicy.sourceAvailability.length !== 5
+    licensePolicy.sourceAvailability.length !== 6
   ) {
     fail("Store license review inventory or SBOM contract drifted");
   }
@@ -231,10 +231,10 @@ function validateInventory({ storeReleaseManifest, licensePolicy, inventory, sbo
   const excluded = inventory.components.filter((component) => component.scope === "excluded");
   const productionExpressions = uniqueSorted(thirdParty.flatMap((component) => component.licenses));
   if (
-    production.length !== 306 ||
+    production.length !== 331 ||
     firstParty.length !== 5 ||
-    thirdParty.length !== 301 ||
-    excluded.length !== 201 ||
+    thirdParty.length !== 326 ||
+    excluded.length !== 202 ||
     !exact(productionExpressions, licensePolicy.permittedProductionLicenseExpressions)
   ) {
     fail("Store license review frozen component counts drifted");
@@ -292,7 +292,7 @@ export function createMsixStoreLicenseReviewPacket({
     releasePolicy.distribution.selectedChannel !== "pending" ||
     releasePolicy.distribution.plannedStableChannel !== "microsoft_store" ||
     !Array.isArray(fallbackMappings) ||
-    fallbackMappings.length !== 11 ||
+    fallbackMappings.length !== 12 ||
     !fallbackMappings.every(
       (mapping) =>
         mapping !== null &&
@@ -314,7 +314,7 @@ export function createMsixStoreLicenseReviewPacket({
         Array.isArray(mapping.fileNames) &&
         mapping.fileNames.every((fileName) => typeof fileName === "string"),
     ) ||
-    archiveProductionComponents !== 301 ||
+    archiveProductionComponents !== 326 ||
     !Buffer.isBuffer(generatorBytes) ||
     generatorBytes.length === 0
   ) {
@@ -362,8 +362,8 @@ export function createMsixStoreLicenseReviewPacket({
     },
   );
   if (
-    storeReleaseManifest.compliance?.sbom?.totalComponents !== 507 ||
-    storeReleaseManifest.compliance.sbom.requiredComponents !== 306 ||
+    storeReleaseManifest.compliance?.sbom?.totalComponents !== 533 ||
+    storeReleaseManifest.compliance.sbom.requiredComponents !== 331 ||
     storeReleaseManifest.compliance.licenseInventory?.unresolved !== 0 ||
     !exact(
       storeReleaseManifest.compliance.bundledLicensePaths,
