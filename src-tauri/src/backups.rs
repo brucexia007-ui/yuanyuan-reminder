@@ -6,7 +6,6 @@ use std::{
 };
 
 use chrono::{DateTime, Local, Utc};
-#[cfg(any(not(feature = "learning"), test))]
 use rusqlite::{backup::Progress, Connection, MAIN_DB};
 use uuid::Uuid;
 
@@ -23,7 +22,7 @@ const AUTOMATIC_BACKUP_LIMIT: usize = 14;
 const BACKUP_EXTENSION: &str = "sqlite3";
 const LEARNING_BACKUP_SUFFIX: &str = ".learning.sqlite3";
 
-#[cfg(any(not(feature = "learning"), test))]
+#[allow(dead_code)]
 pub fn create_startup_backup(database_path: &Path, backup_dir: &Path) -> AppResult<()> {
     if !database_path.is_file() {
         return Ok(());
@@ -41,7 +40,7 @@ pub fn create_startup_backup(database_path: &Path, backup_dir: &Path) -> AppResu
     prune_automatic_backups(backup_dir, AUTOMATIC_BACKUP_LIMIT)
 }
 
-#[cfg(any(not(feature = "learning"), test))]
+#[allow(dead_code)]
 pub fn create_manual_backup(repository: &Repository, backup_dir: &Path) -> AppResult<BackupInfo> {
     let file_name = format!(
         "manual-{}-{}.sqlite3",
@@ -102,7 +101,7 @@ pub fn list_backups(backup_dir: &Path) -> AppResult<Vec<BackupInfo>> {
     Ok(backups)
 }
 
-#[cfg(any(not(feature = "learning"), test))]
+#[allow(dead_code)]
 pub fn restore_backup(
     repository: &mut Repository,
     backup_dir: &Path,
