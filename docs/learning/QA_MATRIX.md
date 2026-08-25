@@ -22,12 +22,12 @@
 | 安装态数据库 | 安装并启动个人版后只读核验 | 通过；进程响应正常，`quick_check=ok`，schema v3，4533 卡，客观题与回看表存在 |
 | 格式与补丁卫生 | `cargo fmt --all -- --check`、`git diff --check` | 通过 |
 | 呈现协调器合同 | 仲裁器定向测试 | 默认 12/12、learning 13/13；9 个呈现方的 72 个有序不同 owner 对、64 路全 owner 并发、同学习会话幂等、跨学习会话重绑拒绝和陈旧释放均通过 |
-| 活动学习中强提醒抢占 | `learning-reminder-preemption-20260821T141839Z.json` + 独立 verifier | 当前二进制 20/20 通过；持久化暂停/UI 让位 P95 6.1/239.8 ms，逐样本均低于 1 秒；旧二进制与沙箱失败报告作为历史保留 |
+| 活动学习中强提醒抢占 | `learning-reminder-preemption-20260825T024056Z.json` + 独立 verifier + [QA-004](./QA_004_CURRENT_MACHINE_WINDOWS_RUNTIME_EVIDENCE.md) | 提交 `ee48194` 的当前 QA 二进制 20/20 通过；持久化暂停/UI 让位 P95 5.8/258.2 ms，逐样本均低于 1 秒；同参数首次运行因第 8 轮夹具自动答题碰撞为 19/20，失败报告保留且未采用，阈值未放宽 |
 | 已提交答案后杀进程恢复下一未答题 | `learning-crash-recovery-20260824T165841Z.json` + 独立 verifier | 当前二进制 5/5；每轮先观测 127,752 bytes 非空 WAL 与 32,768 bytes 非空 SHM，再重启；已答计数始终恰为 1，下一未答 session/item/headword 原样恢复；恢复入口 P95 789.7 ms，点击继续到原题 P95 411.4 ms；commit hook 未 arm/进入，数据库健康且测试根可清理 |
 | SQLite commit callback 内终止，未提交选择恢复原题 | `learning-in-flight-commit-recovery-20260824T165518Z.json` + 独立 verifier | 当前二进制 5/5；QA-only hook 进入 P95 55.1 ms 后精确终止；每轮先观测 57,712 bytes 非空 WAL 与 32,768 bytes 非空 SHM；重启/继续后的作答、复习、排程推进、答题事件和完成数均为零，原 session/item/headword 不变；恢复入口 P95 765.4 ms，点击继续到原题 P95 547.7 ms；数据库健康且测试根可清理 |
 | 答题事务深层失败回滚 | `cargo test ... answer_event_failure` + `... answer_commit_failure` + `... answer_sqlite_full` | 通过；客观题与 recall 均覆盖 `answer_committed` 处 SQLite `ABORT`、deferred-FK 造成的真正 `transaction.commit()` 拒绝及页预算耗尽返回 `SQLITE_FULL`；排程、复习、作答、错题队列、事件和会话写入全部回滚，数据库健康且原幂等 ID/revision 可重试 |
-| 学习中睡眠/唤醒状态 | `learning-sleep-wake-20260821T143045Z.json` + 独立 verifier | 真实原生菜单内容、共用菜单处理器、持久暂停/可恢复快照、睡眠/唤醒动画、Windows 无障碍提示和 5 张截图通过；物理右键与 OS 级菜单选择仍待人工 |
-| 窗口与辅助显示矩阵 | `learning-accessibility-matrix-20260821T145707Z.json` + 独立 verifier | 当前设备真实 150% DPI；Tauri 主线程调整真实 WebView，360×560、390×620、480×760 学习页及 520×420 小黑板通过且完整位于工作区；减少动态/强制颜色媒体状态由可访问树确认，6 张截图人工复核；其他 DPI、Narrator 和物理键盘仍待人工 |
+| 学习中睡眠/唤醒状态 | `learning-sleep-wake-20260825T022625Z.json` + 独立 verifier + [QA-004](./QA_004_CURRENT_MACHINE_WINDOWS_RUNTIME_EVIDENCE.md) | 提交 `ee48194` 的真实原生菜单内容、共用菜单处理器、持久暂停/可恢复快照、睡眠/唤醒动画、Windows 无障碍提示和 5 张截图通过；物理右键与 OS 级菜单选择仍待人工 |
+| 窗口与辅助显示矩阵 | `learning-accessibility-matrix-20260825T022326Z.json` + 独立 verifier + [QA-004](./QA_004_CURRENT_MACHINE_WINDOWS_RUNTIME_EVIDENCE.md) | 当前单显示器真实 150% DPI；提交 `ee48194` 的 Tauri 主线程调整真实 WebView，360×560、390×620、480×760 学习页及 520×420 小黑板通过且完整位于工作区；减少动态/强制颜色媒体状态由可访问树确认，6 张截图复核；其他 DPI、多屏/负坐标、Narrator 和物理键盘仍待人工 |
 
 后端学习测试覆盖：schema 新建/升级/失败回滚、外键/WAL/busy timeout、并发读写与 checkpoint、损坏库隔离、原子导入、调度保留、客观题后端判定、错题回看不重复调度、提交幂等、客观题/recall 最深提交前语句失败、真正 `COMMIT` 拒绝及 `SQLITE_FULL` 的全量回滚与原样重试、runtime-QA-only commit hook 的精确 arm/无 arm/非法控制失败关闭、FSRS 冻结向量、时钟回拨、资格矩阵、邀请 claim/补偿/接受事务、伪造/过期/重放、含答题记录的 JSON 完整往返、失败恢复回滚、CSV 公式转义、无覆盖原子导出、清空与彻底删除。
 
