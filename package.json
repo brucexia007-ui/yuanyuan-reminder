@@ -1,7 +1,7 @@
 {
   "name": "yuanyuan-reminder",
   "private": true,
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Offline Windows desktop pet for reminders, focus, hydration and breaks.",
   "license": "MIT",
   "homepage": "https://github.com/brucexia007-ui/yuanyuan-reminder",
@@ -18,6 +18,9 @@
     "test:watch": "vitest",
     "tauri": "tauri",
     "check": "tsc -b --pretty false && vitest run",
+    "product:version:check": "node scripts/sync_unified_product_version.mjs --check",
+    "product:version:sync": "node scripts/sync_unified_product_version.mjs --write",
+    "product:version:test": "node --test scripts/sync_unified_product_version.node-test.mjs",
     "learning-off:boundary:test": "node --test scripts/verify_learning_disabled_boundary.node-test.mjs",
     "learning-off:verify": "npm run learning-off:boundary:test && npm run build && node scripts/verify_learning_disabled_boundary.mjs && node scripts/verify_learning_pack_spike_boundary.mjs --artifact-dir dist && node scripts/verify_ux_research_001_materials.mjs --artifact-dir dist",
     "learning:boundary:test": "node --test scripts/verify_fragment_learning_boundary.node-test.mjs",

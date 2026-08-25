@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "productName": "圆圆提醒",
+  "identifier": "com.yuanyuan.reminder",
+  "version": "1.5.0",
+  "releaseTrain": "unified-product",
+  "channel": "development",
+  "capabilities": {
+    "learningIntegrated": true,
+    "automaticLearningInvitationsDefault": false,
+    "bundledPersonalLearningContent": false
+  },
+  "legacyEditions": [
+    "com.yuanyuan.reminder.learning-preview",
+    "com.yuanyuan.reminder.learning-personal"
+  ]
+}
