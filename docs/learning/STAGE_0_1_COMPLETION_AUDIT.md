@@ -16,7 +16,7 @@
 | 任务 | 当前判定 | 已有证据 | 尚未关闭的验收/停止门 |
 | --- | --- | --- | --- |
 | SCM-001 | 完成 | `SCM_001_CHANNEL_ISOLATION_AUDIT.md`；通用分支从无个人内容的 `main` 重建；denylist、源码/历史/产物边界脚本；learning-off 与 Learning Preview 独立构建 | 真实安装交互属于阶段集成人工矩阵，不推翻本任务的通道隔离结论 |
-| REL-001 | 工程与核心真实桌面门完成；其余人工项待验 | `REL_001_PRESENTATION_ARBITER_EVIDENCE.md`、[QA-004](./QA_004_CURRENT_MACHINE_WINDOWS_RUNTIME_EVIDENCE.md)；9 个呈现方的 72 个有序不同 owner 对、64 路全 owner 并发、单一租约、跨学习会话拒绝、陈旧 revision/lease、防回归和统一 `PetActivitySnapshot`；提交 `ee48194` 的当前 QA 二进制活动学习中强提醒让位 20/20，持久化/UI P95 5.8/258.2 ms；原生菜单睡眠/唤醒状态链通过；150% DPI 的固定窗口、工作区边界、可聚焦性、减少动态/强制颜色和 6 张截图通过独立 verifier | 物理右键与 OS 级菜单选择、专注结束邀请、真实桌面全优先级时序竞态、100/125/200% DPI、多屏/负坐标、Narrator/物理键盘和系统设置实际切换仍需具名 Windows QA 记录 |
+| REL-001 | 工程与核心真实桌面门完成；其余人工项待验 | `REL_001_PRESENTATION_ARBITER_EVIDENCE.md`、[QA-004](./QA_004_CURRENT_MACHINE_WINDOWS_RUNTIME_EVIDENCE.md)、[QA-005](./QA_005_ACTUAL_WINDOWS_SETTINGS_EVIDENCE.md)；9 个呈现方的 72 个有序不同 owner 对、64 路全 owner 并发、单一租约、跨学习会话拒绝、陈旧 revision/lease、防回归和统一 `PetActivitySnapshot`；提交 `ee48194` 的当前 QA 二进制活动学习中强提醒让位 20/20，持久化/UI P95 5.8/258.2 ms；原生菜单睡眠/唤醒状态链通过；150% DPI 的固定窗口、工作区边界、可聚焦性、减少动态/强制颜色和 6 张截图通过独立 verifier；提交 `ba6e841` 的真实标准系统模式和 Narrator 运行中并发探针各通过一次 | 物理右键与 OS 级菜单选择、专注结束邀请、真实桌面全优先级时序竞态、100/125/200% DPI、多屏/负坐标、Narrator 人工听读/物理键盘和系统设置实际切换仍需具名 Windows QA 记录 |
 | PERF-001 | 部分完成 | 同工作树 learning-off/on 冷/温启动各 20 次；学习页与小黑板各 20 次；强提醒各 20 次；2 小时 learning-on 完成黑板稳态 121 个样本；pre-GEN 纯解析 JSON/CSV 4,533/20,000 共 30 个 release 样本，20,000 卡同时达到 26,020,105/26,120,061 bytes，按 4 MiB/16,384 值/256 卡覆盖文件读取和主要解析阶段，并以两条独立 16 KiB 探针分别约束第三方解码输入和单卡内部自有循环，正式夹具最多 147 次 UI 进度回调；报告均有独立检查器 | 4,533/20,000 真实 Tauri 导入与取消、20,000 卡数据库搜索分页、1,000 次答案后的 DB 增长仍未形成正式报告；纯解析结果不能替代后台调度、IPC/WebView 或这些数据库场景 |
 | SEC-001 | 威胁建模完成，内容层部分闭环 | `SEC_001_LOCAL_CONTENT_PACK_STRIDE.md`、`PRE_GEN_PURE_PARSER_SPIKE.md`；STRIDE 六类威胁、冻结预算、13 个哈希绑定合成夹具；真实 Rust parser 已执行 001—011 | 012 preview token 重放和 013 半安装旧状态不变尚无真实状态/数据库实现测试，因此不能标记全部完成 |
 | UX-RESEARCH-001 | 执行包完成，研究未执行 | `UX_RESEARCH_001_PROTOCOL.md`、`ux-research-001/manifest.json`；4 份各 15 条的合成材料、制卡模板、只在页面内存运行的字段映射/预览/模拟学习原型、匿名记录/汇总/具名延期模板齐备；8 项正负向与交互检查约束无文件读取、持久化、网络、Tauri、个人数据和构建泄漏 | Product Research 尚未完成内部试跑及 5—8 人真实访谈，也没有具名产品负责人填写延期；研究原型不是当前 Preview 或 PACK 功能，AI/工程模拟不得替代真实证据 |
@@ -27,7 +27,7 @@
 | PACK-003 | 未开始 | 无 | 内容库、启停、来源/许可、指定/混合/错题学习、删除影响预览和多包隔离未交付 |
 | PACK-004 | 未开始 | 现有旧英语 CSV/原生 JSON UI 只能作为交互参考 | 通用字段映射、抽样预览、大文件进度/取消、文件变化 token 失效、键盘/主线程冻结门未交付 |
 | DATA-001 | 未开始 | 现有提醒备份设施可供设计参考，但学习库仍必须独立 | 学习库独立 manifest、每日/手动备份、14 份策略确认、分库恢复、恢复前快照、损坏/中断/非 ASCII/磁盘满/锁占用未交付 |
-| QA-001 | 持续进行，未完成 | 前端、Rust feature、边界、性能报告检查器、格式和补丁卫生持续执行；150% DPI 的尺寸、可访问名称/可聚焦性、减少动态和强制颜色已有正式报告及 6 张截图 | 其余 DPI、多屏/负坐标、Narrator/物理键盘、系统设置实际切换、系统适宜性/竞态/存储故障、迁移对账、内容权利与最终具名 Go/No-Go 未关闭 |
+| QA-001 | 持续进行，未完成 | 前端、Rust feature、边界、性能报告检查器、格式和补丁卫生持续执行；150% DPI 的尺寸、可访问名称/可聚焦性、减少动态和强制颜色已有正式报告及 6 张截图；真实标准系统模式和 Narrator 运行中应用兼容探针通过 | 其余 DPI、多屏/负坐标、Narrator 人工听读/物理键盘、系统设置实际切换、系统适宜性/竞态/存储故障、迁移对账、内容权利与最终具名 Go/No-Go 未关闭 |
 
 ## 已封存真实桌面与性能报告
 
@@ -49,6 +49,7 @@
 | SQLite commit callback 内终止、未提交选择恢复原题 | `src-tauri/target/runtime-qa-learning-recovery/release/evidence/learning-in-flight-commit-recovery-20260824T165518Z.json` | 5/5；全部答案 SQL 完成后进入 QA-only commit hook P50/P95 43.8/55.1 ms，再精确终止拥有的进程；每轮观测 57,712 bytes WAL 与 32,768 bytes SHM；重启/继续后作答、复习、排程推进、答题事件与完成数均为零，原 session/item/headword 不变；恢复入口 P50/P95 722.5/765.4 ms，点击继续到原题 P50/P95 398.8/547.7 ms；数据库健康、测试根可清理，独立 verifier 通过 |
 | 原生菜单睡眠/唤醒状态链 | `src-tauri/target/runtime-qa-learning-sleep/release/evidence/learning-sleep-wake-20260825T022625Z.json` | 源提交 `ee48194`；两次真实原生菜单内容、共用处理器、睡眠暂停、唤醒保持可恢复、无障碍提示和 5 张截图通过；物理右键与 OS 级选择仍明确为人工门；报告哈希见 [QA-004](./QA_004_CURRENT_MACHINE_WINDOWS_RUNTIME_EVIDENCE.md) |
 | 窗口与辅助显示矩阵 | `src-tauri/target/runtime-qa-learning-accessibility/release/evidence/learning-accessibility-matrix-20260825T022326Z.json` | 源提交 `ee48194`；当前单显示器真实 150% DPI，3/3 模式；Tauri 主线程调整真实 WebView，360×560、390×620、480×760 学习页及 520×420 小黑板精确命中并完整位于工作区；DOM 自动焦点、真实 UIA 可聚焦性/名称、减少动态与强制颜色状态及 6 张截图通过；其余 DPI、多屏/负坐标、Narrator 和物理键盘仍为人工门；报告哈希见 [QA-004](./QA_004_CURRENT_MACHINE_WINDOWS_RUNTIME_EVIDENCE.md) |
+| 真实标准系统模式与 Narrator 并发 | `src-tauri/target/runtime-qa-learning-accessibility/release/evidence/learning-windows-system-mode-standard-20260825T072224Z.json`、`...T072325Z.json` | 源提交 `ba6e841`；两份报告均为 clean/Ready，实际动画开、高对比度关，学习页、小黑板、18 个可访问名称和受控退出通过；第二份在 Narrator 运行期间通过，随后 Narrator 恢复为关闭。失败启动上下文、设置切换尝试、最终系统读回和 Narrator 偏好缓存残留见 [QA-005](./QA_005_ACTUAL_WINDOWS_SETTINGS_EVIDENCE.md) |
 | learning-on 运行烟测 | `src-tauri/target/runtime-qa-learning/release/evidence/runtime-baseline-20260814T182108Z.json` | 60 秒、23 样本、受控退出；仅证明通道，不替代 2 小时/24 小时门 |
 | pre-GEN JSON/CSV 文件读取+纯解析 | `src-tauri/target/learning-pack-spike/release/evidence/learning-pack-parse-spike-20260824T175724Z.json` | 30/30；20,000 卡 JSON/CSV 为 26,020,105/26,120,061 bytes，内部管线 P95 481.523/359.907 ms，峰值 working set 123,691,008/75,395,072 bytes；4 MiB/16,384 值/256 卡进度检查间隔、独立 16 KiB 解码输入和单卡取消间隔（含 Unicode 规范化输入和 CSV 分隔符/可选字段扫描）、JSON 九阶段/CSV 八阶段、≤256 回调和 `complete/cards` 终态通过；零数据库写入；只关闭独立文件管线的有界协作检查风险 |
 | Rust 24 线程进程稳定性 | `src-tauri/target/rust-parallel-stability/evidence/rust-parallel-stability-20260824T171001Z.json` | 完整 Authenticode provider-state 进程锁 + 有界 PE 头预检后，默认完整库先经 100/100 压力；当前源码/二进制重新绑定的正式门默认 20/20（215/1）、learning 10/10（279/1），P95 1843.885/4647.590 ms，零崩溃、零失败；无 dump/WER 模块，精确原生指令/模块仍未知 |
@@ -88,6 +89,6 @@
 
 1. **GEN/PERF/PACK 边界**：用户已明确批准“只解析、只校验、零入库、不可发布”的 pre-GEN spike，纯解析证据已经形成。真实导入/分页/DB 增长仍不得越过 GEN；Product/Architecture 还需决定 CSV 缺省 card ID、过渡别名、最终字段和取消/进度合同。
 2. **真实研究或具名延期**：独立合成执行包已经可供内部试跑；Product Research 仍须先试跑再执行 5—8 人访谈。若延期，必须由具名产品负责人使用冻结模板写明理由、风险接受范围和补做日期。
-3. **人工 Windows QA 与签字**：核心学习中强提醒让位、已提交答案异常终止恢复、SQLite commit callback 内终止的未提交选择回滚、原生菜单睡眠/唤醒状态链，以及当前设备 150% DPI 的窗口/程序化辅助显示矩阵已自动化封存；后端全优先级有序对合同也已穷举。仍须完成物理右键/OS 级菜单选择、100/125/200% DPI、多屏/负坐标、物理键盘/Narrator、Windows 设置实际切换减少动画/高对比度、全优先级真实桌面时序竞态、系统适宜性和其余存储故障矩阵，并由六类责任角色逐项签字。
+3. **人工 Windows QA 与签字**：核心学习中强提醒让位、已提交答案异常终止恢复、SQLite commit callback 内终止的未提交选择回滚、原生菜单睡眠/唤醒状态链、当前设备 150% DPI 的窗口/程序化辅助显示矩阵，以及真实标准系统模式/Narrator 运行中应用兼容探针已自动化封存；后端全优先级有序对合同也已穷举。仍须完成物理右键/OS 级菜单选择、100/125/200% DPI、多屏/负坐标、物理键盘/Narrator 人工听读、Windows 设置实际切换减少动画/高对比度、全优先级真实桌面时序竞态、系统适宜性和其余存储故障矩阵，并由六类责任角色逐项签字。
 
 在上述门未关闭前，任何“阶段 0 完成”“GEN 已冻结”“阶段 1 已开始”或“可以公开发布”的表述都不成立。

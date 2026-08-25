@@ -28,6 +28,7 @@
 | 答题事务深层失败回滚 | `cargo test ... answer_event_failure` + `... answer_commit_failure` + `... answer_sqlite_full` | 通过；客观题与 recall 均覆盖 `answer_committed` 处 SQLite `ABORT`、deferred-FK 造成的真正 `transaction.commit()` 拒绝及页预算耗尽返回 `SQLITE_FULL`；排程、复习、作答、错题队列、事件和会话写入全部回滚，数据库健康且原幂等 ID/revision 可重试 |
 | 学习中睡眠/唤醒状态 | `learning-sleep-wake-20260825T022625Z.json` + 独立 verifier + [QA-004](./QA_004_CURRENT_MACHINE_WINDOWS_RUNTIME_EVIDENCE.md) | 提交 `ee48194` 的真实原生菜单内容、共用菜单处理器、持久暂停/可恢复快照、睡眠/唤醒动画、Windows 无障碍提示和 5 张截图通过；物理右键与 OS 级菜单选择仍待人工 |
 | 窗口与辅助显示矩阵 | `learning-accessibility-matrix-20260825T022326Z.json` + 独立 verifier + [QA-004](./QA_004_CURRENT_MACHINE_WINDOWS_RUNTIME_EVIDENCE.md) | 当前单显示器真实 150% DPI；提交 `ee48194` 的 Tauri 主线程调整真实 WebView，360×560、390×620、480×760 学习页及 520×420 小黑板通过且完整位于工作区；减少动态/强制颜色媒体状态由可访问树确认，6 张截图复核；其他 DPI、多屏/负坐标、Narrator 和物理键盘仍待人工 |
+| 真实 Windows 标准模式与 Narrator 并发 | `learning-windows-system-mode-standard-20260825T072224Z.json`、`learning-windows-system-mode-standard-20260825T072325Z.json` + [QA-005](./QA_005_ACTUAL_WINDOWS_SETTINGS_EVIDENCE.md) | 提交 `ba6e841` 的两份 clean 报告均确认真实动画开启/高对比度关闭，学习页、小黑板、18 个可访问名称和受控退出通过；第二份在 Narrator 进程持续运行期间通过，随后进程恢复为 0。没有人工听读；DPI/减少动态/高对比度实际设置切换未形成证据 |
 
 后端学习测试覆盖：schema 新建/升级/失败回滚、外键/WAL/busy timeout、并发读写与 checkpoint、损坏库隔离、原子导入、调度保留、客观题后端判定、错题回看不重复调度、提交幂等、客观题/recall 最深提交前语句失败、真正 `COMMIT` 拒绝及 `SQLITE_FULL` 的全量回滚与原样重试、runtime-QA-only commit hook 的精确 arm/无 arm/非法控制失败关闭、FSRS 冻结向量、时钟回拨、资格矩阵、邀请 claim/补偿/接受事务、伪造/过期/重放、含答题记录的 JSON 完整往返、失败恢复回滚、CSV 公式转义、无覆盖原子导出、清空与彻底删除。
 
@@ -53,7 +54,7 @@
 | 类别 | 最低场景 | 发布判定 |
 | --- | --- | --- |
 | DPI 与窗口 | 100/125/150/200%，360×560 至 480×760，多显示器和负坐标 | 部分通过；真实 150% DPI 下 360×560、390×620、480×760 学习页和 520×420 小黑板已封存，100/125/200%、多显示器与负坐标待人工 |
-| 无障碍 | 仅键盘完整会话、Narrator 名称/顺序、减少动态、强制颜色 | 部分通过；DOM 自动焦点、真实 UIA 可聚焦性/名称、程序化减少动态及强制颜色已验证；foreground lock 下未注入物理按键，Narrator 与 Windows 设置实际切换待人工 |
+| 无障碍 | 仅键盘完整会话、Narrator 名称/顺序、减少动态、强制颜色 | 部分通过；DOM 自动焦点、真实 UIA 可聚焦性/名称、程序化减少动态及强制颜色已验证；Narrator 运行中的真实标准模式探针通过，但没有人工听读。foreground lock 下未注入物理按键，Windows 减少动态/高对比度实际切换仍未形成读回证据，详见 [QA-005](./QA_005_ACTUAL_WINDOWS_SETTINGS_EVIDENCE.md) |
 | 系统适宜性 | 锁屏、演示设置、全屏/无边框全屏、单/多屏、任务栏、各 `QUERY_USER_NOTIFICATION_STATE` | 待人工 |
 | 优先级竞态 | 喝水、活动、事项、任务守望、专注/睡眠在邀请前、展示中、学习中到达 | 部分通过；后端 72 个有序不同 owner 对及 64 路并发合同已穷举，当前二进制的活动学习中强提醒 20/20 和原生菜单睡眠/唤醒状态链已封存；物理菜单操作及其余真实桌面时序组合待人工 |
 | 存储故障 | 只读目录、磁盘满、异常退出、残留 WAL/SHM、杀进程后恢复 | 部分通过；已提交答案异常终止后的非空 WAL/SHM 重放及单次计分 5/5、SQLite commit callback 内终止后的未提交选择零写入与原题恢复 5/5 已封存；客观题/recall 的最深提交前语句失败、SQLite 明确拒绝 `COMMIT` 及页预算耗尽返回真实 `SQLITE_FULL` 均已证明零半写入与可重试。只读目录、物理磁盘满/I/O 错误、损坏 WAL/SHM、真实断电及 callback 后每个更晚的 durable-write/硬件断电点仍待验证 |
@@ -70,7 +71,7 @@
 
 - 没有具名的内容再分发权与语言质量结论；
 - 学习依赖未进入实际 feature 构建的许可证清单和 SBOM；
-- Windows 其余 DPI、多显示器/负坐标、Narrator/物理键盘、系统设置实际切换、系统适宜性、物理右键菜单操作和完整优先级竞态仍没有人工证据；已封存的 150% 窗口/辅助显示、强提醒抢占、崩溃恢复与睡眠/唤醒状态链不替代该矩阵；
+- Windows 其余 DPI、多显示器/负坐标、Narrator 人工听读/物理键盘、系统设置实际切换、系统适宜性、物理右键菜单操作和完整优先级竞态仍没有人工证据；已封存的 150% 窗口/辅助显示、真实标准模式/Narrator 并发探针、强提醒抢占、崩溃恢复与睡眠/唤醒状态链不替代该矩阵；
 - 默认关闭包出现学习命令、页面、数据库写入或内容资源；
 - 提醒核心回归、学习库故障影响提醒库、存在无 claim 的 presented 事件；
 - 用户研究机会低于预设门、明显打扰或小样本被用于提分宣传。
