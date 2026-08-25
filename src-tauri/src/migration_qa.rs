@@ -20,7 +20,12 @@ use crate::{
 };
 
 const V132_SCHEMA_VERSION: u32 = 6;
-const CURRENT_SCHEMA_VERSION: u32 = 11;
+const CURRENT_SCHEMA_VERSION: u32 = if cfg!(feature = "learning") { 12 } else { 11 };
+const CURRENT_MIGRATION_CHECK_DETAIL: &str = if cfg!(feature = "learning") {
+    "production Repository::open migrated the copy to unified schema version 12"
+} else {
+    "production Repository::open migrated the copy to compatibility schema version 11"
+};
 const MAX_FIXTURE_BYTES: u64 = 512 * 1024 * 1024;
 
 #[derive(Debug, Serialize)]
@@ -385,7 +390,7 @@ fn run_v132_database_qa_inner(source_path: &Path, report_path: &Path) -> AppResu
             check("source_read_only", "source hash unchanged before and after QA"),
             check("source_integrity", "source PRAGMA quick_check returned ok"),
             check("v132_schema_identity", "source PRAGMA user_version was exactly 6"),
-            check("production_migration", "production Repository::open migrated the copy to version 11"),
+            check("production_migration", CURRENT_MIGRATION_CHECK_DETAIL),
             check("row_preservation", "every original table, column and value has the same canonical logical digest after migration"),
             check("backup_restore", "a production backup removed an isolated post-backup mutation"),
             check("failed_restore_rollback", "an injected migration failure restored the safety snapshot"),
@@ -886,7 +891,7 @@ mod tests {
         let value: serde_json::Value = serde_json::from_slice(&fs::read(&report).unwrap()).unwrap();
         assert_eq!(value["status"], "passed");
         assert_eq!(value["sourceDatabaseVersion"], 6);
-        assert_eq!(value["migratedDatabaseVersion"], 11);
+        assert_eq!(value["migratedDatabaseVersion"], CURRENT_SCHEMA_VERSION);
         assert_eq!(value["sourceTableCounts"]["reminders"], 1);
         assert_eq!(
             value["sourceLogicalSha256"],
