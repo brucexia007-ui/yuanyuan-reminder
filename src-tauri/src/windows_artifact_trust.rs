@@ -3,9 +3,14 @@
 use std::{
     ffi::c_void,
     fs::{File, OpenOptions},
-    os::windows::{ffi::OsStrExt, fs::OpenOptionsExt, io::AsRawHandle},
+    os::windows::{
+        ffi::OsStrExt,
+        fs::{FileExt, OpenOptionsExt},
+        io::AsRawHandle,
+    },
     path::Path,
     slice,
+    sync::Mutex,
 };
 
 use sha2::{Digest, Sha256};
@@ -29,6 +34,8 @@ use windows_sys::Win32::{
 
 const MAX_CERTIFICATE_DISPLAY_NAME_UTF16: u32 = 32 * 1024;
 const MAX_SIGNER_CERTIFICATE_BYTES: usize = 1024 * 1024;
+const DOS_HEADER_BYTES: usize = 64;
+static AUTHENTICODE_PROVIDER_STATE_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ArtifactFileIdentity {
@@ -117,6 +124,48 @@ pub(crate) fn artifact_file_identity(file: &File) -> Result<ArtifactFileIdentity
 }
 
 pub(crate) fn verify_authenticode(file: &File, path: &Path) -> AuthenticodeEvidence {
+    match has_portable_executable_headers(file) {
+        Ok(true) => {}
+        Ok(false) => return AuthenticodeEvidence::Invalid,
+        Err(()) => return AuthenticodeEvidence::Unavailable,
+    }
+    // WinVerifyTrust provider state is process-global enough that overlapping
+    // VERIFY/helper/CLOSE lifecycles have produced native access violations in
+    // the Windows test process. Keep the complete lifecycle under one lock.
+    with_authenticode_provider_state_lock(|| verify_authenticode_inner(file, path))
+        .unwrap_or(AuthenticodeEvidence::Unavailable)
+}
+
+fn has_portable_executable_headers(file: &File) -> Result<bool, ()> {
+    let file_length = file.metadata().map_err(|_| ())?.len();
+    if file_length < (DOS_HEADER_BYTES + 4) as u64 {
+        return Ok(false);
+    }
+    let mut dos_header = [0u8; DOS_HEADER_BYTES];
+    if file.seek_read(&mut dos_header, 0).map_err(|_| ())? != dos_header.len()
+        || &dos_header[..2] != b"MZ"
+    {
+        return Ok(false);
+    }
+    let pe_offset = u64::from(u32::from_le_bytes(
+        dos_header[0x3c..0x40].try_into().map_err(|_| ())?,
+    ));
+    if pe_offset < DOS_HEADER_BYTES as u64 || pe_offset > file_length.saturating_sub(4) {
+        return Ok(false);
+    }
+    let mut signature = [0u8; 4];
+    if file.seek_read(&mut signature, pe_offset).map_err(|_| ())? != signature.len() {
+        return Ok(false);
+    }
+    Ok(signature == *b"PE\0\0")
+}
+
+fn with_authenticode_provider_state_lock<T>(work: impl FnOnce() -> T) -> Option<T> {
+    let _guard = AUTHENTICODE_PROVIDER_STATE_LOCK.lock().ok()?;
+    Some(work())
+}
+
+fn verify_authenticode_inner(file: &File, path: &Path) -> AuthenticodeEvidence {
     let wide_path = path
         .as_os_str()
         .encode_wide()
@@ -175,6 +224,100 @@ pub(crate) fn verify_authenticode(file: &File, path: &Path) -> AuthenticodeEvide
         }
     }
     evidence
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        has_portable_executable_headers, verify_authenticode,
+        with_authenticode_provider_state_lock, AuthenticodeEvidence, DOS_HEADER_BYTES,
+    };
+    use std::{
+        fs::File,
+        sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc, Barrier,
+        },
+        thread,
+        time::Duration,
+    };
+    use tempfile::tempdir;
+
+    #[test]
+    fn portable_executable_preflight_rejects_non_pe_and_bounded_offsets() {
+        let directory = tempdir().unwrap();
+        for (name, bytes) in [
+            ("plain.exe", b"not a portable executable".to_vec()),
+            ("short-mz.exe", b"MZ".to_vec()),
+            ("wrong-signature.exe", {
+                let mut bytes = vec![0u8; DOS_HEADER_BYTES + 4];
+                bytes[..2].copy_from_slice(b"MZ");
+                bytes[0x3c..0x40].copy_from_slice(&(DOS_HEADER_BYTES as u32).to_le_bytes());
+                bytes[DOS_HEADER_BYTES..].copy_from_slice(b"PX\0\0");
+                bytes
+            }),
+            ("out-of-bounds.exe", {
+                let mut bytes = vec![0u8; DOS_HEADER_BYTES + 4];
+                bytes[..2].copy_from_slice(b"MZ");
+                bytes[0x3c..0x40].copy_from_slice(&u32::MAX.to_le_bytes());
+                bytes
+            }),
+        ] {
+            let path = directory.path().join(name);
+            std::fs::write(&path, bytes).unwrap();
+            let file = File::open(&path).unwrap();
+            assert!(!has_portable_executable_headers(&file).unwrap());
+            assert!(matches!(
+                verify_authenticode(&file, &path),
+                AuthenticodeEvidence::Invalid
+            ));
+        }
+    }
+
+    #[test]
+    fn portable_executable_preflight_accepts_bounded_dos_and_pe_signatures() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("minimal.exe");
+        let mut bytes = vec![0u8; DOS_HEADER_BYTES + 4];
+        bytes[..2].copy_from_slice(b"MZ");
+        bytes[0x3c..0x40].copy_from_slice(&(DOS_HEADER_BYTES as u32).to_le_bytes());
+        bytes[DOS_HEADER_BYTES..].copy_from_slice(b"PE\0\0");
+        std::fs::write(&path, bytes).unwrap();
+        let file = File::open(path).unwrap();
+        assert!(has_portable_executable_headers(&file).unwrap());
+    }
+
+    #[test]
+    fn authenticode_provider_state_lifecycle_is_process_serialized() {
+        const WORKERS: usize = 16;
+
+        let barrier = Arc::new(Barrier::new(WORKERS));
+        let active = Arc::new(AtomicUsize::new(0));
+        let max_active = Arc::new(AtomicUsize::new(0));
+        let handles = (0..WORKERS)
+            .map(|_| {
+                let barrier = Arc::clone(&barrier);
+                let active = Arc::clone(&active);
+                let max_active = Arc::clone(&max_active);
+                thread::spawn(move || {
+                    barrier.wait();
+                    with_authenticode_provider_state_lock(|| {
+                        let current = active.fetch_add(1, Ordering::SeqCst) + 1;
+                        max_active.fetch_max(current, Ordering::SeqCst);
+                        thread::sleep(Duration::from_millis(2));
+                        active.fetch_sub(1, Ordering::SeqCst);
+                    })
+                    .expect("the Authenticode provider-state lock must remain usable");
+                })
+            })
+            .collect::<Vec<_>>();
+
+        for handle in handles {
+            handle.join().expect("worker must finish");
+        }
+
+        assert_eq!(max_active.load(Ordering::SeqCst), 1);
+    }
 }
 
 fn signer_identity(state: HANDLE) -> Option<AuthenticodeIdentity> {

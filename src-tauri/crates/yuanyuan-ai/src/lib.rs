@@ -2263,7 +2263,7 @@ mod tests {
         let database_for_worker = database.clone();
         let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
         let (done_sender, done_receiver) = mpsc::sync_channel(1);
-        thread::spawn(move || {
+        let worker = thread::spawn(move || {
             let mut store = TaskStore::open(&database_for_worker).unwrap();
             let result = run_task_service_with_ready(
                 &task_for_worker,
@@ -2276,7 +2276,11 @@ mod tests {
             done_sender.send(result).unwrap();
         });
 
-        ready_receiver.recv_timeout(Duration::from_secs(1)).unwrap();
+        // Parallel workspace load can delay the worker after both pipe servers
+        // are bound; use the existing hard transport budget for test liveness.
+        ready_receiver
+            .recv_timeout(yuanyuan_bridge::HARD_DELIVERY_TIMEOUT)
+            .unwrap();
         let client = NamedPipeEventSink::new(&task_pipe).unwrap();
         let input = signed("evt-service", 1, TaskState::Running, 8);
         let mut delivered = false;
@@ -2295,10 +2299,14 @@ mod tests {
             Ok(())
         );
         assert_eq!(request_task_service_shutdown(&shutdown_pipe), Ok(()));
+        // The shutdown ACK is written before the task-pipe wake-up and worker
+        // join complete, so a 1-second receiver deadline races the permitted
+        // transport budget even though production behavior is still bounded.
         assert!(done_receiver
-            .recv_timeout(Duration::from_secs(1))
+            .recv_timeout(yuanyuan_bridge::HARD_DELIVERY_TIMEOUT)
             .unwrap()
             .is_ok());
+        worker.join().unwrap();
 
         let store = TaskStore::open(database).unwrap();
         assert_eq!(store.task_count().unwrap(), 1);

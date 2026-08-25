@@ -503,6 +503,13 @@ mod tests {
             .unwrap_or_else(|| PathBuf::from(r"C:\Windows\System32\cmd.exe"))
     }
 
+    fn powershell_interpreter() -> PathBuf {
+        let system_root = std::env::var_os("SystemRoot")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+        system_root.join(r"System32\WindowsPowerShell\v1.0\powershell.exe")
+    }
+
     const STABLE_CORE_PRIVACY_CANARY: &str = "YUANYUAN_SUPPORT_SORT_PRIVATE_TEXT_CANARY_7F2C19A4";
 
     struct StableCoreCanaryProvider;
@@ -730,11 +737,17 @@ mod tests {
     #[test]
     fn real_unhealthy_child_is_terminated_and_fused() {
         let config = SupervisorConfig {
-            executable: command_interpreter(),
+            executable: powershell_interpreter(),
             trusted_release: None,
-            arguments: ["/C", "ping -n 30 127.0.0.1 >nul"]
-                .map(OsString::from)
-                .into(),
+            arguments: [
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "Start-Sleep -Seconds 30",
+            ]
+            .map(OsString::from)
+            .into(),
             control_pipe_name: format!("yuanyuan.supervisor.unhealthy-test.{}", std::process::id()),
             startup_timeout: Duration::from_millis(50),
             breaker: RestartCircuitBreaker::with_policy(
