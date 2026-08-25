@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/yuanyuan-protocol", "crates/yuanyuan-bridge", "crates/yuanyuan-ai", "crates/yuanyuan-connectors"]
+members = ["crates/yuanyuan-protocol", "crates/yuanyuan-bridge", "crates/yuanyuan-ai", "crates/yuanyuan-connectors", "crates/learning-pack-spike"]
 default-members = [".", "crates/yuanyuan-protocol", "crates/yuanyuan-bridge", "crates/yuanyuan-ai", "crates/yuanyuan-connectors"]
 resolver = "2"
 
@@ -18,7 +18,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
 default = []
-runtime-qa = []
+learning = ["dep:csv", "dep:fsrs", "dep:unicode-normalization"]
+runtime-qa = ["rusqlite/hooks"]
 migration-qa = []
 store-data-lifecycle-qa = []
 
@@ -52,10 +53,12 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 chrono = { version = "0.4", features = ["serde", "clock"] }
+csv = { version = "1.4", optional = true }
 dirs = "6"
 iana-time-zone = "0.1"
 parking_lot = "0.12"
 rusqlite = { version = "0.37", features = ["bundled", "backup"] }
+fsrs = { version = "6.6.1", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
@@ -68,7 +71,8 @@ thiserror = "2"
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-tokio = { version = "1", features = ["time"] }
+unicode-normalization = { version = "0.1", optional = true }
+tokio = { version = "1", features = ["sync", "time"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 zeroize = "1"
 
@@ -79,6 +83,7 @@ yuanyuan-connectors = { path = "crates/yuanyuan-connectors" }
 yuanyuan-protocol = { path = "crates/yuanyuan-protocol" }
 windows-sys = { version = "0.60", features = [
   "Win32_Foundation",
+  "Win32_Graphics_Gdi",
   "Win32_Security_Cryptography",
   "Win32_Security_Cryptography_Catalog",
   "Win32_Security_Cryptography_Sip",
@@ -90,6 +95,7 @@ windows-sys = { version = "0.60", features = [
   "Win32_System_SystemInformation",
   "Win32_System_Threading",
   "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
 ] }
 

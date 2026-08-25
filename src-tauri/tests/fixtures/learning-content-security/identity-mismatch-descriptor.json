@@ -1,0 +1,5 @@
+{
+  "fixtureGenerator": "manifest-hash-mismatch-v1",
+  "declaredSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "containsOnlySyntheticData": true
+}

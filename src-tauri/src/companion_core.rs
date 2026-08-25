@@ -93,6 +93,7 @@ pub enum CompanionProp {
     Basket,
     Prompter,
     SystemCard,
+    LearningCard,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -111,6 +112,7 @@ pub enum ExpressionLabel {
     StatusUnknown,
     Information,
     DecisionRequired,
+    ReviewReady,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -139,6 +141,8 @@ pub enum AccessibleExpressionState {
     TaskStatusUnknown,
     InformationAvailable,
     FormalDecisionRequired,
+    LearningInvitation,
+    LearningSession,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -185,6 +189,8 @@ pub enum ExpressionSignal {
     },
     FocusFinishedRitual,
     ReunionRitual,
+    LearningInvitation,
+    LearningSession,
     StrongWaterReminder,
     DueWorkReminder,
     TaskWaitingUser {
@@ -355,7 +361,24 @@ impl CompanionExpressionDirector {
                     ExpressionSignal::Sleep
                         | ExpressionSignal::FocusFinishedRitual
                         | ExpressionSignal::ReunionRitual
+                        | ExpressionSignal::LearningInvitation
                 ) || signal_rank(entry.signal) > signal_rank(ExpressionSignal::FocusFinishedRitual)
+            })
+    }
+
+    #[cfg(feature = "learning")]
+    pub(crate) fn can_present_learning_invitation(&self) -> bool {
+        !self.focus_active
+            && !self.quiet_active
+            && !self.active.iter().any(|entry| {
+                matches!(
+                    entry.signal,
+                    ExpressionSignal::Sleep
+                        | ExpressionSignal::FocusFinishedRitual
+                        | ExpressionSignal::ReunionRitual
+                        | ExpressionSignal::LearningInvitation
+                        | ExpressionSignal::LearningSession
+                ) || signal_rank(entry.signal) > signal_rank(ExpressionSignal::LearningInvitation)
             })
     }
 
@@ -385,6 +408,30 @@ impl CompanionExpressionDirector {
                 false,
                 None,
                 AccessibleExpressionState::WelcomingReturn,
+            ),
+            ExpressionSignal::LearningInvitation => expression_plan(
+                ExpressionTier::N1,
+                ExpressionIntent::PresentInformation,
+                CompanionPose::Review,
+                &[CompanionProp::LearningCard],
+                Some(ExpressionLabel::ReviewReady),
+                AttentionMode::PresentOnce,
+                true,
+                false,
+                None,
+                AccessibleExpressionState::LearningInvitation,
+            ),
+            ExpressionSignal::LearningSession => expression_plan(
+                ExpressionTier::N1,
+                ExpressionIntent::StayClose,
+                CompanionPose::Review,
+                &[CompanionProp::LearningCard],
+                None,
+                AttentionMode::Silent,
+                false,
+                false,
+                None,
+                AccessibleExpressionState::LearningSession,
             ),
             ExpressionSignal::StrongWaterReminder => expression_plan(
                 ExpressionTier::N2,
@@ -559,6 +606,8 @@ fn signal_rank(signal: ExpressionSignal) -> u16 {
         },
         ExpressionSignal::FocusFinishedRitual => 250,
         ExpressionSignal::ReunionRitual => 240,
+        ExpressionSignal::LearningInvitation => 230,
+        ExpressionSignal::LearningSession => 330,
         ExpressionSignal::TaskWatch { .. } | ExpressionSignal::TaskWatchLongRunning { .. } => 200,
         ExpressionSignal::Sleep => 100,
     }
@@ -570,6 +619,8 @@ fn is_suppressed_during_focus(signal: ExpressionSignal) -> bool {
         ExpressionSignal::BasicSupport { .. }
             | ExpressionSignal::FocusFinishedRitual
             | ExpressionSignal::ReunionRitual
+            | ExpressionSignal::LearningInvitation
+            | ExpressionSignal::LearningSession
             | ExpressionSignal::ActivityReminder
             | ExpressionSignal::TaskOutcome { .. }
             | ExpressionSignal::TaskOutcomeSummary { .. }
@@ -1185,6 +1236,74 @@ mod tests {
         assert_eq!(restored.label, Some(ExpressionLabel::Running));
         assert_eq!(restored.props, [CompanionProp::Computer]);
         assert!(!restored.props.contains(&CompanionProp::Bell));
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn learning_invitation_is_a_bounded_nonverbal_card_and_respects_safety_gates() {
+        let mut director = CompanionExpressionDirector::default();
+        assert!(director.can_present_learning_invitation());
+        let invitation_key = ExpressionKey::system(61);
+        let invitation = director
+            .upsert(invitation_key, ExpressionSignal::LearningInvitation)
+            .unwrap();
+        assert_eq!(invitation.tier, ExpressionTier::N1);
+        assert_eq!(invitation.intent, ExpressionIntent::PresentInformation);
+        assert_eq!(invitation.pose, CompanionPose::Review);
+        assert_eq!(invitation.props, [CompanionProp::LearningCard]);
+        assert_eq!(invitation.label, Some(ExpressionLabel::ReviewReady));
+        assert_eq!(invitation.attention, AttentionMode::PresentOnce);
+        assert_eq!(
+            invitation.accessible_state,
+            AccessibleExpressionState::LearningInvitation
+        );
+        assert!(!director.can_present_learning_invitation());
+
+        director.remove(invitation_key);
+        director.set_focus_active(true);
+        assert!(!director.can_present_learning_invitation());
+        director.set_focus_active(false);
+        director.set_quiet_active(true);
+        assert!(!director.can_present_learning_invitation());
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn high_priority_attention_preempts_learning_and_removal_restores_it_cleanly() {
+        let mut director = CompanionExpressionDirector::default();
+        let session_key = ExpressionKey::system(62);
+        let task_key = ExpressionKey::new();
+        let water_key = ExpressionKey::new();
+        let session = director
+            .upsert(session_key, ExpressionSignal::LearningSession)
+            .unwrap();
+        assert_eq!(session.props, [CompanionProp::LearningCard]);
+        assert_eq!(session.attention, AttentionMode::Silent);
+
+        director
+            .upsert(
+                task_key,
+                ExpressionSignal::TaskWatch {
+                    source: TaskSource::Codex,
+                    state: TaskState::Running,
+                },
+            )
+            .unwrap();
+        assert_eq!(director.snapshot().props, [CompanionProp::LearningCard]);
+
+        let water = director
+            .upsert(water_key, ExpressionSignal::StrongWaterReminder)
+            .unwrap();
+        assert_eq!(water.props, [CompanionProp::Bell, CompanionProp::TaskCard]);
+        let restored = director.remove(water_key);
+        assert_eq!(restored.props, [CompanionProp::LearningCard]);
+        assert!(!restored.props.contains(&CompanionProp::Bell));
+
+        let focused = director.set_focus_active(true);
+        assert_eq!(focused.tier, ExpressionTier::N0);
+        assert!(focused.focus_deferred_count >= 1);
+        let resumed = director.set_focus_active(false);
+        assert_eq!(resumed.props, [CompanionProp::LearningCard]);
     }
 
     #[test]

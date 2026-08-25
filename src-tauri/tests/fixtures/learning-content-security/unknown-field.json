@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "packId": "synthetic.security.unknown-field",
+  "title": "Unknown field fixture",
+  "executeAfterInstall": "notepad.exe",
+  "cards": []
+}

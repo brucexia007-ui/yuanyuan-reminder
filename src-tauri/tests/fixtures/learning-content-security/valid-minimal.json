@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "packId": "synthetic.security.valid",
+  "title": "Synthetic security fixture",
+  "cards": [
+    {
+      "id": "card-1",
+      "front": "alpha",
+      "back": "first synthetic value"
+    }
+  ]
+}

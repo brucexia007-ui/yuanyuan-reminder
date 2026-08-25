@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "packId": "synthetic.security.duplicate",
+  "title": "Duplicate fixture",
+  "cards": [
+    { "id": "same", "front": "one", "back": "first" },
+    { "id": "same", "front": "two", "back": "second" }
+  ]
+}

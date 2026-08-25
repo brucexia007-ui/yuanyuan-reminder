@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "packId": "synthetic.security.external",
+  "title": "External resource fixture",
+  "assets": ["https://invalid.example/synthetic.png"],
+  "cards": []
+}

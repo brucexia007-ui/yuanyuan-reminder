@@ -1,5 +1,42 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeCapabilities {
+    pub schema_version: u8,
+    pub learning: LearningCapabilities,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LearningCapabilities {
+    pub compiled: bool,
+    pub available: bool,
+    pub content_pack_ready: bool,
+    pub auto_invitation_available: bool,
+    pub failure_reason: Option<String>,
+}
+
+impl RuntimeCapabilities {
+    pub fn current() -> Self {
+        let learning_compiled = cfg!(feature = "learning");
+        Self {
+            schema_version: 1,
+            learning: LearningCapabilities {
+                compiled: learning_compiled,
+                available: false,
+                content_pack_ready: false,
+                auto_invitation_available: false,
+                failure_reason: Some(if learning_compiled {
+                    "not_implemented".into()
+                } else {
+                    "disabled".into()
+                }),
+            },
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Reminder {
@@ -228,6 +265,24 @@ pub struct DueOccurrence {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn runtime_capabilities_keep_learning_unavailable_during_foundation_stage() {
+        let capabilities = RuntimeCapabilities::current();
+        assert_eq!(capabilities.schema_version, 1);
+        assert!(!capabilities.learning.available);
+        assert!(!capabilities.learning.content_pack_ready);
+        assert!(!capabilities.learning.auto_invitation_available);
+        assert_eq!(capabilities.learning.compiled, cfg!(feature = "learning"));
+        assert_eq!(
+            capabilities.learning.failure_reason.as_deref(),
+            Some(if cfg!(feature = "learning") {
+                "not_implemented"
+            } else {
+                "disabled"
+            })
+        );
+    }
 
     #[test]
     fn legacy_settings_receive_activity_defaults() {

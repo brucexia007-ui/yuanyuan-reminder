@@ -1,0 +1,6 @@
+{
+  "fixtureGenerator": "failpoint-v1",
+  "failAfter": "staging_database_fsync",
+  "expectedVisiblePackState": "unchanged",
+  "containsOnlySyntheticData": true
+}

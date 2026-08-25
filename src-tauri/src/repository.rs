@@ -33,6 +33,21 @@ pub struct Repository {
     conn: Connection,
 }
 
+#[cfg(feature = "learning")]
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct LearningAttentionClaim {
+    row_id: i64,
+    claim_id: Uuid,
+}
+
+#[cfg(feature = "learning")]
+impl LearningAttentionClaim {
+    #[cfg(test)]
+    pub(crate) fn id(&self) -> String {
+        self.claim_id.to_string()
+    }
+}
+
 impl Repository {
     pub fn open(path: &Path) -> AppResult<Self> {
         if let Some(parent) = path.parent() {
@@ -1412,6 +1427,75 @@ impl Repository {
         Ok(true)
     }
 
+    #[cfg(feature = "learning")]
+    pub(crate) fn try_claim_learning_attention(
+        &mut self,
+        intensity: &str,
+        now_unix_ms: i64,
+        local_day: &str,
+    ) -> AppResult<Option<LearningAttentionClaim>> {
+        let (daily_limit, hourly_limit) = match intensity {
+            "quiet" => return Ok(None),
+            "everyday" => (3_i64, 1_i64),
+            "close" => (6_i64, 2_i64),
+            _ => {
+                return Err(AppError::Validation("invalid companion intensity".into()));
+            }
+        };
+        if now_unix_ms < 0 || NaiveDate::parse_from_str(local_day, "%Y-%m-%d").is_err() {
+            return Err(AppError::Validation(
+                "learning attention clock is invalid".into(),
+            ));
+        }
+        let transaction = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let shown_today: i64 = transaction.query_row(
+            "SELECT COUNT(*) FROM companion_proactive_attention
+             WHERE local_day = ?1 AND shown_at_unix_ms <= ?2",
+            params![local_day, now_unix_ms],
+            |row| row.get(0),
+        )?;
+        let rolling_hour_start = now_unix_ms.saturating_sub(60 * 60 * 1_000);
+        let shown_last_hour: i64 = transaction.query_row(
+            "SELECT COUNT(*) FROM companion_proactive_attention
+             WHERE shown_at_unix_ms > ?1 AND shown_at_unix_ms <= ?2",
+            params![rolling_hour_start, now_unix_ms],
+            |row| row.get(0),
+        )?;
+        if shown_today >= daily_limit || shown_last_hour >= hourly_limit {
+            return Ok(None);
+        }
+        transaction.execute(
+            "DELETE FROM companion_proactive_attention WHERE shown_at_unix_ms < ?1",
+            [now_unix_ms.saturating_sub(8 * 24 * 60 * 60 * 1_000)],
+        )?;
+        transaction.execute(
+            "INSERT INTO companion_proactive_attention(kind, shown_at_unix_ms, local_day)
+             VALUES('learning_invitation', ?1, ?2)",
+            params![now_unix_ms, local_day],
+        )?;
+        let row_id = transaction.last_insert_rowid();
+        transaction.commit()?;
+        Ok(Some(LearningAttentionClaim {
+            row_id,
+            claim_id: Uuid::new_v4(),
+        }))
+    }
+
+    #[cfg(feature = "learning")]
+    pub(crate) fn release_unpresented_learning_attention(
+        &mut self,
+        claim: &LearningAttentionClaim,
+    ) -> AppResult<bool> {
+        let deleted = self.conn.execute(
+            "DELETE FROM companion_proactive_attention
+             WHERE id = ?1 AND kind = 'learning_invitation'",
+            [claim.row_id],
+        )?;
+        Ok(deleted == 1)
+    }
+
     pub fn mark_overdue(&self) -> AppResult<()> {
         self.conn.execute(
             "UPDATE occurrences SET status = 'overdue'
@@ -1424,9 +1508,10 @@ impl Repository {
 
 fn apply_migrations(connection: &Connection) -> AppResult<()> {
     let schema_version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    if schema_version > 11 {
+    let maximum_schema_version = if cfg!(feature = "learning") { 12 } else { 11 };
+    if schema_version > maximum_schema_version {
         return Err(AppError::Validation(format!(
-            "database schema version {schema_version} is newer than supported version 11"
+            "database schema version {schema_version} is newer than supported version {maximum_schema_version}"
         )));
     }
     if schema_version < 1 {
@@ -1492,6 +1577,13 @@ fn apply_migrations(connection: &Connection) -> AppResult<()> {
             include_str!("../migrations/011_task_watch_attention_deferrals.sql"),
         )?;
     }
+    #[cfg(feature = "learning")]
+    if schema_version < 12 {
+        execute_migration(
+            connection,
+            include_str!("../migrations/012_learning_invitation_attention.sql"),
+        )?;
+    }
     Ok(())
 }
 
@@ -1525,7 +1617,8 @@ fn validate_connection(connection: &Connection) -> AppResult<()> {
         )));
     }
     let schema_version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    if !(1..=11).contains(&schema_version) {
+    let maximum_schema_version = if cfg!(feature = "learning") { 12 } else { 11 };
+    if !(1..=maximum_schema_version).contains(&schema_version) {
         return Err(AppError::Validation(format!(
             "unsupported backup schema version {schema_version}"
         )));
@@ -1875,6 +1968,25 @@ mod tests {
     use chrono::TimeZone;
 
     use super::*;
+
+    #[cfg(feature = "learning")]
+    fn apply_main_migrations_through_v11(connection: &Connection) {
+        for migration in [
+            include_str!("../migrations/001_initial.sql"),
+            include_str!("../migrations/002_focus_sessions.sql"),
+            include_str!("../migrations/003_pet_interactions.sql"),
+            include_str!("../migrations/004_ball_interaction.sql"),
+            include_str!("../migrations/005_occurrence_history.sql"),
+            include_str!("../migrations/006_activity_tracking.sql"),
+            include_str!("../migrations/007_reminder_management.sql"),
+            include_str!("../migrations/008_companion_attention_budget.sql"),
+            include_str!("../migrations/009_companion_proactive_attention.sql"),
+            include_str!("../migrations/010_companion_reunion_attention.sql"),
+            include_str!("../migrations/011_task_watch_attention_deferrals.sql"),
+        ] {
+            connection.execute_batch(migration).unwrap();
+        }
+    }
 
     #[test]
     fn stable_database_has_no_basic_support_or_emotion_history_table() {
@@ -2359,7 +2471,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 11);
+        assert_eq!(version, if cfg!(feature = "learning") { 12 } else { 11 });
         drop(repository);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
@@ -2845,7 +2957,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 11);
+        assert_eq!(version, if cfg!(feature = "learning") { 12 } else { 11 });
         let water = repository.get_reminder(&water_id).unwrap().unwrap();
         assert_eq!(water.system_kind.as_deref(), Some("water"));
         assert!(water.archived_at.is_none());
@@ -2924,7 +3036,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(after, 11);
+        assert_eq!(after, if cfg!(feature = "learning") { 12 } else { 11 });
         let columns = repository
             .conn
             .prepare("PRAGMA table_info(task_watch_attention_deferrals)")
@@ -3329,6 +3441,137 @@ mod tests {
         let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
     }
 
+    #[cfg(feature = "learning")]
+    #[test]
+    fn migration_twelve_preserves_v11_ids_sequence_indexes_and_constraints() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-v12-learning-attention-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let connection = Connection::open(&path).unwrap();
+        apply_main_migrations_through_v11(&connection);
+        connection
+            .execute(
+                "INSERT INTO companion_proactive_attention(id, kind, shown_at_unix_ms, local_day)
+                 VALUES(5, 'focus_finished', 1000, '2026-08-05')",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO companion_proactive_attention(id, kind, shown_at_unix_ms, local_day)
+                 VALUES(8, 'reunion', 2000, '2026-08-05')",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        let mut repository = Repository::open(&path).unwrap();
+        let version: u32 = repository
+            .conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 12);
+        let ids = repository
+            .conn
+            .prepare("SELECT id FROM companion_proactive_attention ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get::<_, i64>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(ids, [5, 8]);
+        for index in [
+            "idx_companion_proactive_attention_time",
+            "idx_companion_proactive_attention_day",
+        ] {
+            let sql: String = repository
+                .conn
+                .query_row(
+                    "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?1",
+                    [index],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert!(sql.contains("companion_proactive_attention"));
+        }
+        assert!(repository
+            .conn
+            .execute(
+                "INSERT INTO companion_proactive_attention(kind, shown_at_unix_ms, local_day)
+                 VALUES('unknown', 3000, '2026-08-05')",
+                [],
+            )
+            .is_err());
+
+        let claim = repository
+            .try_claim_learning_attention("everyday", 3_602_001, "2026-08-05")
+            .unwrap()
+            .unwrap();
+        assert!(Uuid::parse_str(&claim.id()).is_ok());
+        let inserted_id: i64 = repository
+            .conn
+            .query_row(
+                "SELECT id FROM companion_proactive_attention
+                 WHERE kind = 'learning_invitation'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(inserted_id > 8);
+        assert!(repository
+            .release_unpresented_learning_attention(&claim)
+            .unwrap());
+        assert!(!repository
+            .release_unpresented_learning_attention(&claim)
+            .unwrap());
+
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn failed_v12_table_rebuild_rolls_back_to_intact_v11() {
+        let connection = Connection::open_in_memory().unwrap();
+        apply_main_migrations_through_v11(&connection);
+        connection
+            .execute(
+                "INSERT INTO companion_proactive_attention(kind, shown_at_unix_ms, local_day)
+                 VALUES('focus_finished', 1000, '2026-08-05')",
+                [],
+            )
+            .unwrap();
+        let broken = include_str!("../migrations/012_learning_invitation_attention.sql").replace(
+            "DROP TABLE companion_proactive_attention_v11;",
+            "SELECT definitely_missing_sql_function();\nDROP TABLE companion_proactive_attention_v11;",
+        );
+        assert!(execute_migration(&connection, &broken).is_err());
+        let version: u32 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        let row: (String, i64) = connection
+            .query_row(
+                "SELECT kind, id FROM companion_proactive_attention",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        let renamed_table_exists: bool = connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master
+                 WHERE type = 'table' AND name = 'companion_proactive_attention_v11')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(version, 11);
+        assert_eq!(row, ("focus_finished".into(), 1));
+        assert!(!renamed_table_exists);
+    }
+
     #[test]
     fn real_upgrade_fixture_is_healthy_when_provided() {
         let Ok(source_path) = std::env::var("YUANYUAN_UPGRADE_FIXTURE") else {
@@ -3355,7 +3598,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 11);
+        assert_eq!(version, if cfg!(feature = "learning") { 12 } else { 11 });
         repository.get_settings().unwrap();
         repository.list_today(false).unwrap();
         repository.get_pet_care().unwrap();

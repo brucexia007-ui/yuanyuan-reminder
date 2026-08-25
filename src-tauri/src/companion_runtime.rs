@@ -12,6 +12,7 @@ use crate::{
     },
     error::{AppError, AppResult},
     models::{BasicSupportSession, TodaySnapshot},
+    presentation_arbiter::PresentationOwner,
     repository::{TaskWatchAttentionDeferral, SYSTEM_ACTIVITY_REMINDER_ID},
     state::AppState,
 };
@@ -24,6 +25,10 @@ const TERMINAL_SUMMARY_SIGNAL_KEY: ExpressionKey = ExpressionKey::system(2);
 const FOCUS_FINISHED_SIGNAL_KEY: ExpressionKey = ExpressionKey::system(3);
 const BASIC_SUPPORT_SIGNAL_KEY: ExpressionKey = ExpressionKey::system(4);
 const REUNION_SIGNAL_KEY: ExpressionKey = ExpressionKey::system(5);
+#[cfg(feature = "learning")]
+const LEARNING_INVITATION_SIGNAL_KEY: ExpressionKey = ExpressionKey::system(6);
+#[cfg(feature = "learning")]
+const LEARNING_SESSION_SIGNAL_KEY: ExpressionKey = ExpressionKey::system(7);
 const FOCUS_FINISHED_VISIBLE_SECONDS: u64 = 12;
 const REUNION_VISIBLE_SECONDS: u64 = 10;
 const LONG_RUNNING_AFTER_MS: i64 = 10 * 60 * 1_000;
@@ -74,8 +79,27 @@ pub fn initialize(
 
 pub fn sync_local_occurrences(app: &AppHandle) -> AppResult<CompanionExpressionSnapshot> {
     let state = app.state::<AppState>();
-    let today = state.repository.lock().list_today(false)?;
+    let (today, focus_active) = {
+        let repository = state.repository.lock();
+        (
+            repository.list_today(false)?,
+            repository
+                .get_focus_state()?
+                .session
+                .is_some_and(|session| session.phase == "focus"),
+        )
+    };
     let desired = desired_local_signals(&today);
+    let _transition = crate::presentation_runtime::reconcile_local_context(
+        app,
+        desired_local_presentation_owner(&today),
+        focus_active,
+        Utc::now().timestamp_millis(),
+    )?;
+    #[cfg(feature = "learning")]
+    if _transition.preempted_learning_session || _transition.preempted_learning_invitation {
+        preempt_learning_for_high_priority(app, "local_reminder", Utc::now().timestamp_millis())?;
+    }
 
     let desired_keys: HashSet<_> = desired.keys().copied().collect();
     let mut known_keys = state.companion_occurrence_keys.lock();
@@ -167,6 +191,15 @@ pub fn sync_external_tasks(
                 count: summary.count,
             },
         ));
+    }
+    let _task_watch_transition =
+        crate::presentation_runtime::reconcile_task_watch(app, !desired.is_empty(), now_unix_ms)?;
+    #[cfg(feature = "learning")]
+    if _task_watch_transition.preempted_learning_invitation {
+        let pending = state.learning.lock().pending_invitation();
+        if let Some(pending) = pending {
+            withdraw_learning_invitation(app, &pending.invitation_id, "withdrawn", now_unix_ms)?;
+        }
     }
     let desired_keys: HashSet<_> = desired.iter().map(|(key, _)| *key).collect();
     let mut known_keys = state.companion_task_keys.lock();
@@ -313,6 +346,7 @@ fn clear_external_tasks(app: &AppHandle) -> AppResult<CompanionExpressionSnapsho
     if snapshot.revision != previous_revision {
         emit(app, &snapshot)?;
     }
+    crate::presentation_runtime::reconcile_task_watch(app, false, Utc::now().timestamp_millis())?;
     Ok(snapshot)
 }
 
@@ -552,7 +586,45 @@ fn desired_local_signals(today: &TodaySnapshot) -> HashMap<ExpressionKey, Expres
     desired
 }
 
+fn desired_local_presentation_owner(today: &TodaySnapshot) -> Option<PresentationOwner> {
+    let active = |status: &str| matches!(status, "pending" | "overdue");
+    if today.occurrences.iter().any(|item| {
+        active(&item.status)
+            && item.category != "water"
+            && item.reminder_id != SYSTEM_ACTIVITY_REMINDER_ID
+    }) {
+        return Some(PresentationOwner::StrongReminder);
+    }
+    if today
+        .occurrences
+        .iter()
+        .any(|item| active(&item.status) && item.category == "water")
+    {
+        return Some(PresentationOwner::WaterReminder);
+    }
+    today
+        .occurrences
+        .iter()
+        .any(|item| active(&item.status) && item.reminder_id == SYSTEM_ACTIVITY_REMINDER_ID)
+        .then_some(PresentationOwner::MovementReminder)
+}
+
 pub fn set_focus_active(app: &AppHandle, active: bool) -> AppResult<CompanionExpressionSnapshot> {
+    let today = app
+        .state::<AppState>()
+        .repository
+        .lock()
+        .list_today(false)?;
+    let _transition = crate::presentation_runtime::reconcile_local_context(
+        app,
+        desired_local_presentation_owner(&today),
+        active,
+        Utc::now().timestamp_millis(),
+    )?;
+    #[cfg(feature = "learning")]
+    if _transition.preempted_learning_session || _transition.preempted_learning_invitation {
+        preempt_learning_for_high_priority(app, "focus_started", Utc::now().timestamp_millis())?;
+    }
     let snapshot = app
         .state::<AppState>()
         .companion_expression
@@ -571,6 +643,454 @@ pub fn try_present_focus_finished_ritual(app: &AppHandle, now_unix_ms: i64) -> A
         ExpressionSignal::FocusFinishedRitual,
         FOCUS_FINISHED_VISIBLE_SECONDS,
     )
+}
+
+#[cfg(feature = "learning")]
+pub fn try_present_focus_finished_learning_invitation(
+    app: &AppHandle,
+    now_unix_ms: i64,
+) -> AppResult<bool> {
+    try_present_learning_invitation(
+        app,
+        crate::learning::LearningTriggerSource::FocusFinished,
+        now_unix_ms,
+    )
+}
+
+#[cfg(feature = "learning")]
+fn try_present_learning_invitation(
+    app: &AppHandle,
+    trigger_source: crate::learning::LearningTriggerSource,
+    now_unix_ms: i64,
+) -> AppResult<bool> {
+    let state = app.state::<AppState>();
+    let local_now = Utc
+        .timestamp_millis_opt(now_unix_ms)
+        .single()
+        .ok_or_else(|| AppError::Validation("learning invitation clock is invalid".into()))?
+        .with_timezone(&Local);
+    let local_day = local_now.format("%Y-%m-%d").to_string();
+    let invitation_id = uuid::Uuid::new_v4().to_string();
+
+    let (intensity, environment) =
+        learning_invitation_environment(app, now_unix_ms, local_now.time())?;
+    let context = state.learning.lock().invitation_context(
+        trigger_source,
+        environment,
+        now_unix_ms,
+        &local_day,
+    )?;
+    state.learning.lock().record_invitation_event(
+        &invitation_id,
+        trigger_source,
+        "candidate",
+        None,
+        now_unix_ms,
+    )?;
+    if let crate::learning::LearningInvitationDecision::Suppressed(reason) =
+        state.learning.lock().evaluate_invitation(&context)
+    {
+        state.learning.lock().record_invitation_event(
+            &invitation_id,
+            trigger_source,
+            "suppressed",
+            Some(reason),
+            now_unix_ms,
+        )?;
+        return Ok(false);
+    }
+
+    let _gate = state.learning_invitation_gate.lock();
+    let (intensity_final, final_environment) =
+        learning_invitation_environment(app, now_unix_ms, local_now.time())?;
+    let final_context = state.learning.lock().invitation_context(
+        trigger_source,
+        final_environment,
+        now_unix_ms,
+        &local_day,
+    )?;
+    if let crate::learning::LearningInvitationDecision::Suppressed(reason) =
+        state.learning.lock().evaluate_invitation(&final_context)
+    {
+        state.learning.lock().record_invitation_event(
+            &invitation_id,
+            trigger_source,
+            "suppressed",
+            Some(reason),
+            now_unix_ms,
+        )?;
+        return Ok(false);
+    }
+    state.learning.lock().record_invitation_event(
+        &invitation_id,
+        trigger_source,
+        "eligible",
+        None,
+        now_unix_ms,
+    )?;
+    let Some(claim) = state.repository.lock().try_claim_learning_attention(
+        &intensity_final,
+        now_unix_ms,
+        &local_day,
+    )?
+    else {
+        state.learning.lock().record_invitation_event(
+            &invitation_id,
+            trigger_source,
+            "suppressed",
+            Some(crate::learning::LearningSuppressionReason::GlobalBudget),
+            now_unix_ms,
+        )?;
+        return Ok(false);
+    };
+
+    let invitation = match state.learning.lock().begin_invitation(
+        invitation_id.clone(),
+        trigger_source,
+        final_context.due_review_count,
+        now_unix_ms,
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            let _ = state
+                .repository
+                .lock()
+                .release_unpresented_learning_attention(&claim);
+            return Err(error);
+        }
+    };
+    if let Err(error) = state.learning.lock().record_invitation_event(
+        &invitation_id,
+        trigger_source,
+        "claimed",
+        None,
+        now_unix_ms,
+    ) {
+        let _ = state
+            .repository
+            .lock()
+            .release_unpresented_learning_attention(&claim);
+        let _ = state.learning.lock().withdraw_invitation(
+            &invitation_id,
+            "delivery_failed",
+            None,
+            now_unix_ms,
+        );
+        return Err(error);
+    }
+
+    let snapshot = {
+        let mut director = state.companion_expression.lock();
+        if !director.can_present_learning_invitation() {
+            drop(director);
+            let _ = state
+                .repository
+                .lock()
+                .release_unpresented_learning_attention(&claim);
+            let _ = state.learning.lock().withdraw_invitation(
+                &invitation_id,
+                "withdrawn",
+                Some(crate::learning::LearningSuppressionReason::TaskAttentionPending),
+                now_unix_ms,
+            );
+            return Ok(false);
+        }
+        if !crate::presentation_runtime::acquire_learning_invitation(
+            app,
+            now_unix_ms,
+            invitation.expires_at_unix_ms,
+        )? {
+            drop(director);
+            let _ = state
+                .repository
+                .lock()
+                .release_unpresented_learning_attention(&claim);
+            let _ = state.learning.lock().withdraw_invitation(
+                &invitation_id,
+                "withdrawn",
+                Some(crate::learning::LearningSuppressionReason::TaskAttentionPending),
+                now_unix_ms,
+            );
+            return Ok(false);
+        }
+        director
+            .upsert(
+                LEARNING_INVITATION_SIGNAL_KEY,
+                ExpressionSignal::LearningInvitation,
+            )
+            .map_err(|_| AppError::Validation("companion expression capacity reached".into()))?
+    };
+    if let Err(error) = state.learning.lock().record_invitation_event(
+        &invitation_id,
+        trigger_source,
+        "presented",
+        None,
+        now_unix_ms,
+    ) {
+        rollback_unpresented_learning_invitation(app, &invitation_id, &claim, now_unix_ms);
+        return Err(error);
+    }
+    if let Err(error) = emit(app, &snapshot).and_then(|_| {
+        app.emit("learning-invitation-presented", &invitation)
+            .map_err(|value| AppError::Window(value.to_string()))
+    }) {
+        rollback_unpresented_learning_invitation(app, &invitation_id, &claim, now_unix_ms);
+        return Err(error);
+    }
+
+    // From this point the claim represents a real presentation and is deliberately
+    // retained. A crash before this point can conservatively lose at most one claim.
+    let app_for_expiry = app.clone();
+    let invitation_id_for_expiry = invitation_id.clone();
+    let delay_ms = invitation
+        .expires_at_unix_ms
+        .saturating_sub(now_unix_ms)
+        .max(1) as u64;
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+        let _ = withdraw_learning_invitation(
+            &app_for_expiry,
+            &invitation_id_for_expiry,
+            "ignored",
+            Utc::now().timestamp_millis(),
+        );
+    });
+    let _ = intensity;
+    Ok(true)
+}
+
+#[cfg(feature = "learning")]
+fn learning_invitation_environment(
+    app: &AppHandle,
+    now_unix_ms: i64,
+    local_time: chrono::NaiveTime,
+) -> AppResult<(String, crate::learning::LearningInvitationEnvironment)> {
+    let state = app.state::<AppState>();
+    let (settings, focus_or_break_active, pending_local_reminder) = {
+        let repository = state.repository.lock();
+        let settings = repository.get_settings()?;
+        let focus_or_break_active = repository.get_focus_state()?.session.is_some();
+        let pending_local_reminder =
+            !desired_local_signals(&repository.list_today(false)?).is_empty();
+        (settings, focus_or_break_active, pending_local_reminder)
+    };
+    let capabilities = state.learning.lock().capabilities();
+    let can_present = state
+        .companion_expression
+        .lock()
+        .can_present_learning_invitation();
+    let session_interactive = !state
+        .manual_sleep_active
+        .load(std::sync::atomic::Ordering::SeqCst)
+        && !state
+            .automatic_sleep_commanded
+            .load(std::sync::atomic::Ordering::SeqCst);
+    let basic_support_active = state.basic_support.lock().is_some();
+    let quiet_time =
+        pause_active(&settings, now_unix_ms) || quiet_time_active(&settings, local_time);
+    let intensity = settings.companion_intensity.clone();
+    Ok((
+        intensity,
+        crate::learning::LearningInvitationEnvironment {
+            focus_or_break_active,
+            quiet_time,
+            basic_support_active,
+            session_interactive,
+            system_suitability: crate::learning::current_system_suitability(),
+            pending_local_reminder,
+            task_attention_pending: !can_present,
+            global_budget_available: true,
+            content_and_database_healthy: capabilities.available && capabilities.content_pack_ready,
+            timing_valid: true,
+        },
+    ))
+}
+
+#[cfg(feature = "learning")]
+fn rollback_unpresented_learning_invitation(
+    app: &AppHandle,
+    invitation_id: &str,
+    claim: &crate::repository::LearningAttentionClaim,
+    now_unix_ms: i64,
+) {
+    let state = app.state::<AppState>();
+    let _ = crate::presentation_runtime::release_learning_invitation(app, now_unix_ms);
+    state
+        .companion_expression
+        .lock()
+        .remove(LEARNING_INVITATION_SIGNAL_KEY);
+    let _ = state
+        .repository
+        .lock()
+        .release_unpresented_learning_attention(claim);
+    let _ = state.learning.lock().withdraw_invitation(
+        invitation_id,
+        "delivery_failed",
+        None,
+        now_unix_ms,
+    );
+    let _ = emit(app, &state.companion_expression.lock().snapshot());
+}
+
+#[cfg(feature = "learning")]
+pub fn withdraw_learning_invitation(
+    app: &AppHandle,
+    invitation_id: &str,
+    stage: &str,
+    now_unix_ms: i64,
+) -> AppResult<bool> {
+    let state = app.state::<AppState>();
+    let _gate = state.learning_invitation_gate.lock();
+    if !state
+        .learning
+        .lock()
+        .withdraw_invitation(invitation_id, stage, None, now_unix_ms)?
+    {
+        return Ok(false);
+    }
+    crate::presentation_runtime::release_learning_invitation(app, now_unix_ms)?;
+    let snapshot = state
+        .companion_expression
+        .lock()
+        .remove(LEARNING_INVITATION_SIGNAL_KEY);
+    emit(app, &snapshot)?;
+    app.emit(
+        "learning-invitation-withdrawn",
+        serde_json::json!({
+            "schemaVersion": 1,
+            "invitationId": invitation_id,
+            "reason": stage,
+        }),
+    )
+    .map_err(|error| AppError::Window(error.to_string()))?;
+    Ok(true)
+}
+
+#[cfg(feature = "learning")]
+pub fn set_learning_session_active(
+    app: &AppHandle,
+    active: bool,
+    session_id: Option<&str>,
+) -> AppResult<CompanionExpressionSnapshot> {
+    let snapshot = if active {
+        let session_id = session_id.ok_or_else(|| {
+            AppError::Validation("learning session presentation requires a session id".into())
+        })?;
+        let transition = crate::presentation_runtime::acquire_learning_session(
+            app,
+            session_id,
+            Utc::now().timestamp_millis(),
+        )?;
+        if !transition.granted {
+            return Err(AppError::Validation(
+                "a higher priority presentation is active".into(),
+            ));
+        }
+        if transition.preempted_learning_invitation {
+            let pending = app.state::<AppState>().learning.lock().pending_invitation();
+            if let Some(pending) = pending {
+                withdraw_learning_invitation(
+                    app,
+                    &pending.invitation_id,
+                    "withdrawn",
+                    Utc::now().timestamp_millis(),
+                )?;
+            }
+        }
+        app.state::<AppState>()
+            .companion_expression
+            .lock()
+            .upsert(
+                LEARNING_SESSION_SIGNAL_KEY,
+                ExpressionSignal::LearningSession,
+            )
+            .map_err(|_| AppError::Validation("companion expression capacity reached".into()))?
+    } else {
+        let now_unix_ms = Utc::now().timestamp_millis();
+        let released = match session_id {
+            Some(session_id) => crate::presentation_runtime::finish_learning_session_for(
+                app,
+                session_id,
+                now_unix_ms,
+            )?,
+            None => crate::presentation_runtime::finish_learning_session(app, now_unix_ms)?,
+        };
+        let state = app.state::<AppState>();
+        let mut director = state.companion_expression.lock();
+        if released {
+            director.remove(LEARNING_SESSION_SIGNAL_KEY)
+        } else {
+            director.snapshot()
+        }
+    };
+    emit(app, &snapshot)?;
+    Ok(snapshot)
+}
+
+#[cfg(feature = "learning")]
+pub fn transition_learning_invitation_to_session(
+    app: &AppHandle,
+    session_id: &str,
+) -> AppResult<CompanionExpressionSnapshot> {
+    let transition = crate::presentation_runtime::acquire_learning_session(
+        app,
+        session_id,
+        Utc::now().timestamp_millis(),
+    )?;
+    if !transition.granted {
+        return Err(AppError::Validation(
+            "a higher priority presentation is active".into(),
+        ));
+    }
+    let state = app.state::<AppState>();
+    let mut director = state.companion_expression.lock();
+    director.remove(LEARNING_INVITATION_SIGNAL_KEY);
+    let snapshot = director
+        .upsert(
+            LEARNING_SESSION_SIGNAL_KEY,
+            ExpressionSignal::LearningSession,
+        )
+        .map_err(|_| AppError::Validation("companion expression capacity reached".into()))?;
+    drop(director);
+    emit(app, &snapshot)?;
+    Ok(snapshot)
+}
+
+#[cfg(feature = "learning")]
+pub fn preempt_learning_for_high_priority(
+    app: &AppHandle,
+    reason: &str,
+    now_unix_ms: i64,
+) -> AppResult<bool> {
+    let state = app.state::<AppState>();
+    let pending = state.learning.lock().pending_invitation();
+    let mut changed = false;
+    if let Some(pending) = pending {
+        changed |=
+            withdraw_learning_invitation(app, &pending.invitation_id, "withdrawn", now_unix_ms)?;
+    }
+    if let Some(session) = state
+        .learning
+        .lock()
+        .interrupt_active_session(now_unix_ms)?
+    {
+        changed = true;
+        let snapshot = state
+            .companion_expression
+            .lock()
+            .remove(LEARNING_SESSION_SIGNAL_KEY);
+        emit(app, &snapshot)?;
+        app.emit(
+            "learning-session-interrupted",
+            serde_json::json!({
+                "schemaVersion": 1,
+                "session": session,
+                "reason": reason,
+            }),
+        )
+        .map_err(|error| AppError::Window(error.to_string()))?;
+    }
+    Ok(changed)
 }
 
 pub fn try_present_reunion_ritual(app: &AppHandle, now_unix_ms: i64) -> AppResult<bool> {
@@ -650,6 +1170,8 @@ pub fn start_basic_support(
     path: &str,
     duration_minutes: u32,
 ) -> AppResult<BasicSupportSession> {
+    #[cfg(feature = "learning")]
+    preempt_learning_for_high_priority(app, "basic_support", Utc::now().timestamp_millis())?;
     let support_path = parse_basic_support(path, duration_minutes)?;
     let state = app.state::<AppState>();
     if state
@@ -783,7 +1305,16 @@ pub fn set_quiet_active(
     Ok(snapshot)
 }
 
-pub fn set_sleeping(app: &AppHandle, sleeping: bool) -> AppResult<CompanionExpressionSnapshot> {
+pub fn set_sleeping(
+    app: &AppHandle,
+    sleeping: bool,
+    source: crate::presentation_arbiter::PetActivitySource,
+) -> AppResult<CompanionExpressionSnapshot> {
+    #[cfg(feature = "learning")]
+    if sleeping {
+        preempt_learning_for_high_priority(app, "sleep_started", Utc::now().timestamp_millis())?;
+    }
+    crate::presentation_runtime::set_sleeping(app, sleeping, source)?;
     let state = app.state::<AppState>();
     let mut director = state.companion_expression.lock();
     let snapshot = if sleeping {

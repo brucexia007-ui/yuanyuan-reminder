@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "圆圆提醒学习预览版",
+  "identifier": "com.yuanyuan.reminder.learning-preview",
+  "build": {
+    "beforeBuildCommand": "npm.cmd run learning:ui:build"
+  },
+  "bundle": {
+    "shortDescription": "圆圆陪你在工作碎片时间复习英语",
+    "longDescription": "圆圆提醒的本地优先英语学习预览版，与稳定版独立安装和存储数据。"
+  }
+}

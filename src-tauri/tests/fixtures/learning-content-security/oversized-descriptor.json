@@ -1,0 +1,6 @@
+{
+  "fixtureGenerator": "repeat-card-v1",
+  "targetBytes": 26214401,
+  "targetCards": 20001,
+  "containsOnlySyntheticData": true
+}

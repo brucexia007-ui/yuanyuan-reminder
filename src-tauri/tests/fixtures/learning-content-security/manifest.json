@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "fixtureSet": "local-content-pack-v1-preimplementation",
+  "syntheticOnly": true,
+  "frozenBudgets": {
+    "maxPackageBytes": 26214400,
+    "maxCards": 20000,
+    "maxJsonDepth": 8,
+    "maxPreviewTokens": 8,
+    "previewTtlSeconds": 600,
+    "unknownFields": "reject",
+    "remoteResources": "reject",
+    "executableContent": "reject"
+  },
+  "fixtures": [
+    {
+      "id": "SEC-FIX-001",
+      "file": "valid-minimal.json",
+      "sha256": "83a8de23a3406b78800ad5d57f3002623afd1809cb3f3a593bebb6d92decdea5",
+      "expected": "accept",
+      "stride": ["tampering"],
+      "control": "strict-schema-and-deterministic-hash",
+      "owner": "learning-platform"
+    },
+    {
+      "id": "SEC-FIX-002",
+      "file": "identity-mismatch-descriptor.json",
+      "sha256": "2aadaec47143c57b08d59aafb2a9cac97699d24ed667c802303ef12bff87d9bc",
+      "expected": "reject",
+      "stride": ["spoofing", "tampering"],
+      "control": "manifest-content-hash-binding",
+      "owner": "security"
+    },
+    {
+      "id": "SEC-FIX-003",
+      "file": "unknown-field.json",
+      "sha256": "6de784318972eeb71ec02023842923f43dd2eb84f839a842f2ffa352adc2cb74",
+      "expected": "reject",
+      "stride": ["elevation_of_privilege", "tampering"],
+      "control": "deny-unknown-fields-and-no-code-fields",
+      "owner": "learning-platform"
+    },
+    {
+      "id": "SEC-FIX-004",
+      "file": "formula-injection.csv",
+      "sha256": "8cab16c4b96096e50a5ae2a87ef07d7c04bb1d10ea3e9237d5403f1a97237cdb",
+      "expected": "reject",
+      "stride": ["elevation_of_privilege", "information_disclosure"],
+      "control": "formula-prefix-rejection-on-import",
+      "owner": "security"
+    },
+    {
+      "id": "SEC-FIX-005",
+      "file": "unicode-bidi.json",
+      "sha256": "39af414dff169d1b4d1a5c272d77502d0576ccd7bfe3335e3fedb061e8e0281e",
+      "expected": "reject",
+      "stride": ["spoofing"],
+      "control": "unicode-control-and-bidi-rejection",
+      "owner": "security"
+    },
+    {
+      "id": "SEC-FIX-006",
+      "file": "path-traversal.json",
+      "sha256": "aeb971f4773b1f47f33ea554fefde2c0bdb1e811a6401b4cc6406ff85e3eb151",
+      "expected": "reject",
+      "stride": ["information_disclosure", "elevation_of_privilege"],
+      "control": "picker-capability-and-contained-relative-assets",
+      "owner": "windows-security"
+    },
+    {
+      "id": "SEC-FIX-007",
+      "file": "external-resource.json",
+      "sha256": "d399e04c850f49fad5927c97b29b845b73441e85ba5858cac8487616801297af",
+      "expected": "reject",
+      "stride": ["information_disclosure", "elevation_of_privilege"],
+      "control": "offline-only-resource-policy",
+      "owner": "security"
+    },
+    {
+      "id": "SEC-FIX-008",
+      "file": "duplicate-card-ids.json",
+      "sha256": "f2fd0a70cbd74d11872f536f38c7d831605333398582ac8dcc52b8f2cf6d5ccc",
+      "expected": "reject",
+      "stride": ["spoofing", "tampering"],
+      "control": "unique-canonical-identifiers",
+      "owner": "learning-platform"
+    },
+    {
+      "id": "SEC-FIX-009",
+      "file": "deeply-nested.json",
+      "sha256": "ef710b07ebc95ebaa0fa580763bc78cf3cb20f54e01f870c263d6457bccb7e20",
+      "expected": "reject",
+      "stride": ["denial_of_service"],
+      "control": "bounded-json-depth",
+      "owner": "learning-platform"
+    },
+    {
+      "id": "SEC-FIX-010",
+      "file": "malformed.json",
+      "sha256": "d6ef2cd084ef50b108634d21361de09de5602b5fd8b9f511fd23ca9d1577b17c",
+      "expected": "reject",
+      "stride": ["tampering", "denial_of_service"],
+      "control": "fail-closed-parser",
+      "owner": "learning-platform"
+    },
+    {
+      "id": "SEC-FIX-011",
+      "file": "oversized-descriptor.json",
+      "sha256": "fe60a60507caeba3ca69eb71b4db9a5d65994d415786f80672b04438c8ca24b4",
+      "expected": "reject",
+      "stride": ["denial_of_service"],
+      "control": "preparse-byte-and-card-budgets",
+      "owner": "performance"
+    },
+    {
+      "id": "SEC-FIX-012",
+      "file": "preview-token-replay-descriptor.json",
+      "sha256": "358aea4a33f922a713ee314be21a56008cd2db0253f27e3aa0ca7ad69cf30bbb",
+      "expected": "reject_second_use",
+      "stride": ["repudiation", "tampering"],
+      "control": "single-use-expiring-preview-token",
+      "owner": "security"
+    },
+    {
+      "id": "SEC-FIX-013",
+      "file": "half-install-descriptor.json",
+      "sha256": "bf044e22fc417081ba1845e840fb07758141db4bc10874fa9ce34140cc354991",
+      "expected": "old_state_unchanged",
+      "stride": ["repudiation", "tampering", "denial_of_service"],
+      "control": "staging-fsync-atomic-commit-and-audit-summary",
+      "owner": "database"
+    }
+  ]
+}

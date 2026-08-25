@@ -9,6 +9,8 @@ use crate::{
     state::AppState,
 };
 
+const PET_SLEEP_TOGGLE_LABEL: &str = "立即睡觉/叫醒圆圆";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct DisplayBounds {
     x: i32,
@@ -50,6 +52,13 @@ fn visible_position(
     best_display
         .map(|display| clamp_to_display(x, y, width, height, display))
         .unwrap_or((x, y))
+}
+
+fn logical_size_in_physical(width: u32, height: u32, scale_factor: f64) -> (u32, u32) {
+    (
+        (width as f64 * scale_factor).round() as u32,
+        (height as f64 * scale_factor).round() as u32,
+    )
 }
 
 #[cfg(windows)]
@@ -96,6 +105,13 @@ pub fn wake_display() {
 pub fn wake_display() {}
 
 pub fn show_task_panel(app: &AppHandle, route: &str) -> AppResult<()> {
+    let route_allowed = matches!(
+        route,
+        "today" | "taskwatch" | "focus" | "care" | "history" | "manage" | "add" | "settings"
+    ) || (cfg!(feature = "learning") && route == "learning");
+    if !route_allowed {
+        return Err(AppError::Validation("panel route is unsupported".into()));
+    }
     let panel = app
         .get_webview_window("panel")
         .ok_or_else(|| AppError::Window("panel window is unavailable".into()))?;
@@ -107,8 +123,9 @@ pub fn show_task_panel(app: &AppHandle, route: &str) -> AppResult<()> {
             let mut x = pet_pos.x - panel_size.width as i32 - 12;
             let mut y = pet_pos.y + pet_size.height as i32 - panel_size.height as i32;
             if let Ok(Some(monitor)) = pet.current_monitor() {
-                let work_pos = monitor.position();
-                let work_size = monitor.size();
+                let work_area = monitor.work_area();
+                let work_pos = &work_area.position;
+                let work_size = &work_area.size;
                 if x < work_pos.x {
                     x = pet_pos.x + pet_size.width as i32 + 12;
                 }
@@ -149,35 +166,43 @@ pub fn apply_settings(app: &AppHandle, settings: &mut AppSettings) -> AppResult<
     let logical_height = ((settings.pet_width as f64 * 208.0 / 192.0).round() as u32) + 28;
     pet.set_size(LogicalSize::new(logical_width, logical_height))
         .map_err(|error| AppError::Window(error.to_string()))?;
-    let physical_size = pet
-        .outer_size()
+    let scale_factor = pet
+        .scale_factor()
         .map_err(|error| AppError::Window(error.to_string()))?;
+    let (physical_width, physical_height) =
+        logical_size_in_physical(logical_width, logical_height, scale_factor);
     if let (Some(x), Some(y)) = (settings.pet_x, settings.pet_y) {
         let displays = pet
             .available_monitors()
             .map_err(|error| AppError::Window(error.to_string()))?
             .into_iter()
-            .map(|monitor| DisplayBounds {
-                x: monitor.position().x,
-                y: monitor.position().y,
-                width: monitor.size().width,
-                height: monitor.size().height,
+            .map(|monitor| {
+                let work_area = monitor.work_area();
+                DisplayBounds {
+                    x: work_area.position.x,
+                    y: work_area.position.y,
+                    width: work_area.size.width,
+                    height: work_area.size.height,
+                }
             })
             .collect::<Vec<_>>();
         let primary = pet
             .primary_monitor()
             .map_err(|error| AppError::Window(error.to_string()))?
-            .map(|monitor| DisplayBounds {
-                x: monitor.position().x,
-                y: monitor.position().y,
-                width: monitor.size().width,
-                height: monitor.size().height,
+            .map(|monitor| {
+                let work_area = monitor.work_area();
+                DisplayBounds {
+                    x: work_area.position.x,
+                    y: work_area.position.y,
+                    width: work_area.size.width,
+                    height: work_area.size.height,
+                }
             });
         let (visible_x, visible_y) = visible_position(
             x,
             y,
-            physical_size.width,
-            physical_size.height,
+            physical_width,
+            physical_height,
             displays.as_slice(),
             primary,
         );
@@ -203,7 +228,7 @@ pub fn show_pet_context_menu(app: &AppHandle) -> AppResult<()> {
         .map_err(|error| AppError::Window(error.to_string()))?;
     let pause = MenuItem::with_id(app, "pet-pause", "暂停提醒 30 分钟", true, None::<&str>)
         .map_err(|error| AppError::Window(error.to_string()))?;
-    let sleep = MenuItem::with_id(app, "pet-sleep", "立即睡觉 / 叫醒圆圆", true, None::<&str>)
+    let sleep = MenuItem::with_id(app, "pet-sleep", PET_SLEEP_TOGGLE_LABEL, true, None::<&str>)
         .map_err(|error| AppError::Window(error.to_string()))?;
     let always = CheckMenuItem::with_id(
         app,
@@ -255,7 +280,19 @@ pub fn show_pet_context_menu(app: &AppHandle) -> AppResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{visible_position, DisplayBounds};
+    use super::{
+        logical_size_in_physical, visible_position, DisplayBounds, PET_SLEEP_TOGGLE_LABEL,
+    };
+
+    #[test]
+    fn sleep_toggle_menu_uses_one_unambiguous_label() {
+        assert_eq!(PET_SLEEP_TOGGLE_LABEL, "立即睡觉/叫醒圆圆");
+    }
+
+    #[test]
+    fn converts_logical_pet_size_at_high_dpi() {
+        assert_eq!(logical_size_in_physical(348, 375, 1.5), (522, 563));
+    }
 
     #[test]
     fn keeps_position_on_the_selected_monitor() {
@@ -292,6 +329,21 @@ mod tests {
         assert_eq!(
             visible_position(2500, 1380, 220, 236, &[display], Some(display)),
             (2340, 1204)
+        );
+    }
+
+    #[test]
+    fn clamps_pet_above_the_taskbar_work_area() {
+        let work_area = DisplayBounds {
+            x: 0,
+            y: 0,
+            width: 2560,
+            height: 1392,
+        };
+
+        assert_eq!(
+            visible_position(77, 1280, 522, 563, &[work_area], Some(work_area)),
+            (77, 829)
         );
     }
 

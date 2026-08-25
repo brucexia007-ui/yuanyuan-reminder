@@ -4,6 +4,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 #[cfg(windows)]
 use tauri_plugin_dialog::DialogExt;
+#[cfg(all(feature = "learning", windows))]
+use tauri_plugin_dialog::FilePath;
 
 use crate::{
     backups,
@@ -16,6 +18,626 @@ use crate::{
     state::AppState,
     windows,
 };
+
+#[cfg(feature = "learning")]
+async fn run_learning_background<T, F>(operation: &'static str, work: F) -> AppResult<T>
+where
+    T: Send + 'static,
+    F: FnOnce() -> AppResult<T> + Send + 'static,
+{
+    let result = tauri::async_runtime::spawn_blocking(work)
+        .await
+        .map_err(|error| {
+            AppError::Window(format!(
+                "learning {operation} worker stopped unexpectedly: {error}"
+            ))
+        })?;
+    result
+}
+
+#[cfg(all(feature = "learning", windows))]
+async fn receive_learning_file_selection(
+    receiver: tokio::sync::oneshot::Receiver<Option<FilePath>>,
+    operation: &'static str,
+) -> AppResult<Option<FilePath>> {
+    receiver.await.map_err(|_| {
+        AppError::Window(format!(
+            "learning {operation} file dialog closed unexpectedly"
+        ))
+    })
+}
+
+#[cfg(all(feature = "learning", windows))]
+fn learning_file_path(
+    selected: FilePath,
+    operation: &'static str,
+) -> AppResult<std::path::PathBuf> {
+    selected.into_path().map_err(|_| {
+        AppError::Validation(format!(
+            "learning {operation} selection is not a local file"
+        ))
+    })
+}
+
+#[cfg(all(test, feature = "learning", windows))]
+mod learning_command_concurrency_tests {
+    use super::*;
+
+    #[test]
+    fn cancelled_file_dialog_resolves_without_an_error() {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        sender.send(None).unwrap();
+
+        let selected =
+            tauri::async_runtime::block_on(receive_learning_file_selection(receiver, "test"))
+                .unwrap();
+
+        assert!(selected.is_none());
+    }
+
+    #[test]
+    fn learning_storage_work_runs_off_the_calling_thread() {
+        let caller = std::thread::current().id();
+        let worker = tauri::async_runtime::block_on(run_learning_background("test", || {
+            Ok(std::thread::current().id())
+        }))
+        .unwrap();
+
+        assert_ne!(worker, caller);
+    }
+
+    #[test]
+    fn local_dialog_selection_is_preserved_as_a_path() {
+        let expected = std::path::PathBuf::from(r"C:\Users\test\learning.csv");
+        let actual = learning_file_path(FilePath::Path(expected.clone()), "test").unwrap();
+
+        assert_eq!(actual, expected);
+    }
+}
+
+#[tauri::command]
+pub fn get_runtime_capabilities(state: State<'_, AppState>) -> crate::models::RuntimeCapabilities {
+    state.runtime_capabilities()
+}
+
+#[cfg(all(feature = "learning", windows))]
+#[tauri::command]
+pub async fn preview_learning_import(
+    app: AppHandle,
+) -> AppResult<crate::learning::LearningImportPreview> {
+    let mut picker = app
+        .dialog()
+        .file()
+        .set_title("选择交给圆圆复习的词表或原生学习数据")
+        .add_filter("圆圆学习数据", &["csv", "json"]);
+    if let Some(panel) = app.get_webview_window("panel").as_ref() {
+        picker = picker.set_parent(panel);
+    }
+    let (selection_tx, selection_rx) = tokio::sync::oneshot::channel();
+    picker.pick_file(move |selected| {
+        let _ = selection_tx.send(selected);
+    });
+    let Some(selected) = receive_learning_file_selection(selection_rx, "import").await? else {
+        return Ok(crate::learning::LearningImportPreview::cancelled());
+    };
+    let path = learning_file_path(selected, "import")?;
+    let worker_app = app.clone();
+    run_learning_background("import preview", move || {
+        let state = worker_app.state::<AppState>();
+        let result = state
+            .learning
+            .lock()
+            .preview_import_file(&path, Utc::now().timestamp_millis());
+        result
+    })
+    .await
+}
+
+#[cfg(all(feature = "learning", not(windows)))]
+#[tauri::command]
+pub fn preview_learning_import(
+    _app: AppHandle,
+    _state: State<'_, AppState>,
+) -> AppResult<crate::learning::LearningImportPreview> {
+    Err(AppError::Validation(
+        "native learning import is unavailable".into(),
+    ))
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub async fn confirm_learning_import(
+    preview_token: String,
+    app: AppHandle,
+) -> AppResult<crate::learning::ImportCommitResult> {
+    run_learning_background("import confirmation", move || {
+        let state = app.state::<AppState>();
+        let result = state
+            .learning
+            .lock()
+            .confirm_import(&preview_token, Utc::now().timestamp_millis());
+        result
+    })
+    .await
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn get_learning_home(
+    state: State<'_, AppState>,
+) -> AppResult<crate::learning::LearningHomeSnapshot> {
+    state.learning.lock().home(Utc::now().timestamp_millis())
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn get_learning_dashboard(
+    state: State<'_, AppState>,
+) -> AppResult<crate::learning::LearningDashboardSnapshot> {
+    state
+        .learning
+        .lock()
+        .dashboard(Utc::now().timestamp_millis())
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn update_learning_settings(
+    patch: crate::learning::LearningSettingsPatch,
+    state: State<'_, AppState>,
+) -> AppResult<crate::learning::LearningSettings> {
+    state
+        .learning
+        .lock()
+        .update_settings(patch, Utc::now().timestamp_millis())
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn start_manual_learning_session(
+    app: AppHandle,
+    card_count: u8,
+    session_kind: crate::learning::LearningSessionKind,
+    source_session_id: Option<String>,
+    state: State<'_, AppState>,
+) -> AppResult<crate::learning::LearningSessionSnapshot> {
+    let now_unix_ms = Utc::now().timestamp_millis();
+    let session = state.learning.lock().start_manual_session(
+        card_count,
+        session_kind,
+        source_session_id.as_deref(),
+        now_unix_ms,
+    )?;
+    #[cfg(windows)]
+    if let Err(error) =
+        crate::companion_runtime::set_learning_session_active(&app, true, Some(&session.session_id))
+    {
+        return Err(error);
+    }
+    let session = state.learning.lock().present_session(
+        &session.session_id,
+        session.state_revision,
+        Utc::now().timestamp_millis(),
+    )?;
+    let _ = app.emit("learning-session-updated", &session);
+    Ok(session)
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn get_learning_session_summary(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<crate::learning::LearningSessionSummary> {
+    state
+        .learning
+        .lock()
+        .session_summary(&session_id, Utc::now().timestamp_millis())
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn get_current_learning_card(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<crate::learning::LearningCardDto> {
+    state.learning.lock().current_card(&session_id)
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn get_current_learning_question(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<crate::learning::LearningQuestionDto> {
+    state.learning.lock().current_question(&session_id)
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn answer_learning_question(
+    _app: AppHandle,
+    session_id: String,
+    question_id: String,
+    selected_option_id: String,
+    client_answer_id: String,
+    response_ms: Option<u32>,
+    state: State<'_, AppState>,
+) -> AppResult<crate::learning::LearningAnswerResult> {
+    let result = state.learning.lock().answer_question(
+        &session_id,
+        &question_id,
+        &selected_option_id,
+        &client_answer_id,
+        response_ms,
+        Utc::now().timestamp_millis(),
+    )?;
+    Ok(result)
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn rate_learning_card(
+    _app: AppHandle,
+    session_id: String,
+    card_id: String,
+    rating: crate::learning::LearningRating,
+    expected_revision: u64,
+    state: State<'_, AppState>,
+) -> AppResult<crate::learning::LearningRateResult> {
+    let result = state.learning.lock().rate_card(
+        &session_id,
+        &card_id,
+        rating,
+        expected_revision,
+        Utc::now().timestamp_millis(),
+    )?;
+    Ok(result)
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn finish_learning_session(
+    app: AppHandle,
+    session_id: String,
+    exit_reason: String,
+    expected_revision: u64,
+    state: State<'_, AppState>,
+) -> AppResult<crate::learning::LearningSessionSnapshot> {
+    let session = if exit_reason == "completed" {
+        state
+            .learning
+            .lock()
+            .completed_session(&session_id, expected_revision)?
+    } else {
+        state.learning.lock().abandon_session(
+            &session_id,
+            expected_revision,
+            &exit_reason,
+            Utc::now().timestamp_millis(),
+        )?
+    };
+    #[cfg(windows)]
+    if let Err(error) =
+        crate::companion_runtime::set_learning_session_active(&app, false, Some(&session_id))
+    {
+        tracing::warn!(error = %error, "learning session pet expression could not be cleared");
+    }
+    Ok(session)
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn get_resumable_learning_session(
+    state: State<'_, AppState>,
+) -> AppResult<Option<crate::learning::LearningSessionSnapshot>> {
+    state
+        .learning
+        .lock()
+        .resumable_session(Utc::now().timestamp_millis())
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn pause_learning_session(
+    app: AppHandle,
+    session_id: String,
+    expected_revision: u64,
+    reason: String,
+    state: State<'_, AppState>,
+) -> AppResult<crate::learning::LearningSessionSnapshot> {
+    let session = state.learning.lock().pause_session(
+        &session_id,
+        expected_revision,
+        &reason,
+        Utc::now().timestamp_millis(),
+    )?;
+    #[cfg(windows)]
+    if let Err(error) =
+        crate::companion_runtime::set_learning_session_active(&app, false, Some(&session_id))
+    {
+        tracing::warn!(error = %error, "paused learning presentation could not be released");
+    }
+    let _ = app.emit("learning-session-paused", &session);
+    Ok(session)
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn resume_learning_session(
+    app: AppHandle,
+    session_id: String,
+    expected_revision: u64,
+    state: State<'_, AppState>,
+) -> AppResult<crate::learning::LearningSessionSnapshot> {
+    #[cfg(windows)]
+    crate::companion_runtime::set_learning_session_active(&app, true, Some(&session_id))?;
+    let result = state.learning.lock().resume_session(
+        &session_id,
+        expected_revision,
+        Utc::now().timestamp_millis(),
+    );
+    if result.is_err() {
+        #[cfg(windows)]
+        let _ =
+            crate::companion_runtime::set_learning_session_active(&app, false, Some(&session_id));
+    }
+    let session = result?;
+    let _ = app.emit("learning-session-updated", &session);
+    Ok(session)
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn abandon_learning_session(
+    app: AppHandle,
+    session_id: String,
+    expected_revision: u64,
+    state: State<'_, AppState>,
+) -> AppResult<crate::learning::LearningSessionSnapshot> {
+    let session = state.learning.lock().abandon_session(
+        &session_id,
+        expected_revision,
+        "user_exit",
+        Utc::now().timestamp_millis(),
+    )?;
+    #[cfg(windows)]
+    if let Err(error) =
+        crate::companion_runtime::set_learning_session_active(&app, false, Some(&session_id))
+    {
+        tracing::warn!(error = %error, "abandoned learning presentation could not be released");
+    }
+    let _ = app.emit("learning-session-abandoned", &session);
+    Ok(session)
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn get_pending_learning_invitation(
+    state: State<'_, AppState>,
+) -> Option<crate::learning::LearningInvitationDto> {
+    state.learning.lock().pending_invitation()
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn accept_learning_invitation(
+    app: AppHandle,
+    invitation_id: String,
+    state: State<'_, AppState>,
+) -> AppResult<crate::learning::LearningSessionSnapshot> {
+    let _gate = state.learning_invitation_gate.lock();
+    let now_unix_ms = Utc::now().timestamp_millis();
+    let session = state
+        .learning
+        .lock()
+        .accept_invitation(&invitation_id, now_unix_ms)?;
+    #[cfg(windows)]
+    if let Err(error) = crate::companion_runtime::transition_learning_invitation_to_session(
+        &app,
+        &session.session_id,
+    ) {
+        return Err(error);
+    }
+    let session = state.learning.lock().present_session(
+        &session.session_id,
+        session.state_revision,
+        Utc::now().timestamp_millis(),
+    )?;
+    let _ = app.emit("learning-session-updated", &session);
+    Ok(session)
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn dismiss_learning_invitation(app: AppHandle, invitation_id: String) -> AppResult<bool> {
+    #[cfg(windows)]
+    {
+        crate::companion_runtime::withdraw_learning_invitation(
+            &app,
+            &invitation_id,
+            "dismissed",
+            Utc::now().timestamp_millis(),
+        )
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (app, invitation_id);
+        Ok(false)
+    }
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn pause_learning_invites_today(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> AppResult<crate::learning::LearningSettings> {
+    let now = Utc::now();
+    let local_day = now
+        .with_timezone(&chrono::Local)
+        .format("%Y-%m-%d")
+        .to_string();
+    let pending = state.learning.lock().pending_invitation();
+    let settings = state
+        .learning
+        .lock()
+        .pause_invitations_today(&local_day, now.timestamp_millis())?;
+    #[cfg(windows)]
+    if let Some(pending) = pending {
+        let _ = crate::companion_runtime::withdraw_learning_invitation(
+            &app,
+            &pending.invitation_id,
+            "dismissed",
+            now.timestamp_millis(),
+        );
+    }
+    Ok(settings)
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn get_learning_data_summary(
+    state: State<'_, AppState>,
+) -> AppResult<crate::learning::LearningDataSummary> {
+    state.learning.lock().data_summary()
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn list_learning_records(
+    filter: crate::learning::LearningRecordFilter,
+    query: String,
+    page: u32,
+    page_size: u8,
+    state: State<'_, AppState>,
+) -> AppResult<crate::learning::LearningRecordPage> {
+    state
+        .learning
+        .lock()
+        .list_records(filter, &query, page, page_size)
+}
+
+#[cfg(all(feature = "learning", windows))]
+#[tauri::command]
+pub async fn export_learning_data(
+    app: AppHandle,
+    format: crate::learning::LearningExportFormat,
+) -> AppResult<crate::learning::LearningExportResult> {
+    let date = Utc::now().with_timezone(&chrono::Local).format("%Y-%m-%d");
+    let default_name = match format {
+        crate::learning::LearningExportFormat::NativeJson => {
+            format!("yuanyuan-learning-{date}.json")
+        }
+        crate::learning::LearningExportFormat::CardsCsv => {
+            format!("yuanyuan-learning-cards-{date}.csv")
+        }
+        crate::learning::LearningExportFormat::ReviewLogsCsv => {
+            format!("yuanyuan-learning-reviews-{date}.csv")
+        }
+    };
+    let filter_name = match format {
+        crate::learning::LearningExportFormat::NativeJson => "圆圆原生学习数据",
+        crate::learning::LearningExportFormat::CardsCsv => "学习卡片表格",
+        crate::learning::LearningExportFormat::ReviewLogsCsv => "复习记录表格",
+    };
+    let mut picker = app
+        .dialog()
+        .file()
+        .set_title("选择本机导出位置（不会覆盖已有文件）")
+        .set_file_name(default_name)
+        .add_filter(filter_name, &[format.extension()]);
+    if let Some(panel) = app.get_webview_window("panel").as_ref() {
+        picker = picker.set_parent(panel);
+    }
+    let (selection_tx, selection_rx) = tokio::sync::oneshot::channel();
+    picker.save_file(move |selected| {
+        let _ = selection_tx.send(selected);
+    });
+    let Some(selected) = receive_learning_file_selection(selection_rx, "export").await? else {
+        return Ok(crate::learning::LearningExportResult::cancelled(format));
+    };
+    let path = learning_file_path(selected, "export")?;
+    if !path
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|value| value.eq_ignore_ascii_case(format.extension()))
+    {
+        return Err(AppError::Validation(
+            "learning export file extension does not match the selected format".into(),
+        ));
+    }
+    let worker_app = app.clone();
+    let result = run_learning_background("data export", move || {
+        let now = Utc::now();
+        let state = worker_app.state::<AppState>();
+        let payload = state
+            .learning
+            .lock()
+            .export_payload(format, now.timestamp_millis())?;
+        crate::learning::write_new_file_atomically(&path, &payload.bytes)?;
+        if let Err(error) = state
+            .learning
+            .lock()
+            .mark_export_succeeded(now.timestamp_millis())
+        {
+            tracing::warn!(error = %error, "learning export metadata could not be updated");
+        }
+        Ok(crate::learning::LearningExportResult {
+            schema_version: 1,
+            status: "saved",
+            format,
+            record_count: payload.record_count,
+            bytes: payload.bytes.len() as u64,
+            exported_at_unix_ms: Some(now.timestamp_millis()),
+            selected_path_returned: false,
+        })
+    })
+    .await?;
+    let _ = app.emit("learning-data-updated", ());
+    Ok(result)
+}
+
+#[cfg(all(feature = "learning", not(windows)))]
+#[tauri::command]
+pub fn export_learning_data(
+    app: AppHandle,
+    format: crate::learning::LearningExportFormat,
+    state: State<'_, AppState>,
+) -> AppResult<crate::learning::LearningExportResult> {
+    let _ = (app, format, state);
+    Err(AppError::Validation(
+        "native learning export is unavailable".into(),
+    ))
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub async fn delete_learning_data(
+    app: AppHandle,
+    scope: crate::learning::LearningDeleteScope,
+    confirmation: String,
+) -> AppResult<crate::learning::LearningDeleteResult> {
+    let worker_app = app.clone();
+    let result = run_learning_background("data deletion", move || {
+        #[cfg(windows)]
+        crate::companion_runtime::preempt_learning_for_high_priority(
+            &worker_app,
+            "learning_data_deleted",
+            Utc::now().timestamp_millis(),
+        )?;
+        let state = worker_app.state::<AppState>();
+        let result =
+            state
+                .learning
+                .lock()
+                .delete_data(scope, &confirmation, Utc::now().timestamp_millis());
+        result
+    })
+    .await?;
+    let _ = app.emit("learning-data-updated", ());
+    Ok(result)
+}
 
 #[tauri::command]
 pub fn list_today(app: AppHandle, state: State<'_, AppState>) -> AppResult<TodaySnapshot> {
@@ -396,6 +1018,13 @@ pub fn get_settings(state: State<'_, AppState>) -> AppResult<AppSettings> {
 }
 
 #[tauri::command]
+pub fn get_pet_activity_snapshot(
+    app: AppHandle,
+) -> crate::presentation_arbiter::PetActivitySnapshot {
+    crate::presentation_runtime::snapshot(&app)
+}
+
+#[tauri::command]
 pub fn update_settings(
     app: AppHandle,
     patch: Value,
@@ -479,28 +1108,94 @@ pub fn set_click_through_inner(app: &AppHandle, enabled: bool) -> AppResult<()> 
 
 #[tauri::command]
 pub fn request_sleep(app: AppHandle) -> AppResult<()> {
+    request_sleep_inner(&app)
+}
+
+pub fn request_sleep_inner(app: &AppHandle) -> AppResult<()> {
     let state = app.state::<AppState>();
     state.clear_automatic_sleep_reunion();
     #[cfg(windows)]
-    crate::companion_runtime::set_sleeping(&app, true)?;
+    crate::companion_runtime::set_sleeping(
+        &app,
+        true,
+        crate::presentation_arbiter::PetActivitySource::Manual,
+    )?;
+    #[cfg(not(windows))]
+    crate::presentation_runtime::set_sleeping(
+        app,
+        true,
+        crate::presentation_arbiter::PetActivitySource::Manual,
+    )?;
     state
         .manual_sleep_active
         .store(true, std::sync::atomic::Ordering::SeqCst);
-    app.emit("pet-request-sleep", ())
-        .map_err(|error| AppError::Window(error.to_string()))
+    app.emit(
+        "pet-request-sleep",
+        serde_json::json!({ "source": "manual" }),
+    )
+    .map_err(|error| AppError::Window(error.to_string()))
 }
 
 #[tauri::command]
 pub fn request_wake(app: AppHandle) -> AppResult<()> {
+    request_wake_inner(&app)
+}
+
+pub fn request_wake_inner(app: &AppHandle) -> AppResult<()> {
     let state = app.state::<AppState>();
     state.clear_automatic_sleep_reunion();
     #[cfg(windows)]
-    crate::companion_runtime::set_sleeping(&app, false)?;
+    crate::companion_runtime::set_sleeping(
+        &app,
+        false,
+        crate::presentation_arbiter::PetActivitySource::Manual,
+    )?;
+    #[cfg(not(windows))]
+    crate::presentation_runtime::set_sleeping(
+        app,
+        false,
+        crate::presentation_arbiter::PetActivitySource::Manual,
+    )?;
     state
         .manual_sleep_active
         .store(false, std::sync::atomic::Ordering::SeqCst);
     app.emit("pet-request-wake", ())
         .map_err(|error| AppError::Window(error.to_string()))
+}
+
+pub fn pet_is_sleeping(app: &AppHandle) -> bool {
+    let snapshot = crate::presentation_runtime::snapshot(app);
+    snapshot.activity == crate::presentation_arbiter::PetActivity::Sleeping
+        || snapshot.restore_target == Some(crate::presentation_arbiter::PetRestoreTarget::Sleeping)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PetSleepToggleAction {
+    Sleep,
+    Wake,
+}
+
+pub fn pet_sleep_toggle_action(app: &AppHandle) -> PetSleepToggleAction {
+    sleep_toggle_action(pet_is_sleeping(app))
+}
+
+fn sleep_toggle_action(sleeping: bool) -> PetSleepToggleAction {
+    if sleeping {
+        PetSleepToggleAction::Wake
+    } else {
+        PetSleepToggleAction::Sleep
+    }
+}
+
+#[cfg(test)]
+mod sleep_state_tests {
+    use super::{sleep_toggle_action, PetSleepToggleAction};
+
+    #[test]
+    fn repeated_context_menu_action_wakes_an_already_sleeping_pet() {
+        assert_eq!(sleep_toggle_action(false), PetSleepToggleAction::Sleep);
+        assert_eq!(sleep_toggle_action(true), PetSleepToggleAction::Wake);
+    }
 }
 
 #[tauri::command]

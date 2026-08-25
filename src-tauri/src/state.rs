@@ -8,7 +8,11 @@ use parking_lot::Mutex;
 use tracing_appender::non_blocking::WorkerGuard;
 
 use crate::models::BasicSupportSession;
+use crate::presentation_arbiter::PresentationArbiter;
 use crate::repository::Repository;
+
+#[cfg(feature = "learning")]
+use crate::learning::LearningRuntime;
 
 #[cfg(windows)]
 use crate::companion_core::CompanionExpressionDirector;
@@ -112,6 +116,11 @@ pub struct AppState {
     pub manual_sleep_active: AtomicBool,
     pub quitting: AtomicBool,
     pub basic_support: Mutex<Option<BasicSupportSession>>,
+    pub presentation_arbiter: Mutex<PresentationArbiter>,
+    #[cfg(feature = "learning")]
+    pub learning: Mutex<LearningRuntime>,
+    #[cfg(feature = "learning")]
+    pub learning_invitation_gate: Mutex<()>,
     #[cfg(windows)]
     pub companion_expression: Mutex<CompanionExpressionDirector>,
     #[cfg(windows)]
@@ -138,6 +147,11 @@ impl AppState {
             manual_sleep_active: AtomicBool::new(false),
             quitting: AtomicBool::new(false),
             basic_support: Mutex::new(None),
+            presentation_arbiter: Mutex::new(PresentationArbiter::default()),
+            #[cfg(feature = "learning")]
+            learning: Mutex::new(LearningRuntime::default()),
+            #[cfg(feature = "learning")]
+            learning_invitation_gate: Mutex::new(()),
             #[cfg(windows)]
             companion_expression: Mutex::new(CompanionExpressionDirector::default()),
             #[cfg(windows)]
@@ -161,6 +175,24 @@ impl AppState {
             .store(false, Ordering::SeqCst);
         self.automatic_sleep_peak_idle_seconds
             .store(0, Ordering::SeqCst);
+    }
+
+    #[cfg(feature = "learning")]
+    pub fn initialize_learning(&self, path: &std::path::Path) {
+        *self.learning.lock() = LearningRuntime::initialize(path);
+    }
+
+    pub fn runtime_capabilities(&self) -> crate::models::RuntimeCapabilities {
+        #[cfg(feature = "learning")]
+        {
+            let mut capabilities = crate::models::RuntimeCapabilities::current();
+            capabilities.learning = self.learning.lock().capabilities();
+            capabilities
+        }
+        #[cfg(not(feature = "learning"))]
+        {
+            crate::models::RuntimeCapabilities::current()
+        }
     }
 }
 

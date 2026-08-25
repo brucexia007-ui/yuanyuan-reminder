@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "packId": "synthetic.security.path",
+  "title": "Traversal fixture",
+  "assets": ["../../outside.txt", "C:\\Windows\\win.ini"],
+  "cards": []
+}

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": 1,
+  "packId": "synthetic.security.depth",
+  "title": "Depth fixture",
+  "cards": [],
+  "nested": { "a": { "b": { "c": { "d": { "e": { "f": { "g": { "h": { "i": {} } } } } } } } } }
+}

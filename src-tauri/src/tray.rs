@@ -1,7 +1,7 @@
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    App, AppHandle, Emitter, Manager,
+    App, AppHandle, Manager,
 };
 
 use crate::{
@@ -111,7 +111,7 @@ pub fn handle_menu_event(app: &AppHandle, id: &str) {
             let _ = commands::set_click_through_inner(app, !current);
         }
         "pet-sleep" => {
-            let _ = app.emit("pet-request-sleep", ());
+            let _ = handle_pet_sleep_menu_event(app);
         }
         "pet-hide" => {
             if let Some(window) = app.get_webview_window("pet") {
@@ -122,5 +122,12 @@ pub fn handle_menu_event(app: &AppHandle, id: &str) {
             commands::quit_inner(app);
         }
         _ => {}
+    }
+}
+
+pub fn handle_pet_sleep_menu_event(app: &AppHandle) -> AppResult<()> {
+    match commands::pet_sleep_toggle_action(app) {
+        commands::PetSleepToggleAction::Sleep => commands::request_sleep_inner(app),
+        commands::PetSleepToggleAction::Wake => commands::request_wake_inner(app),
     }
 }

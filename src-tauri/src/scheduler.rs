@@ -60,13 +60,19 @@ fn run_tick(app: &AppHandle) {
         ) {
             tracing::warn!(error = %error, "companion quiet state could not be updated");
         }
-        update_automatic_sleep(
-            app,
-            &state,
-            &settings.quiet_start,
-            &settings.quiet_end,
-            settings.idle_sleep_minutes,
-        );
+        #[cfg(feature = "runtime-qa")]
+        let automatic_sleep_isolated = crate::runtime_qa::isolates_automatic_sleep();
+        #[cfg(not(feature = "runtime-qa"))]
+        let automatic_sleep_isolated = false;
+        if !automatic_sleep_isolated {
+            update_automatic_sleep(
+                app,
+                &state,
+                &settings.quiet_start,
+                &settings.quiet_end,
+                settings.idle_sleep_minutes,
+            );
+        }
         update_activity_tracking(
             &state,
             settings,
@@ -106,11 +112,24 @@ fn run_tick(app: &AppHandle) {
         }
         #[cfg(windows)]
         if session.phase == "focus" {
-            if let Err(error) = crate::companion_runtime::try_present_focus_finished_ritual(
+            #[cfg(feature = "learning")]
+            let learning_presented = crate::companion_runtime::try_present_focus_finished_learning_invitation(
                 app,
                 now.timestamp_millis(),
-            ) {
-                tracing::warn!(error = %error, "focus completion ritual could not be presented");
+            )
+            .unwrap_or_else(|error| {
+                tracing::warn!(error = %error, "focus completion learning invitation was suppressed");
+                false
+            });
+            #[cfg(not(feature = "learning"))]
+            let learning_presented = false;
+            if !learning_presented {
+                if let Err(error) = crate::companion_runtime::try_present_focus_finished_ritual(
+                    app,
+                    now.timestamp_millis(),
+                ) {
+                    tracing::warn!(error = %error, "focus completion ritual could not be presented");
+                }
             }
         }
     } else if completed_focus.is_err() {
@@ -280,10 +299,17 @@ fn update_automatic_sleep(
             Ordering::SeqCst,
         );
         #[cfg(windows)]
-        if let Err(error) = crate::companion_runtime::set_sleeping(app, true) {
+        if let Err(error) = crate::companion_runtime::set_sleeping(
+            app,
+            true,
+            crate::presentation_arbiter::PetActivitySource::Schedule,
+        ) {
             tracing::warn!(error = %error, "companion sleep state could not be updated");
         }
-        let _ = app.emit("pet-request-sleep", ());
+        let _ = app.emit(
+            "pet-request-sleep",
+            serde_json::json!({ "source": "automatic" }),
+        );
     } else if should_sleep
         && state
             .automatic_sleep_reunion_eligible
@@ -305,7 +331,11 @@ fn update_automatic_sleep(
             .swap(0, Ordering::SeqCst);
         if !state.manual_sleep_active.load(Ordering::SeqCst) {
             #[cfg(windows)]
-            if let Err(error) = crate::companion_runtime::set_sleeping(app, false) {
+            if let Err(error) = crate::companion_runtime::set_sleeping(
+                app,
+                false,
+                crate::presentation_arbiter::PetActivitySource::Schedule,
+            ) {
                 tracing::warn!(error = %error, "companion wake state could not be updated");
             }
             let _ = app.emit("pet-request-wake", ());

@@ -1,0 +1,7 @@
+{
+  "fixtureGenerator": "preview-token-replay-v1",
+  "attempts": 2,
+  "expectedFirstResult": "committed",
+  "expectedSecondResult": "rejected",
+  "containsOnlySyntheticData": true
+}
