@@ -5,6 +5,9 @@ param(
     [ValidateRange(30, 120)]
     [int]$ExitAfterSeconds = 30,
 
+    [ValidateSet("learning-off", "learning-on")]
+    [string]$BuildVariant = "learning-off",
+
     [switch]$BaselineGate
 )
 
@@ -12,7 +15,13 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $workspaceRoot = Split-Path -Parent $projectRoot
-$runtimeTarget = Join-Path $projectRoot "src-tauri\target\runtime-qa\release"
+$runtimeTargetName = if ($BuildVariant -eq "learning-on") {
+    "runtime-qa-learning"
+}
+else {
+    "runtime-qa"
+}
+$runtimeTarget = Join-Path $projectRoot "src-tauri\target\$runtimeTargetName\release"
 $appPath = Join-Path $runtimeTarget "yuanyuan-reminder.exe"
 $fixturePath = Join-Path $runtimeTarget "yuanyuan-runtime-qa-fixture.exe"
 $evidenceRoot = Join-Path $runtimeTarget "evidence"
@@ -29,7 +38,13 @@ $baselineLimits = [ordered]@{
 
 foreach ($required in @($appPath, $fixturePath)) {
     if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
-        throw "runtime QA binary is missing; run npm.cmd run runtime:qa:build first"
+        $buildCommand = if ($BuildVariant -eq "learning-on") {
+            "npm.cmd run runtime:qa:learning:build"
+        }
+        else {
+            "npm.cmd run runtime:qa:build"
+        }
+        throw "runtime QA binary is missing; run $buildCommand first"
     }
 }
 New-Item -ItemType Directory -Force -Path $evidenceRoot | Out-Null

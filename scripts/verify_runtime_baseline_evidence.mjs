@@ -4,16 +4,6 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
-const runtimeReleaseRoot = path.join(
-  projectRoot,
-  "src-tauri",
-  "target",
-  "runtime-qa",
-  "release",
-);
-const evidenceRoot = path.join(runtimeReleaseRoot, "evidence");
-const applicationPath = path.join(runtimeReleaseRoot, "yuanyuan-reminder.exe");
-const fixturePath = path.join(runtimeReleaseRoot, "yuanyuan-runtime-qa-fixture.exe");
 const scriptPath = path.join(projectRoot, "scripts", "measure_runtime_baseline.ps1");
 
 const LIMITATIONS = [
@@ -575,12 +565,43 @@ export function parseRuntimeBaselineEvidence(reportBytes) {
 }
 
 export async function main(arguments_ = process.argv.slice(2)) {
-  if (arguments_.length !== 2 || arguments_[0] !== "--report") {
+  if (arguments_.length < 2 || arguments_[0] !== "--report") {
     throw new Error(
-      "usage: node scripts/verify_runtime_baseline_evidence.mjs --report <absolute-json>",
+      "usage: node scripts/verify_runtime_baseline_evidence.mjs --report <absolute-json> [--build-variant learning-off|learning-on] [--allow-smoke]",
     );
   }
   const reportPath = arguments_[1];
+  let buildVariant = "learning-off";
+  let allowSmoke = false;
+  for (let index = 2; index < arguments_.length; index += 1) {
+    const argument = arguments_[index];
+    if (argument === "--allow-smoke") {
+      allowSmoke = true;
+      continue;
+    }
+    if (argument === "--build-variant" && index + 1 < arguments_.length) {
+      buildVariant = arguments_[index + 1];
+      index += 1;
+      continue;
+    }
+    throw new Error("runtime baseline verifier arguments are invalid");
+  }
+  if (!new Set(["learning-off", "learning-on"]).has(buildVariant)) {
+    throw new Error("runtime baseline build variant is invalid");
+  }
+  const runtimeTargetName = buildVariant === "learning-on"
+    ? "runtime-qa-learning"
+    : "runtime-qa";
+  const runtimeReleaseRoot = path.join(
+    projectRoot,
+    "src-tauri",
+    "target",
+    runtimeTargetName,
+    "release",
+  );
+  const evidenceRoot = path.join(runtimeReleaseRoot, "evidence");
+  const applicationPath = path.join(runtimeReleaseRoot, "yuanyuan-reminder.exe");
+  const fixturePath = path.join(runtimeReleaseRoot, "yuanyuan-runtime-qa-fixture.exe");
   if (!path.isAbsolute(reportPath)) throw new Error("runtime baseline report path must be absolute");
   if (
     path.dirname(path.resolve(reportPath)) !== path.resolve(evidenceRoot) ||
@@ -609,11 +630,12 @@ export async function main(arguments_ = process.argv.slice(2)) {
     fixtureSha256: sha256(fixtureBytes),
     scriptSha256: sha256(scriptBytes),
   };
-  if (!validateRuntimeBaselineEvidence(report, expectedBindings, { requireAcceptance: true })) {
+  if (!validateRuntimeBaselineEvidence(report, expectedBindings, { requireAcceptance: !allowSmoke })) {
     throw new Error("runtime baseline report is pending, stale, or inconsistent");
   }
+  const evidenceKind = allowSmoke ? "smoke" : "acceptance";
   console.log(
-    `Runtime acceptance evidence passed: ${report.clock.wallClockObservedSeconds} seconds, ${report.process.sampleCount} samples.`,
+    `Runtime ${evidenceKind} evidence passed: ${report.clock.wallClockObservedSeconds} seconds, ${report.process.sampleCount} samples.`,
   );
 }
 

@@ -4,16 +4,6 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
-const runtimeReleaseRoot = path.join(
-  projectRoot,
-  "src-tauri",
-  "target",
-  "runtime-qa",
-  "release",
-);
-const evidenceRoot = path.join(runtimeReleaseRoot, "evidence");
-const applicationPath = path.join(runtimeReleaseRoot, "yuanyuan-reminder.exe");
-const fixturePath = path.join(runtimeReleaseRoot, "yuanyuan-runtime-qa-fixture.exe");
 const scriptPath = path.join(projectRoot, "scripts", "measure_reminder_latency.ps1");
 
 const EXPECTED_REPORT_KEYS = [
@@ -233,12 +223,33 @@ export function parseReminderLatencyEvidence(reportBytes) {
 }
 
 export async function main(arguments_ = process.argv.slice(2)) {
-  if (arguments_.length !== 2 || arguments_[0] !== "--report") {
+  if (
+    ![2, 4].includes(arguments_.length)
+    || arguments_[0] !== "--report"
+    || (arguments_.length === 4 && arguments_[2] !== "--build-variant")
+  ) {
     throw new Error(
-      "usage: node scripts/verify_reminder_latency_evidence.mjs --report <absolute-json>",
+      "usage: node scripts/verify_reminder_latency_evidence.mjs --report <absolute-json> [--build-variant learning-off|learning-on]",
     );
   }
   const reportPath = arguments_[1];
+  const buildVariant = arguments_[3] ?? "learning-off";
+  if (!new Set(["learning-off", "learning-on"]).has(buildVariant)) {
+    throw new Error("reminder latency build variant is invalid");
+  }
+  const runtimeTargetName = buildVariant === "learning-on"
+    ? "runtime-qa-learning"
+    : "runtime-qa";
+  const runtimeReleaseRoot = path.join(
+    projectRoot,
+    "src-tauri",
+    "target",
+    runtimeTargetName,
+    "release",
+  );
+  const evidenceRoot = path.join(runtimeReleaseRoot, "evidence");
+  const applicationPath = path.join(runtimeReleaseRoot, "yuanyuan-reminder.exe");
+  const fixturePath = path.join(runtimeReleaseRoot, "yuanyuan-runtime-qa-fixture.exe");
   if (!path.isAbsolute(reportPath)) throw new Error("reminder latency report path must be absolute");
   if (
     path.dirname(path.resolve(reportPath)) !== path.resolve(evidenceRoot) ||

@@ -37,6 +37,42 @@ fn main() {
                     .map_err(|_| ())
             })
             .and_then(|claim| serde_json::to_string(&claim).map_err(|_| ())),
+        #[cfg(feature = "learning")]
+        "--learning-performance" => value
+            .and_then(|value| value.parse::<u32>().ok())
+            .ok_or(())
+            .and_then(|card_count| {
+                yuanyuan_reminder_lib::runtime_qa::seed_learning_performance(card_count)
+                    .map_err(|_| ())
+            })
+            .and_then(|plan| serde_json::to_string(&plan).map_err(|_| ())),
+        "--animation-mode" => value
+            .ok_or(())
+            .and_then(|animation_mode| {
+                yuanyuan_reminder_lib::runtime_qa::seed_animation_mode(&animation_mode)
+                    .map_err(|_| ())
+            })
+            .map(|()| String::from("{\"updated\":true}")),
+        #[cfg(feature = "learning")]
+        "--learning-recovery-state" if value.is_none() => {
+            yuanyuan_reminder_lib::runtime_qa::read_learning_recovery_state()
+                .map_err(|_| ())
+                .and_then(|state| serde_json::to_string(&state).map_err(|_| ()))
+        }
+        #[cfg(feature = "learning")]
+        "--learning-preemption" => value
+            .and_then(|value| value.parse::<u64>().ok())
+            .ok_or(())
+            .and_then(|seconds| {
+                yuanyuan_reminder_lib::runtime_qa::seed_learning_preemption(seconds).map_err(|_| ())
+            })
+            .and_then(|plan| serde_json::to_string(&plan).map_err(|_| ())),
+        #[cfg(feature = "learning")]
+        "--learning-preemption-state" if value.is_none() => {
+            yuanyuan_reminder_lib::runtime_qa::read_learning_preemption_state()
+                .map_err(|_| ())
+                .and_then(|state| serde_json::to_string(&state).map_err(|_| ()))
+        }
         _ => Err(()),
     };
     match result {

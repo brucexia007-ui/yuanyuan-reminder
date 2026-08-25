@@ -5,6 +5,9 @@ src-tauri/gen/
 /work/
 /release/
 /qa/
+/src-tauri/resources/personal-learning/
+/src-tauri/tauri.learning-personal.conf.json
+/scripts/prepare_personal_kajweb_pack.mjs
 scripts/__pycache__/
 *.py[cod]
 *.tsbuildinfo

@@ -5,9 +5,23 @@ use std::{
     time::Duration,
 };
 
+#[cfg(feature = "learning")]
+use std::{
+    fs::OpenOptions,
+    io::Write,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    thread,
+};
+
 use chrono::{Duration as ChronoDuration, Local, Utc};
 use serde::Serialize;
-use tauri::{AppHandle, Runtime};
+use tauri::{AppHandle, Manager, Runtime};
+
+#[cfg(feature = "learning")]
+use sha2::{Digest, Sha256};
 
 use crate::{
     error::{AppError, AppResult},
@@ -18,10 +32,32 @@ use crate::{
 const ROOT_ENV: &str = "YUANYUAN_RUNTIME_QA_ROOT";
 const EXIT_AFTER_ENV: &str = "YUANYUAN_RUNTIME_QA_EXIT_AFTER_SECONDS";
 const PROFILE_ENV: &str = "YUANYUAN_RUNTIME_QA_PROFILE";
+const WEBVIEW_MODE_ENV: &str = "YUANYUAN_RUNTIME_QA_WEBVIEW_MODE";
+const PANEL_PLACEMENT_ENV: &str = "YUANYUAN_RUNTIME_QA_PANEL_PLACEMENT";
 const ROOT_PREFIX: &str = "yuanyuan-runtime-qa-";
 const MARKER_NAME: &str = ".yuanyuan-runtime-qa-v1";
 const MARKER_CONTENT: &[u8] = b"YUANYUAN_RUNTIME_QA_V1\n";
 const QA_IDENTIFIER: &str = "com.yuanyuan.reminder.runtime-qa";
+const SHOW_PET_CONTEXT_MENU_TRIGGER: &str = "show-pet-context-menu";
+const INVOKE_PET_SLEEP_MENU_TRIGGER: &str = "invoke-pet-sleep-menu";
+const SET_PANEL_360X560_TRIGGER: &str = "set-panel-size-360x560";
+const SET_PANEL_390X620_TRIGGER: &str = "set-panel-size-390x620";
+const SET_PANEL_480X760_TRIGGER: &str = "set-panel-size-480x760";
+#[cfg(feature = "learning")]
+const LEARNING_COMMIT_CRASH_ARM_TRIGGER: &str = "arm-learning-answer-commit-crash";
+#[cfg(feature = "learning")]
+const LEARNING_COMMIT_CRASH_RELEASE_TRIGGER: &str = "release-learning-answer-commit-crash";
+#[cfg(feature = "learning")]
+const LEARNING_COMMIT_CRASH_ENTERED_STAGE: &str = "learning-answer-commit-hook-entered";
+#[cfg(feature = "learning")]
+const LEARNING_COMMIT_CRASH_ERROR_STAGE: &str = "learning-answer-commit-hook-error";
+#[cfg(feature = "learning")]
+const LEARNING_COMMIT_CRASH_WAIT_STEPS: usize = 2_400;
+const PANEL_SIZE_TRIGGERS: [&str; 3] = [
+    SET_PANEL_360X560_TRIGGER,
+    SET_PANEL_390X620_TRIGGER,
+    SET_PANEL_480X760_TRIGGER,
+];
 
 pub fn create_root(path: &Path) -> AppResult<PathBuf> {
     validate_root_shape(path)?;
@@ -84,6 +120,12 @@ pub fn configure_context<R: Runtime>(context: &mut tauri::Context<R>) -> AppResu
                     window.url =
                         tauri::utils::config::WebviewUrl::App("index.html?tab=settings".into());
                 }
+                #[cfg(feature = "learning")]
+                RuntimeQaProfile::LearningPerformance => {
+                    window.visible = true;
+                    window.url =
+                        tauri::utils::config::WebviewUrl::App("index.html?tab=learning".into());
+                }
             }
         }
     }
@@ -92,12 +134,50 @@ pub fn configure_context<R: Runtime>(context: &mut tauri::Context<R>) -> AppResu
 
 pub fn create_windows(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let root = root_from_env()?;
-    for config in app.config().app.windows.clone() {
-        tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
-            .data_directory(root.join("webview"))
-            .build()?;
+    let browser_arguments =
+        runtime_qa_webview_arguments(std::env::var_os(WEBVIEW_MODE_ENV).as_deref())?;
+    let place_panel_top_left =
+        runtime_qa_panel_top_left(std::env::var_os(PANEL_PLACEMENT_ENV).as_deref())?;
+    for mut config in app.config().app.windows.clone() {
+        if place_panel_top_left && config.label == "panel" {
+            config.center = false;
+            config.x = Some(64.0);
+            config.y = Some(64.0);
+        }
+        let builder = tauri::WebviewWindowBuilder::from_config(app.handle(), &config)?
+            .data_directory(root.join("webview"));
+        #[cfg(windows)]
+        let builder = if let Some(arguments) = browser_arguments {
+            builder.additional_browser_args(arguments)
+        } else {
+            builder
+        };
+        builder.build()?;
     }
     Ok(())
+}
+
+fn runtime_qa_panel_top_left(value: Option<&OsStr>) -> AppResult<bool> {
+    match value.and_then(OsStr::to_str) {
+        None | Some("default") => Ok(false),
+        Some("work-area-top-left") => Ok(true),
+        Some(_) => Err(AppError::Validation(
+            "runtime QA panel placement is invalid".into(),
+        )),
+    }
+}
+
+fn runtime_qa_webview_arguments(value: Option<&OsStr>) -> AppResult<Option<&'static str>> {
+    match value.and_then(OsStr::to_str) {
+        None | Some("standard") => Ok(None),
+        Some("reduced-motion") => Ok(Some("--force-prefers-reduced-motion")),
+        Some("forced-colors") => Ok(Some(
+            "--force-high-contrast --enable-blink-features=ForcedColors",
+        )),
+        Some(_) => Err(AppError::Validation(
+            "runtime QA WebView mode is invalid".into(),
+        )),
+    }
 }
 
 pub fn record_stage(stage: &'static str) -> AppResult<()> {
@@ -116,6 +196,295 @@ pub fn record_stage(stage: &'static str) -> AppResult<()> {
     Ok(())
 }
 
+fn consume_empty_control_trigger(root: &Path, name: &str) -> AppResult<bool> {
+    if !matches!(
+        name,
+        SHOW_PET_CONTEXT_MENU_TRIGGER
+            | INVOKE_PET_SLEEP_MENU_TRIGGER
+            | SET_PANEL_360X560_TRIGGER
+            | SET_PANEL_390X620_TRIGGER
+            | SET_PANEL_480X760_TRIGGER
+    ) {
+        return Err(AppError::Validation(
+            "runtime QA control trigger is invalid".into(),
+        ));
+    }
+    let path = root.join("control").join(name);
+    let metadata = match fs::symlink_metadata(&path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error.into()),
+    };
+    if !metadata.file_type().is_file() || metadata.len() != 0 {
+        return Err(AppError::Validation(
+            "runtime QA control trigger must be an empty regular file".into(),
+        ));
+    }
+    fs::remove_file(path)?;
+    Ok(true)
+}
+
+#[cfg(feature = "learning")]
+fn consume_commit_crash_control(path: &Path) -> AppResult<bool> {
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error.into()),
+    };
+    if !metadata.file_type().is_file()
+        || metadata_is_reparse_point(&metadata)
+        || metadata.len() != 0
+    {
+        return Err(AppError::Validation(
+            "runtime QA commit crash control must be an empty regular file".into(),
+        ));
+    }
+    fs::remove_file(path)?;
+    Ok(true)
+}
+
+#[cfg(feature = "learning")]
+fn write_commit_crash_stage(path: &Path, content: &[u8]) -> AppResult<()> {
+    let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
+    file.write_all(content)?;
+    file.sync_all()?;
+    Ok(())
+}
+
+#[cfg(feature = "learning")]
+#[derive(Clone)]
+pub(crate) struct LearningCommitCrashGate {
+    answer_commit_pending: Arc<AtomicBool>,
+}
+
+#[cfg(feature = "learning")]
+impl LearningCommitCrashGate {
+    pub(crate) fn mark_answer_commit_pending(&self) {
+        self.answer_commit_pending.store(true, Ordering::Release);
+    }
+
+    pub(crate) fn clear_answer_commit_pending(&self) {
+        self.answer_commit_pending.store(false, Ordering::Release);
+    }
+}
+
+#[cfg(feature = "learning")]
+fn install_learning_commit_crash_gate_for_root(
+    connection: &rusqlite::Connection,
+    root: &Path,
+) -> AppResult<LearningCommitCrashGate> {
+    let control_directory = root.join("control");
+    let status_directory = root.join("status");
+    fs::create_dir_all(&control_directory)?;
+    fs::create_dir_all(&status_directory)?;
+    let arm = control_directory.join(LEARNING_COMMIT_CRASH_ARM_TRIGGER);
+    let release = control_directory.join(LEARNING_COMMIT_CRASH_RELEASE_TRIGGER);
+    let entered = status_directory.join(LEARNING_COMMIT_CRASH_ENTERED_STAGE);
+    let error = status_directory.join(LEARNING_COMMIT_CRASH_ERROR_STAGE);
+    let answer_commit_pending = Arc::new(AtomicBool::new(false));
+    let hook_pending = answer_commit_pending.clone();
+    connection.commit_hook(Some(move || {
+        if !hook_pending.swap(false, Ordering::AcqRel) {
+            return false;
+        }
+        match consume_commit_crash_control(&arm) {
+            Ok(false) => return false,
+            Ok(true) => {}
+            Err(_) => {
+                let _ = write_commit_crash_stage(&error, b"invalid arm control\n");
+                return true;
+            }
+        }
+        if write_commit_crash_stage(&entered, b"entered\n").is_err() {
+            let _ = write_commit_crash_stage(&error, b"entered stage unavailable\n");
+            return true;
+        }
+        for _ in 0..LEARNING_COMMIT_CRASH_WAIT_STEPS {
+            match consume_commit_crash_control(&release) {
+                Ok(true) => return true,
+                Ok(false) => thread::sleep(Duration::from_millis(50)),
+                Err(_) => return true,
+            }
+        }
+        true
+    }));
+    Ok(LearningCommitCrashGate {
+        answer_commit_pending,
+    })
+}
+
+#[cfg(feature = "learning")]
+pub(crate) fn install_learning_commit_crash_gate(
+    connection: &rusqlite::Connection,
+) -> AppResult<Option<LearningCommitCrashGate>> {
+    let Some(root) = std::env::var_os(ROOT_ENV) else {
+        return Ok(None);
+    };
+    let root = validate_root(Path::new(&root))?;
+    install_learning_commit_crash_gate_for_root(connection, &root).map(Some)
+}
+
+fn panel_size_for_trigger(name: &str) -> Option<(f64, f64)> {
+    match name {
+        SET_PANEL_360X560_TRIGGER => Some((360.0, 560.0)),
+        SET_PANEL_390X620_TRIGGER => Some((390.0, 620.0)),
+        SET_PANEL_480X760_TRIGGER => Some((480.0, 760.0)),
+        _ => None,
+    }
+}
+
+pub fn schedule_control_channel(app: &AppHandle) -> AppResult<()> {
+    let root = root_from_env()?;
+    fs::create_dir_all(root.join("control"))?;
+    fs::create_dir_all(root.join("status"))?;
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut request_number = 0_u32;
+        let mut sleep_request_number = 0_u32;
+        loop {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            match consume_empty_control_trigger(&root, SHOW_PET_CONTEXT_MENU_TRIGGER) {
+                Ok(false) => {}
+                Ok(true) => {
+                    request_number = request_number.saturating_add(1);
+                    let consumed = root
+                        .join("status")
+                        .join(format!("context-menu-{request_number}-consumed"));
+                    if let Err(error) = fs::write(&consumed, b"ok\n") {
+                        tracing::warn!(error = %error, "runtime QA context menu status could not be written");
+                    }
+                    let app_for_menu = app.clone();
+                    let root_for_menu = root.clone();
+                    if let Err(error) = app.run_on_main_thread(move || {
+                        let entered = root_for_menu
+                            .join("status")
+                            .join(format!("context-menu-{request_number}-main-thread-entered"));
+                        let _ = fs::write(entered, b"ok\n");
+                        match crate::windows::show_pet_context_menu(&app_for_menu) {
+                            Ok(()) => {
+                                let returned = root_for_menu.join("status").join(format!(
+                                    "context-menu-{request_number}-popup-returned"
+                                ));
+                                let _ = fs::write(returned, b"ok\n");
+                            }
+                            Err(error) => {
+                                let failed = root_for_menu
+                                    .join("status")
+                                    .join(format!("context-menu-{request_number}-popup-error"));
+                                let _ = fs::write(failed, error.to_string());
+                                tracing::warn!(error = %error, "runtime QA pet context menu could not be shown");
+                            }
+                        }
+                    }) {
+                        tracing::warn!(error = %error, "runtime QA context menu dispatch failed");
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(error = %error, "runtime QA control trigger was rejected");
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                }
+            }
+            match consume_empty_control_trigger(&root, INVOKE_PET_SLEEP_MENU_TRIGGER) {
+                Ok(false) => {}
+                Ok(true) => {
+                    sleep_request_number = sleep_request_number.saturating_add(1);
+                    let consumed = root
+                        .join("status")
+                        .join(format!("pet-sleep-menu-{sleep_request_number}-consumed"));
+                    if let Err(error) = fs::write(&consumed, b"ok\n") {
+                        tracing::warn!(error = %error, "runtime QA pet sleep status could not be written");
+                    }
+                    let app_for_action = app.clone();
+                    let root_for_action = root.clone();
+                    if let Err(error) = app.run_on_main_thread(move || {
+                        let entered = root_for_action.join("status").join(format!(
+                            "pet-sleep-menu-{sleep_request_number}-main-thread-entered"
+                        ));
+                        let _ = fs::write(entered, b"ok\n");
+                        let selected_action = match crate::commands::pet_sleep_toggle_action(
+                            &app_for_action,
+                        ) {
+                            crate::commands::PetSleepToggleAction::Sleep => "sleep\n",
+                            crate::commands::PetSleepToggleAction::Wake => "wake\n",
+                        };
+                        let action_status = root_for_action.join("status").join(format!(
+                            "pet-sleep-menu-{sleep_request_number}-selected-action"
+                        ));
+                        let _ = fs::write(action_status, selected_action.as_bytes());
+                        match crate::tray::handle_pet_sleep_menu_event(&app_for_action) {
+                            Ok(()) => {
+                                let snapshot_status = root_for_action.join("status").join(format!(
+                                    "pet-sleep-menu-{sleep_request_number}-snapshot"
+                                ));
+                                if let Ok(snapshot) = serde_json::to_vec(
+                                    &crate::presentation_runtime::snapshot(&app_for_action),
+                                ) {
+                                    let _ = fs::write(snapshot_status, snapshot);
+                                }
+                                let returned = root_for_action.join("status").join(format!(
+                                    "pet-sleep-menu-{sleep_request_number}-handler-returned"
+                                ));
+                                let _ = fs::write(returned, b"ok\n");
+                            }
+                            Err(error) => {
+                                let failed = root_for_action.join("status").join(format!(
+                                    "pet-sleep-menu-{sleep_request_number}-handler-error"
+                                ));
+                                let _ = fs::write(failed, error.to_string());
+                                tracing::warn!(error = %error, "runtime QA pet sleep handler failed");
+                            }
+                        }
+                    }) {
+                        tracing::warn!(error = %error, "runtime QA pet sleep dispatch failed");
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(error = %error, "runtime QA pet sleep trigger was rejected");
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                }
+            }
+            for trigger in PANEL_SIZE_TRIGGERS {
+                match consume_empty_control_trigger(&root, trigger) {
+                    Ok(false) => {}
+                    Ok(true) => {
+                        let (width, height) = panel_size_for_trigger(trigger)
+                            .expect("allowlisted panel size trigger must have dimensions");
+                        let app_for_size = app.clone();
+                        let root_for_size = root.clone();
+                        let root_for_dispatch_failure = root.clone();
+                        if let Err(error) = app.run_on_main_thread(move || {
+                            let result = app_for_size
+                                .get_webview_window("panel")
+                                .ok_or_else(|| "panel window is unavailable".to_owned())
+                                .and_then(|panel| {
+                                    panel
+                                        .set_size(tauri::LogicalSize::new(width, height))
+                                        .map_err(|error| error.to_string())
+                                });
+                            let suffix = if result.is_ok() { "applied" } else { "failed" };
+                            let status = root_for_size
+                                .join("status")
+                                .join(format!("{trigger}-{suffix}"));
+                            let _ = fs::write(status, b"ok\n");
+                        }) {
+                            let status = root_for_dispatch_failure
+                                .join("status")
+                                .join(format!("{trigger}-failed"));
+                            let _ = fs::write(status, b"dispatch failed\n");
+                            tracing::warn!(error = %error, "runtime QA panel resize dispatch failed");
+                        }
+                    }
+                    Err(error) => {
+                        tracing::warn!(error = %error, "runtime QA panel resize trigger was rejected");
+                        tokio::time::sleep(Duration::from_millis(250)).await;
+                    }
+                }
+            }
+        }
+    });
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum RuntimeQaProfile {
     TaskWatch,
@@ -123,6 +492,8 @@ enum RuntimeQaProfile {
     BaselineAiOff,
     ReminderLatency,
     Diagnostics,
+    #[cfg(feature = "learning")]
+    LearningPerformance,
 }
 
 fn parse_profile(value: Option<&OsStr>) -> AppResult<RuntimeQaProfile> {
@@ -132,6 +503,8 @@ fn parse_profile(value: Option<&OsStr>) -> AppResult<RuntimeQaProfile> {
         Some("baseline-ai-off") => Ok(RuntimeQaProfile::BaselineAiOff),
         Some("reminder-latency") => Ok(RuntimeQaProfile::ReminderLatency),
         Some("diagnostics") => Ok(RuntimeQaProfile::Diagnostics),
+        #[cfg(feature = "learning")]
+        Some("learning-performance") => Ok(RuntimeQaProfile::LearningPerformance),
         Some(_) => Err(AppError::Validation("runtime QA profile is invalid".into())),
     }
 }
@@ -143,8 +516,20 @@ pub fn diagnostics_profile_active() -> bool {
     )
 }
 
+pub fn isolates_automatic_sleep() -> bool {
+    #[cfg(feature = "learning")]
+    {
+        return matches!(
+            parse_profile(std::env::var_os(PROFILE_ENV).as_deref()),
+            Ok(RuntimeQaProfile::LearningPerformance)
+        );
+    }
+    #[cfg(not(feature = "learning"))]
+    false
+}
+
 pub fn seed_animation_mode(animation_mode: &str) -> AppResult<()> {
-    if !matches!(animation_mode, "always" | "off") {
+    if !matches!(animation_mode, "always" | "system" | "off") {
         return Err(AppError::Validation(
             "runtime QA animation mode is invalid".into(),
         ));
@@ -153,6 +538,393 @@ pub fn seed_animation_mode(animation_mode: &str) -> AppResult<()> {
     Repository::open(&database)?
         .update_settings(serde_json::json!({ "animationMode": animation_mode }))?;
     Ok(())
+}
+
+#[cfg(feature = "learning")]
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LearningPerformancePlan {
+    pub card_count: u32,
+    pub pack_id: String,
+    pub content_sha256: String,
+    pub database_sha256: String,
+    pub database_bytes: u64,
+    pub reminder_pause_until_utc: String,
+}
+
+#[cfg(feature = "learning")]
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LearningRecoveryState {
+    pub session_id: String,
+    pub status: String,
+    pub state_revision: u64,
+    pub current_item_id: String,
+    pub headword: String,
+    pub planned_count: u8,
+    pub completed_count: u8,
+    pub pause_reason: Option<String>,
+    pub event_count: u32,
+    pub crash_recovered_event_count: u32,
+    pub resumed_event_count: u32,
+    pub answer_committed_event_count: u32,
+    pub question_attempt_count: u32,
+    pub review_log_count: u32,
+    pub last_answered_item_id: Option<String>,
+    pub last_answered_headword: Option<String>,
+    pub last_answer_outcome: Option<String>,
+    pub integrity_check: String,
+    pub foreign_key_violation_count: u32,
+}
+
+#[cfg(feature = "learning")]
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LearningPreemptionPlan {
+    pub card_count: u32,
+    pub pack_id: String,
+    pub content_sha256: String,
+    pub database_sha256: String,
+    pub database_bytes: u64,
+    pub reminder_id: String,
+    pub scheduled_at: String,
+    pub accessible_name_fragment: String,
+}
+
+#[cfg(feature = "learning")]
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LearningPreemptionState {
+    pub session_id: String,
+    pub status: String,
+    pub state_revision: u64,
+    pub current_item_id: String,
+    pub headword: String,
+    pub pause_reason: Option<String>,
+    pub interrupted_event_count: u32,
+    pub interrupted_at_unix_ms: Option<i64>,
+    pub answer_committed_event_count: u32,
+    pub question_attempt_count: u32,
+    pub review_log_count: u32,
+    pub integrity_check: String,
+    pub foreign_key_violation_count: u32,
+}
+
+#[cfg(feature = "learning")]
+pub fn seed_learning_performance(card_count: u32) -> AppResult<LearningPerformancePlan> {
+    if !(1..=10_000).contains(&card_count) {
+        return Err(AppError::Validation(
+            "runtime QA learning card count must be 1 to 10000".into(),
+        ));
+    }
+    let csv = build_synthetic_learning_csv(card_count);
+    let content_sha256 = sha256_hex(csv.as_bytes());
+    let reminder_pause_until = Utc::now() + ChronoDuration::hours(4);
+    let reminder_database = app_data_directory(QA_IDENTIFIER)?.join("yuanyuan-reminder.sqlite3");
+    Repository::open(&reminder_database)?.update_settings(serde_json::json!({
+        "pauseUntil": reminder_pause_until.to_rfc3339(),
+    }))?;
+    let database = app_data_directory(QA_IDENTIFIER)?
+        .join("learning-data")
+        .join("yuanyuan-learning.sqlite3");
+    let now_unix_ms = Utc::now().timestamp_millis();
+    let result = {
+        let mut runtime = crate::learning::LearningRuntime::initialize(&database);
+        if !runtime.capabilities().available {
+            return Err(AppError::Validation(
+                "runtime QA learning database is unavailable".into(),
+            ));
+        }
+        let preview = runtime.preview_csv_import(csv.as_bytes(), now_unix_ms)?;
+        if preview.card_count != card_count {
+            return Err(AppError::Validation(
+                "runtime QA learning fixture count changed during preview".into(),
+            ));
+        }
+        let token = preview.preview_token.ok_or_else(|| {
+            AppError::Validation("runtime QA learning preview token is unavailable".into())
+        })?;
+        runtime.confirm_import(&token, now_unix_ms.saturating_add(1))?
+    };
+    let database_bytes = fs::metadata(&database)?.len();
+    let database_sha256 = sha256_hex(&fs::read(&database)?);
+    Ok(LearningPerformancePlan {
+        card_count: result.imported_count,
+        pack_id: result.pack_id,
+        content_sha256,
+        database_sha256,
+        database_bytes,
+        reminder_pause_until_utc: reminder_pause_until.to_rfc3339(),
+    })
+}
+
+#[cfg(feature = "learning")]
+pub fn seed_learning_preemption(due_after_seconds: u64) -> AppResult<LearningPreemptionPlan> {
+    let learning = seed_learning_performance(5)?;
+    let reminder_database = app_data_directory(QA_IDENTIFIER)?.join("yuanyuan-reminder.sqlite3");
+    Repository::open(&reminder_database)?.update_settings(serde_json::json!({
+        "pauseUntil": null,
+    }))?;
+    let reminder = seed_reminder_latency(due_after_seconds)?;
+    Ok(LearningPreemptionPlan {
+        card_count: learning.card_count,
+        pack_id: learning.pack_id,
+        content_sha256: learning.content_sha256,
+        database_sha256: learning.database_sha256,
+        database_bytes: learning.database_bytes,
+        reminder_id: reminder.reminder_id,
+        scheduled_at: reminder.scheduled_at,
+        accessible_name_fragment: reminder.accessible_name_fragment,
+    })
+}
+
+#[cfg(feature = "learning")]
+pub fn read_learning_recovery_state() -> AppResult<LearningRecoveryState> {
+    let database = app_data_directory(QA_IDENTIFIER)?
+        .join("learning-data")
+        .join("yuanyuan-learning.sqlite3");
+    read_learning_recovery_state_from_database(&database)
+}
+
+#[cfg(feature = "learning")]
+pub fn read_learning_preemption_state() -> AppResult<LearningPreemptionState> {
+    let database = app_data_directory(QA_IDENTIFIER)?
+        .join("learning-data")
+        .join("yuanyuan-learning.sqlite3");
+    read_learning_preemption_state_from_database(&database)
+}
+
+#[cfg(feature = "learning")]
+fn read_learning_recovery_state_from_database(database: &Path) -> AppResult<LearningRecoveryState> {
+    use rusqlite::{Connection, OpenFlags};
+
+    let connection = Connection::open_with_flags(
+        database,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    connection.busy_timeout(Duration::from_secs(5))?;
+    let raw = connection.query_row(
+        "SELECT s.session_id, s.status, s.state_revision, s.current_item_id,
+                c.headword, s.planned_count, s.completed_count, s.pause_reason,
+                (SELECT COUNT(*) FROM learning_session_events e
+                 WHERE e.session_id = s.session_id),
+                (SELECT COUNT(*) FROM learning_session_events e
+                 WHERE e.session_id = s.session_id AND e.event_kind = 'crash_recovered'),
+                (SELECT COUNT(*) FROM learning_session_events e
+                 WHERE e.session_id = s.session_id AND e.event_kind = 'resumed'),
+                (SELECT COUNT(*) FROM learning_session_events e
+                 WHERE e.session_id = s.session_id AND e.event_kind = 'answer_committed'),
+                (SELECT COUNT(*) FROM learning_question_attempts a
+                 WHERE a.session_id = s.session_id),
+                (SELECT COUNT(*) FROM review_logs r WHERE r.session_id = s.session_id),
+                (SELECT a.card_id FROM learning_question_attempts a
+                 WHERE a.session_id = s.session_id
+                 ORDER BY a.answered_at_unix_ms DESC, a.attempt_id DESC LIMIT 1),
+                (SELECT answered.headword
+                 FROM learning_question_attempts a
+                 JOIN learning_cards answered ON answered.card_id = a.card_id
+                 WHERE a.session_id = s.session_id
+                 ORDER BY a.answered_at_unix_ms DESC, a.attempt_id DESC LIMIT 1),
+                (SELECT a.outcome FROM learning_question_attempts a
+                 WHERE a.session_id = s.session_id
+                 ORDER BY a.answered_at_unix_ms DESC, a.attempt_id DESC LIMIT 1)
+         FROM learning_sessions s
+         LEFT JOIN learning_cards c ON c.card_id = s.current_item_id
+         ORDER BY s.started_at_unix_ms DESC, s.session_id DESC
+         LIMIT 1",
+        [],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, i64>(6)?,
+                row.get::<_, Option<String>>(7)?,
+                row.get::<_, i64>(8)?,
+                row.get::<_, i64>(9)?,
+                row.get::<_, i64>(10)?,
+                row.get::<_, i64>(11)?,
+                row.get::<_, i64>(12)?,
+                row.get::<_, i64>(13)?,
+                row.get::<_, Option<String>>(14)?,
+                row.get::<_, Option<String>>(15)?,
+                row.get::<_, Option<String>>(16)?,
+            ))
+        },
+    )?;
+    let current_item_id = raw.3.ok_or_else(|| {
+        AppError::Validation("runtime QA learning session has no current item".into())
+    })?;
+    let headword = raw.4.ok_or_else(|| {
+        AppError::Validation("runtime QA learning current item is unavailable".into())
+    })?;
+    if !matches!(raw.1.as_str(), "active" | "paused") {
+        return Err(AppError::Validation(
+            "runtime QA learning session is not recoverable".into(),
+        ));
+    }
+    let integrity_check: String =
+        connection.query_row("PRAGMA integrity_check(1)", [], |row| row.get(0))?;
+    let mut foreign_key_statement = connection.prepare("PRAGMA foreign_key_check")?;
+    let mut foreign_key_rows = foreign_key_statement.query([])?;
+    let mut foreign_key_violation_count = 0_u32;
+    while foreign_key_rows.next()?.is_some() {
+        foreign_key_violation_count = foreign_key_violation_count.saturating_add(1);
+    }
+    Ok(LearningRecoveryState {
+        session_id: raw.0,
+        status: raw.1,
+        state_revision: checked_u64(raw.2, "state revision")?,
+        current_item_id,
+        headword,
+        planned_count: checked_u8(raw.5, "planned count")?,
+        completed_count: checked_u8(raw.6, "completed count")?,
+        pause_reason: raw.7,
+        event_count: checked_u32(raw.8, "event count")?,
+        crash_recovered_event_count: checked_u32(raw.9, "crash recovery event count")?,
+        resumed_event_count: checked_u32(raw.10, "resumed event count")?,
+        answer_committed_event_count: checked_u32(raw.11, "answer event count")?,
+        question_attempt_count: checked_u32(raw.12, "question attempt count")?,
+        review_log_count: checked_u32(raw.13, "review log count")?,
+        last_answered_item_id: raw.14,
+        last_answered_headword: raw.15,
+        last_answer_outcome: raw.16,
+        integrity_check,
+        foreign_key_violation_count,
+    })
+}
+
+#[cfg(feature = "learning")]
+fn read_learning_preemption_state_from_database(
+    database: &Path,
+) -> AppResult<LearningPreemptionState> {
+    use rusqlite::{Connection, OpenFlags};
+
+    let connection = Connection::open_with_flags(
+        database,
+        OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    connection.busy_timeout(Duration::from_secs(5))?;
+    let raw = connection.query_row(
+        "SELECT s.session_id, s.status, s.state_revision, s.current_item_id,
+                c.headword, s.pause_reason,
+                (SELECT COUNT(*) FROM learning_session_events e
+                 WHERE e.session_id = s.session_id AND e.event_kind = 'interrupted'),
+                (SELECT MAX(e.occurred_at_unix_ms) FROM learning_session_events e
+                 WHERE e.session_id = s.session_id AND e.event_kind = 'interrupted'),
+                (SELECT COUNT(*) FROM learning_session_events e
+                 WHERE e.session_id = s.session_id AND e.event_kind = 'answer_committed'),
+                (SELECT COUNT(*) FROM learning_question_attempts a
+                 WHERE a.session_id = s.session_id),
+                (SELECT COUNT(*) FROM review_logs r WHERE r.session_id = s.session_id)
+         FROM learning_sessions s
+         LEFT JOIN learning_cards c ON c.card_id = s.current_item_id
+         ORDER BY s.started_at_unix_ms DESC, s.session_id DESC
+         LIMIT 1",
+        [],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, Option<String>>(5)?,
+                row.get::<_, i64>(6)?,
+                row.get::<_, Option<i64>>(7)?,
+                row.get::<_, i64>(8)?,
+                row.get::<_, i64>(9)?,
+                row.get::<_, i64>(10)?,
+            ))
+        },
+    )?;
+    let current_item_id = raw.3.ok_or_else(|| {
+        AppError::Validation("runtime QA learning session has no current item".into())
+    })?;
+    let headword = raw.4.ok_or_else(|| {
+        AppError::Validation("runtime QA learning current item is unavailable".into())
+    })?;
+    if !matches!(raw.1.as_str(), "active" | "paused") {
+        return Err(AppError::Validation(
+            "runtime QA learning session is not preemptible".into(),
+        ));
+    }
+    let integrity_check: String =
+        connection.query_row("PRAGMA integrity_check(1)", [], |row| row.get(0))?;
+    let mut foreign_key_statement = connection.prepare("PRAGMA foreign_key_check")?;
+    let mut foreign_key_rows = foreign_key_statement.query([])?;
+    let mut foreign_key_violation_count = 0_u32;
+    while foreign_key_rows.next()?.is_some() {
+        foreign_key_violation_count = foreign_key_violation_count.saturating_add(1);
+    }
+    Ok(LearningPreemptionState {
+        session_id: raw.0,
+        status: raw.1,
+        state_revision: checked_u64(raw.2, "state revision")?,
+        current_item_id,
+        headword,
+        pause_reason: raw.5,
+        interrupted_event_count: checked_u32(raw.6, "interrupted event count")?,
+        interrupted_at_unix_ms: raw.7,
+        answer_committed_event_count: checked_u32(raw.8, "answer event count")?,
+        question_attempt_count: checked_u32(raw.9, "question attempt count")?,
+        review_log_count: checked_u32(raw.10, "review log count")?,
+        integrity_check,
+        foreign_key_violation_count,
+    })
+}
+
+#[cfg(feature = "learning")]
+fn checked_u64(value: i64, label: &str) -> AppResult<u64> {
+    u64::try_from(value).map_err(|_| AppError::Validation(format!("runtime QA {label} is invalid")))
+}
+
+#[cfg(feature = "learning")]
+fn checked_u32(value: i64, label: &str) -> AppResult<u32> {
+    u32::try_from(value).map_err(|_| AppError::Validation(format!("runtime QA {label} is invalid")))
+}
+
+#[cfg(feature = "learning")]
+fn checked_u8(value: i64, label: &str) -> AppResult<u8> {
+    u8::try_from(value).map_err(|_| AppError::Validation(format!("runtime QA {label} is invalid")))
+}
+
+#[cfg(feature = "learning")]
+fn build_synthetic_learning_csv(card_count: u32) -> String {
+    use std::fmt::Write as _;
+
+    let mut csv = String::from("headword,meanings_zh\n");
+    for index in 0..card_count {
+        let _ = writeln!(
+            csv,
+            "qa{},合成释义 {}",
+            alphabetic_index(index),
+            index.saturating_add(1)
+        );
+    }
+    csv
+}
+
+#[cfg(feature = "learning")]
+fn alphabetic_index(mut index: u32) -> String {
+    let mut characters = Vec::new();
+    loop {
+        characters.push((b'a' + (index % 26) as u8) as char);
+        index /= 26;
+        if index == 0 {
+            break;
+        }
+        index -= 1;
+    }
+    characters.iter().rev().collect()
+}
+
+#[cfg(feature = "learning")]
+fn sha256_hex(bytes: &[u8]) -> String {
+    format!("{:X}", Sha256::digest(bytes))
 }
 
 #[derive(Debug, Serialize)]
@@ -352,6 +1124,46 @@ mod tests {
     }
 
     #[test]
+    fn context_menu_control_only_consumes_the_exact_empty_regular_file() {
+        let root = create_root(&unique_root("control")).unwrap();
+        fs::create_dir(root.join("control")).unwrap();
+        let trigger = root.join("control").join(SHOW_PET_CONTEXT_MENU_TRIGGER);
+
+        fs::write(&trigger, []).unwrap();
+        assert!(consume_empty_control_trigger(&root, SHOW_PET_CONTEXT_MENU_TRIGGER).unwrap());
+        assert!(!consume_empty_control_trigger(&root, SHOW_PET_CONTEXT_MENU_TRIGGER).unwrap());
+        let sleep_trigger = root.join("control").join(INVOKE_PET_SLEEP_MENU_TRIGGER);
+        fs::write(&sleep_trigger, []).unwrap();
+        assert!(consume_empty_control_trigger(&root, INVOKE_PET_SLEEP_MENU_TRIGGER).unwrap());
+        assert!(!consume_empty_control_trigger(&root, INVOKE_PET_SLEEP_MENU_TRIGGER).unwrap());
+        for trigger_name in PANEL_SIZE_TRIGGERS {
+            let panel_trigger = root.join("control").join(trigger_name);
+            fs::write(&panel_trigger, []).unwrap();
+            assert!(consume_empty_control_trigger(&root, trigger_name).unwrap());
+            assert!(!consume_empty_control_trigger(&root, trigger_name).unwrap());
+        }
+        assert!(consume_empty_control_trigger(&root, "unknown-control").is_err());
+
+        fs::write(&trigger, b"payload").unwrap();
+        assert!(consume_empty_control_trigger(&root, SHOW_PET_CONTEXT_MENU_TRIGGER).is_err());
+        assert_eq!(
+            panel_size_for_trigger(SET_PANEL_360X560_TRIGGER),
+            Some((360.0, 560.0))
+        );
+        assert_eq!(
+            panel_size_for_trigger(SET_PANEL_390X620_TRIGGER),
+            Some((390.0, 620.0))
+        );
+        assert_eq!(
+            panel_size_for_trigger(SET_PANEL_480X760_TRIGGER),
+            Some((480.0, 760.0))
+        );
+        assert_eq!(panel_size_for_trigger("set-panel-size-1x1"), None);
+        fs::remove_file(trigger).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn runtime_profile_is_explicit_and_unknown_values_fail_closed() {
         assert_eq!(parse_profile(None).unwrap(), RuntimeQaProfile::TaskWatch);
         assert_eq!(
@@ -374,7 +1186,295 @@ mod tests {
             parse_profile(Some(OsStr::new("diagnostics"))).unwrap(),
             RuntimeQaProfile::Diagnostics
         );
+        #[cfg(feature = "learning")]
+        assert_eq!(
+            parse_profile(Some(OsStr::new("learning-performance"))).unwrap(),
+            RuntimeQaProfile::LearningPerformance
+        );
         assert!(parse_profile(Some(OsStr::new("production"))).is_err());
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn synthetic_learning_fixture_is_deterministic_and_unique() {
+        let first = build_synthetic_learning_csv(4_533);
+        let second = build_synthetic_learning_csv(4_533);
+        assert_eq!(first, second);
+        assert_eq!(sha256_hex(first.as_bytes()), sha256_hex(second.as_bytes()));
+        assert!(first.len() < 2 * 1024 * 1024);
+        let rows = first
+            .lines()
+            .skip(1)
+            .collect::<std::collections::BTreeSet<_>>();
+        assert_eq!(rows.len(), 4_533);
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn recovery_state_reader_reports_persisted_session_invariants() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = directory.path().join("learning.sqlite3");
+        let connection = rusqlite::Connection::open(&database).unwrap();
+        connection
+            .execute_batch(
+                "PRAGMA foreign_keys = ON;
+                 CREATE TABLE learning_cards(card_id TEXT PRIMARY KEY, headword TEXT NOT NULL);
+                 CREATE TABLE learning_sessions(
+                     session_id TEXT PRIMARY KEY,
+                     status TEXT NOT NULL,
+                     state_revision INTEGER NOT NULL,
+                     current_item_id TEXT REFERENCES learning_cards(card_id),
+                     planned_count INTEGER NOT NULL,
+                     completed_count INTEGER NOT NULL,
+                     pause_reason TEXT,
+                     started_at_unix_ms INTEGER NOT NULL
+                 );
+                 CREATE TABLE learning_session_events(
+                     event_id TEXT PRIMARY KEY,
+                     session_id TEXT NOT NULL REFERENCES learning_sessions(session_id),
+                     event_kind TEXT NOT NULL
+                 );
+                 CREATE TABLE learning_question_attempts(
+                     attempt_id TEXT PRIMARY KEY,
+                     session_id TEXT NOT NULL REFERENCES learning_sessions(session_id),
+                     card_id TEXT NOT NULL REFERENCES learning_cards(card_id),
+                     outcome TEXT NOT NULL,
+                     answered_at_unix_ms INTEGER NOT NULL
+                 );
+                 CREATE TABLE review_logs(
+                     review_id TEXT PRIMARY KEY,
+                     session_id TEXT NOT NULL REFERENCES learning_sessions(session_id)
+                 );
+                 INSERT INTO learning_cards VALUES('card-answered', 'qaone');
+                 INSERT INTO learning_cards VALUES('card-current', 'qatwo');
+                 INSERT INTO learning_sessions VALUES(
+                     'session-1', 'paused', 4, 'card-current', 3, 1, 'crash_recovery', 1000
+                 );
+                 INSERT INTO learning_session_events VALUES(
+                     'event-1', 'session-1', 'answer_committed'
+                 );
+                 INSERT INTO learning_session_events VALUES(
+                     'event-2', 'session-1', 'crash_recovered'
+                 );
+                 INSERT INTO learning_question_attempts VALUES(
+                     'attempt-1', 'session-1', 'card-answered', 'correct', 1100
+                 );
+                 INSERT INTO review_logs VALUES('review-1', 'session-1');",
+            )
+            .unwrap();
+        drop(connection);
+
+        let state = read_learning_recovery_state_from_database(&database).unwrap();
+        assert_eq!(state.session_id, "session-1");
+        assert_eq!(state.status, "paused");
+        assert_eq!(state.state_revision, 4);
+        assert_eq!(state.current_item_id, "card-current");
+        assert_eq!(state.headword, "qatwo");
+        assert_eq!(state.completed_count, 1);
+        assert_eq!(state.pause_reason.as_deref(), Some("crash_recovery"));
+        assert_eq!(state.event_count, 2);
+        assert_eq!(state.crash_recovered_event_count, 1);
+        assert_eq!(state.answer_committed_event_count, 1);
+        assert_eq!(state.question_attempt_count, 1);
+        assert_eq!(state.review_log_count, 1);
+        assert_eq!(
+            state.last_answered_item_id.as_deref(),
+            Some("card-answered")
+        );
+        assert_eq!(state.last_answered_headword.as_deref(), Some("qaone"));
+        assert_eq!(state.last_answer_outcome.as_deref(), Some("correct"));
+        assert_eq!(state.integrity_check, "ok");
+        assert_eq!(state.foreign_key_violation_count, 0);
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn answer_commit_crash_hook_enters_inside_commit_and_rolls_back_on_release() {
+        use std::sync::mpsc;
+
+        let root = create_root(&unique_root("answer-commit-hook")).unwrap();
+        fs::create_dir(root.join("control")).unwrap();
+        fs::create_dir(root.join("status")).unwrap();
+        let mut connection = rusqlite::Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch("CREATE TABLE committed_values(value INTEGER NOT NULL);")
+            .unwrap();
+        let gate = install_learning_commit_crash_gate_for_root(&connection, &root).unwrap();
+        fs::write(
+            root.join("control").join(LEARNING_COMMIT_CRASH_ARM_TRIGGER),
+            [],
+        )
+        .unwrap();
+        let (finished_tx, finished_rx) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            let transaction = connection.transaction().unwrap();
+            transaction
+                .execute("INSERT INTO committed_values VALUES(1)", [])
+                .unwrap();
+            gate.mark_answer_commit_pending();
+            let rejected = transaction.commit().is_err();
+            gate.clear_answer_commit_pending();
+            finished_tx.send(rejected).unwrap();
+            connection
+        });
+        let entered = root
+            .join("status")
+            .join(LEARNING_COMMIT_CRASH_ENTERED_STAGE);
+        for _ in 0..200 {
+            if entered.is_file() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(entered.is_file());
+        assert!(finished_rx.try_recv().is_err());
+        fs::write(
+            root.join("control")
+                .join(LEARNING_COMMIT_CRASH_RELEASE_TRIGGER),
+            [],
+        )
+        .unwrap();
+        assert!(finished_rx.recv_timeout(Duration::from_secs(5)).unwrap());
+        let connection = worker.join().unwrap();
+        let count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM committed_values", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 0);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn answer_commit_crash_hook_is_inert_without_an_exact_empty_arm_control() {
+        let root = create_root(&unique_root("answer-commit-inert")).unwrap();
+        fs::create_dir(root.join("control")).unwrap();
+        fs::create_dir(root.join("status")).unwrap();
+        let mut connection = rusqlite::Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch("CREATE TABLE committed_values(value INTEGER NOT NULL);")
+            .unwrap();
+        let gate = install_learning_commit_crash_gate_for_root(&connection, &root).unwrap();
+        let transaction = connection.transaction().unwrap();
+        transaction
+            .execute("INSERT INTO committed_values VALUES(1)", [])
+            .unwrap();
+        gate.mark_answer_commit_pending();
+        transaction.commit().unwrap();
+        gate.clear_answer_commit_pending();
+        let count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM committed_values", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 1);
+        assert!(!root
+            .join("status")
+            .join(LEARNING_COMMIT_CRASH_ENTERED_STAGE)
+            .exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn answer_commit_crash_hook_rejects_a_nonempty_arm_control_without_committing() {
+        let root = create_root(&unique_root("answer-commit-invalid")).unwrap();
+        fs::create_dir(root.join("control")).unwrap();
+        fs::create_dir(root.join("status")).unwrap();
+        let mut connection = rusqlite::Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch("CREATE TABLE committed_values(value INTEGER NOT NULL);")
+            .unwrap();
+        let gate = install_learning_commit_crash_gate_for_root(&connection, &root).unwrap();
+        fs::write(
+            root.join("control").join(LEARNING_COMMIT_CRASH_ARM_TRIGGER),
+            b"payload",
+        )
+        .unwrap();
+        let transaction = connection.transaction().unwrap();
+        transaction
+            .execute("INSERT INTO committed_values VALUES(1)", [])
+            .unwrap();
+        gate.mark_answer_commit_pending();
+        assert!(transaction.commit().is_err());
+        gate.clear_answer_commit_pending();
+        let count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM committed_values", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 0);
+        assert!(root
+            .join("status")
+            .join(LEARNING_COMMIT_CRASH_ERROR_STAGE)
+            .is_file());
+        assert!(!root
+            .join("status")
+            .join(LEARNING_COMMIT_CRASH_ENTERED_STAGE)
+            .exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn preemption_state_reader_reports_interruption_time_and_zero_answer_writes() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = directory.path().join("learning.sqlite3");
+        let connection = rusqlite::Connection::open(&database).unwrap();
+        connection
+            .execute_batch(
+                "PRAGMA foreign_keys = ON;
+                 CREATE TABLE learning_cards(card_id TEXT PRIMARY KEY, headword TEXT NOT NULL);
+                 CREATE TABLE learning_sessions(
+                     session_id TEXT PRIMARY KEY,
+                     status TEXT NOT NULL,
+                     state_revision INTEGER NOT NULL,
+                     current_item_id TEXT REFERENCES learning_cards(card_id),
+                     pause_reason TEXT,
+                     started_at_unix_ms INTEGER NOT NULL
+                 );
+                 CREATE TABLE learning_session_events(
+                     event_id TEXT PRIMARY KEY,
+                     session_id TEXT NOT NULL REFERENCES learning_sessions(session_id),
+                     event_kind TEXT NOT NULL,
+                     occurred_at_unix_ms INTEGER NOT NULL
+                 );
+                 CREATE TABLE learning_question_attempts(
+                     attempt_id TEXT PRIMARY KEY,
+                     session_id TEXT NOT NULL REFERENCES learning_sessions(session_id)
+                 );
+                 CREATE TABLE review_logs(
+                     review_id TEXT PRIMARY KEY,
+                     session_id TEXT NOT NULL REFERENCES learning_sessions(session_id)
+                 );
+                 INSERT INTO learning_cards VALUES('card-1', 'qaone');
+                 INSERT INTO learning_sessions VALUES(
+                     'session-1', 'paused', 3, 'card-1', 'preempted_high_priority', 1000
+                 );
+                 INSERT INTO learning_session_events VALUES(
+                     'event-1', 'session-1', 'interrupted', 1200
+                 );",
+            )
+            .unwrap();
+        drop(connection);
+
+        let state = read_learning_preemption_state_from_database(&database).unwrap();
+        assert_eq!(state.session_id, "session-1");
+        assert_eq!(state.status, "paused");
+        assert_eq!(state.state_revision, 3);
+        assert_eq!(state.current_item_id, "card-1");
+        assert_eq!(state.headword, "qaone");
+        assert_eq!(
+            state.pause_reason.as_deref(),
+            Some("preempted_high_priority")
+        );
+        assert_eq!(state.interrupted_event_count, 1);
+        assert_eq!(state.interrupted_at_unix_ms, Some(1200));
+        assert_eq!(state.question_attempt_count, 0);
+        assert_eq!(state.review_log_count, 0);
+        assert_eq!(state.integrity_check, "ok");
+        assert_eq!(state.foreign_key_violation_count, 0);
     }
 
     #[test]
@@ -392,9 +1492,27 @@ mod tests {
     }
 
     #[test]
-    fn task_failure_motion_accepts_only_reviewed_animation_modes() {
-        for invalid in ["", "system", "reduced", "future"] {
+    fn runtime_qa_accepts_only_reviewed_animation_and_webview_modes() {
+        for invalid in ["", "reduced", "future"] {
             assert!(seed_animation_mode(invalid).is_err());
+        }
+        assert_eq!(runtime_qa_webview_arguments(None).unwrap(), None);
+        assert_eq!(
+            runtime_qa_webview_arguments(Some(OsStr::new("reduced-motion"))).unwrap(),
+            Some("--force-prefers-reduced-motion")
+        );
+        assert_eq!(
+            runtime_qa_webview_arguments(Some(OsStr::new("forced-colors"))).unwrap(),
+            Some("--force-high-contrast --enable-blink-features=ForcedColors")
+        );
+        for invalid in ["", "high-contrast", "--force-high-contrast"] {
+            assert!(runtime_qa_webview_arguments(Some(OsStr::new(invalid))).is_err());
+        }
+        assert!(!runtime_qa_panel_top_left(None).unwrap());
+        assert!(!runtime_qa_panel_top_left(Some(OsStr::new("default"))).unwrap());
+        assert!(runtime_qa_panel_top_left(Some(OsStr::new("work-area-top-left"))).unwrap());
+        for invalid in ["", "top-left", "64,64"] {
+            assert!(runtime_qa_panel_top_left(Some(OsStr::new(invalid))).is_err());
         }
     }
 }
