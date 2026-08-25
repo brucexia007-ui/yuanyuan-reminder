@@ -99,18 +99,25 @@ export function findForbiddenTextMarkers(text) {
   return findings;
 }
 
+const LEGACY_PERSONAL_IDENTIFIER = "com.yuanyuan.reminder.learning-personal";
+
+export function findForbiddenArtifactTextMarkers(text) {
+  return findForbiddenTextMarkers(String(text).replaceAll(LEGACY_PERSONAL_IDENTIFIER, ""));
+}
+
 const LEGACY_MIGRATION_IDENTIFIER_PATHS = new Set([
   "product-version.json",
   "scripts/sync_unified_product_version.mjs",
   "scripts/sync_unified_product_version.node-test.mjs",
   "scripts/verify_unified_product_boundary.mjs",
   "scripts/verify_unified_product_boundary.node-test.mjs",
+  "src-tauri/src/learning/legacy_migration.rs",
 ]);
 
 export function findForbiddenSourceMarkers(path, text) {
   const normalized = normalizeRepositoryPath(path);
   const auditedText = LEGACY_MIGRATION_IDENTIFIER_PATHS.has(normalized)
-    ? String(text).replaceAll("com.yuanyuan.reminder.learning-personal", "")
+    ? String(text).replaceAll(LEGACY_PERSONAL_IDENTIFIER, "")
     : text;
   return findForbiddenTextMarkers(auditedText);
 }

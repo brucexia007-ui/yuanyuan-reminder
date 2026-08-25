@@ -1,7 +1,10 @@
 use std::{fs, path::Path, time::Duration};
 
 use chrono::{Days, Local, NaiveDate, TimeZone, Utc};
-use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
+use rusqlite::{
+    backup::Progress, params, Connection, OpenFlags, OptionalExtension, Transaction,
+    TransactionBehavior, MAIN_DB,
+};
 
 use crate::error::{AppError, AppResult};
 
@@ -22,7 +25,7 @@ use super::{
 
 pub(super) mod portability;
 
-const CURRENT_SCHEMA_VERSION: u32 = 6;
+pub(super) const CURRENT_SCHEMA_VERSION: u32 = 7;
 const BUSY_TIMEOUT_MILLIS: u64 = 2_000;
 const LEARNING_SESSION_TTL_MILLIS: i64 = 24 * 60 * 60 * 1_000;
 const INITIAL_MIGRATION: &str = include_str!("migrations/001_initial.sql");
@@ -31,6 +34,8 @@ const QUIZ_LEARNING_MIGRATION: &str = include_str!("migrations/003_quiz_learning
 const LEARNING_INSIGHTS_MIGRATION: &str = include_str!("migrations/004_learning_insights.sql");
 const LEARNING_ROUNDS_MIGRATION: &str = include_str!("migrations/005_learning_rounds.sql");
 const RESUMABLE_SESSIONS_MIGRATION: &str = include_str!("migrations/006_resumable_sessions.sql");
+const LEGACY_MIGRATION_RECEIPTS_MIGRATION: &str =
+    include_str!("migrations/007_legacy_migration_receipts.sql");
 
 pub struct LearningRepository {
     conn: Connection,
@@ -66,6 +71,43 @@ impl LearningRepository {
                 |row| row.get(0),
             )
             .map_err(Into::into)
+    }
+
+    pub fn backup_to(&self, path: &Path) -> AppResult<()> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        if let Err(error) = self.conn.backup(MAIN_DB, path, None::<fn(Progress)>) {
+            let _ = fs::remove_file(path);
+            return Err(error.into());
+        }
+        Ok(())
+    }
+
+    pub fn restore_from(&mut self, path: &Path) -> AppResult<()> {
+        validate_backup_database(path)?;
+        self.conn.restore(MAIN_DB, path, None::<fn(Progress)>)?;
+        apply_migrations(&self.conn)?;
+        validate_connection(&self.conn)?;
+        initialize_schema_timestamps(&self.conn)?;
+        recover_orphaned_learning_sessions(&mut self.conn, Utc::now().timestamp_millis())?;
+        Ok(())
+    }
+
+    pub fn validate_database_file(path: &Path) -> AppResult<()> {
+        validate_backup_database(path)
+    }
+
+    pub fn legacy_migration_matches(&self, edition: &str, fingerprint: &str) -> AppResult<bool> {
+        let matched = self.conn.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM legacy_learning_migrations
+                WHERE source_edition = ?1 AND source_fingerprint = ?2
+             )",
+            params![edition, fingerprint],
+            |row| row.get(0),
+        )?;
+        Ok(matched)
     }
 
     pub fn commit_user_import(
@@ -2636,6 +2678,13 @@ fn apply_migrations(conn: &Connection) -> AppResult<()> {
             return Err(error.into());
         }
     }
+    let schema_version: u32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if schema_version == 6 {
+        if let Err(error) = conn.execute_batch(LEGACY_MIGRATION_RECEIPTS_MIGRATION) {
+            let _ = conn.execute_batch("ROLLBACK");
+            return Err(error.into());
+        }
+    }
     Ok(())
 }
 
@@ -2663,6 +2712,40 @@ fn validate_connection(conn: &Connection) -> AppResult<()> {
         return Err(AppError::Validation(
             "learning database foreign key check failed".into(),
         ));
+    }
+    Ok(())
+}
+
+fn validate_backup_database(path: &Path) -> AppResult<()> {
+    if !path.is_file() {
+        return Err(AppError::Validation(
+            "learning backup file does not exist".into(),
+        ));
+    }
+    let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    let integrity: String = connection.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+    if integrity != "ok" {
+        return Err(AppError::Validation(
+            "learning backup integrity check failed".into(),
+        ));
+    }
+    let schema_version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if !(1..=CURRENT_SCHEMA_VERSION).contains(&schema_version) {
+        return Err(AppError::Validation(format!(
+            "unsupported learning backup schema version {schema_version}"
+        )));
+    }
+    for table in ["learning_settings", "learning_cards", "review_logs"] {
+        let exists: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+            [table],
+            |row| row.get(0),
+        )?;
+        if !exists {
+            return Err(AppError::Validation(format!(
+                "learning backup is missing required table {table}"
+            )));
+        }
     }
     Ok(())
 }
@@ -2876,7 +2959,7 @@ mod tests {
         let version: u32 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 6);
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
         let tables = conn
             .prepare(
                 "SELECT name FROM sqlite_master
@@ -2895,6 +2978,7 @@ mod tests {
                 "content_sources".into(),
                 "learning_cards".into(),
                 "learning_invitation_events".into(),
+                "legacy_learning_migrations".into(),
                 "learning_question_attempts".into(),
                 "learning_remediation_queue".into(),
                 "learning_session_events".into(),
@@ -2959,7 +3043,7 @@ mod tests {
         let directory = tempdir().unwrap();
         let path = directory.path().join("future.sqlite3");
         let conn = Connection::open(&path).unwrap();
-        conn.pragma_update(None, "user_version", 7).unwrap();
+        conn.pragma_update(None, "user_version", 8).unwrap();
         drop(conn);
 
         assert!(matches!(
@@ -2970,7 +3054,7 @@ mod tests {
         let version: u32 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 7);
+        assert_eq!(version, 8);
     }
 
     #[test]
@@ -2994,7 +3078,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, 6);
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
         assert_eq!(export_time, None);
     }
 
@@ -3057,7 +3141,7 @@ mod tests {
         let version: u32 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 6);
+        assert_eq!(version, CURRENT_SCHEMA_VERSION);
         for table in [
             "learning_sessions",
             "review_logs",

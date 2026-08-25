@@ -1,5 +1,6 @@
 mod import;
 mod invitation;
+mod legacy_migration;
 mod models;
 mod quiz;
 mod repository;
@@ -11,6 +12,7 @@ pub(crate) use windows_suitability::current_system_suitability;
 
 use std::{
     collections::BTreeMap,
+    fs,
     path::{Path, PathBuf},
 };
 
@@ -28,6 +30,10 @@ use invitation::evaluate_learning_invitation;
 pub(crate) use invitation::{
     LearningInvitationContext, LearningInvitationDecision, LearningInvitationDto,
     LearningInvitationEnvironment, LearningSuppressionReason, LearningTriggerSource,
+};
+pub(crate) use legacy_migration::{
+    LegacyLearningEdition, LegacyLearningMigrationPreview, LegacyLearningMigrationResult,
+    LegacyLearningSourceSummary,
 };
 use repository::portability::NativeLearningExport;
 pub(crate) use repository::portability::{
@@ -61,6 +67,7 @@ pub struct LearningRuntime {
     database_path: Option<PathBuf>,
     initialization_failed: bool,
     pending_imports: BTreeMap<String, PendingImportPreview>,
+    pending_legacy_migrations: BTreeMap<String, legacy_migration::PendingLegacyMigration>,
     pending_invitation: Option<PendingLearningInvitation>,
 }
 
@@ -71,6 +78,7 @@ impl Default for LearningRuntime {
             database_path: None,
             initialization_failed: false,
             pending_imports: BTreeMap::new(),
+            pending_legacy_migrations: BTreeMap::new(),
             pending_invitation: None,
         }
     }
@@ -94,6 +102,7 @@ impl LearningRuntime {
                 database_path: Some(path.to_path_buf()),
                 initialization_failed: false,
                 pending_imports: BTreeMap::new(),
+                pending_legacy_migrations: BTreeMap::new(),
                 pending_invitation: None,
             },
             Err(_) => {
@@ -128,6 +137,51 @@ impl LearningRuntime {
             .repository
             .as_mut()
             .expect("learning repository must exist after successful activation"))
+    }
+
+    pub(crate) fn backup_to_if_present(&self, path: &Path) -> AppResult<bool> {
+        let Some(database_path) = self.database_path.as_ref() else {
+            return Ok(false);
+        };
+        if !database_path.is_file() {
+            return Ok(false);
+        }
+        let repository = self.repository.as_ref().ok_or_else(|| {
+            AppError::Validation("learning database is unavailable for backup".into())
+        })?;
+        repository.backup_to(path)?;
+        repository::LearningRepository::validate_database_file(path)?;
+        Ok(true)
+    }
+
+    pub(crate) fn validate_backup_file(path: &Path) -> AppResult<()> {
+        repository::LearningRepository::validate_database_file(path)
+    }
+
+    pub(crate) fn restore_from_backup(&mut self, path: &Path) -> AppResult<()> {
+        self.ensure_repository()?.restore_from(path)
+    }
+
+    pub(crate) fn rollback_restore_to_absent_database(&mut self) -> AppResult<()> {
+        self.repository.take();
+        let path = self
+            .database_path
+            .clone()
+            .ok_or_else(|| AppError::Validation("learning database path is unavailable".into()))?;
+        for candidate in [
+            path.clone(),
+            path.with_extension("sqlite3-wal"),
+            path.with_extension("sqlite3-shm"),
+        ] {
+            if candidate.exists() {
+                fs::remove_file(candidate)?;
+            }
+        }
+        self.initialization_failed = false;
+        self.pending_imports.clear();
+        self.pending_legacy_migrations.clear();
+        self.pending_invitation = None;
+        Ok(())
     }
 
     pub fn automatic_invitation_state_loaded(&self) -> bool {

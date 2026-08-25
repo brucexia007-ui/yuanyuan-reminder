@@ -6,9 +6,9 @@ import { spawnSync } from "node:child_process";
 import {
   FORBIDDEN_PATH_RULES,
   findForbiddenArtifactPaths,
+  findForbiddenArtifactTextMarkers,
   findForbiddenPaths,
   findForbiddenSourceMarkers,
-  findForbiddenTextMarkers,
   isAuditedSourcePath,
   isTextFile,
   normalizeRepositoryPath,
@@ -132,7 +132,7 @@ function artifactAudit(argument) {
     if (statSync(absolutePath).size > 64 * 1024 * 1024) continue;
     const bytes = readFileSync(absolutePath);
     const text = bytes.toString(isTextFile(path) ? "utf8" : "latin1");
-    for (const marker of findForbiddenTextMarkers(text)) {
+    for (const marker of findForbiddenArtifactTextMarkers(text)) {
       findings.push({ path, rule: `artifact-marker:${marker}` });
     }
   }

@@ -420,6 +420,40 @@ impl LearningRepository {
         value: &NativeLearningExport,
         now_unix_ms: i64,
     ) -> AppResult<super::ImportCommitResult> {
+        self.restore_native_export_inner(value, now_unix_ms, None)
+    }
+
+    pub fn restore_native_export_with_legacy_receipt(
+        &mut self,
+        value: &NativeLearningExport,
+        now_unix_ms: i64,
+        source_edition: &str,
+        source_fingerprint: &str,
+        review_count: u32,
+    ) -> AppResult<super::ImportCommitResult> {
+        if !matches!(source_edition, "preview" | "personal")
+            || source_fingerprint.len() != 64
+            || !source_fingerprint
+                .bytes()
+                .all(|value| value.is_ascii_hexdigit())
+        {
+            return Err(AppError::Validation(
+                "legacy learning migration receipt is invalid".into(),
+            ));
+        }
+        self.restore_native_export_inner(
+            value,
+            now_unix_ms,
+            Some((source_edition, source_fingerprint, review_count)),
+        )
+    }
+
+    fn restore_native_export_inner(
+        &mut self,
+        value: &NativeLearningExport,
+        now_unix_ms: i64,
+        legacy_receipt: Option<(&str, &str, u32)>,
+    ) -> AppResult<super::ImportCommitResult> {
         validate_now(now_unix_ms)?;
         validate_native_export(value)?;
         let transaction = self
@@ -434,9 +468,25 @@ impl LearningRepository {
              DELETE FROM learning_cards;
              DELETE FROM content_packs;
              DELETE FROM content_sources;
-             DELETE FROM learning_invitation_events;",
+             DELETE FROM learning_invitation_events;
+             DELETE FROM legacy_learning_migrations;",
         )?;
         insert_native_export(&transaction, value)?;
+        if let Some((source_edition, source_fingerprint, review_count)) = legacy_receipt {
+            transaction.execute(
+                "INSERT INTO legacy_learning_migrations(
+                    source_edition, source_fingerprint, migrated_at_unix_ms,
+                    card_count, review_count
+                 ) VALUES(?1, ?2, ?3, ?4, ?5)",
+                params![
+                    source_edition,
+                    source_fingerprint,
+                    now_unix_ms,
+                    value.cards.len() as u32,
+                    review_count,
+                ],
+            )?;
+        }
         transaction.execute(
             "UPDATE learning_schema_meta SET last_successful_export_at_unix_ms = NULL WHERE id = 1",
             [],

@@ -19,9 +19,13 @@ import type {
   LearningSessionSummary,
   LearningSessionKind,
   LearningSettingsPatch,
+  LegacyLearningEdition,
+  LegacyLearningMigrationPreview,
+  LegacyLearningSourceSummary,
 } from "../types";
 import {
   confirmLearningImport,
+  confirmLegacyLearningMigration,
   abandonLearningSession,
   answerLearningQuestion,
   deleteLearningData,
@@ -33,8 +37,10 @@ import {
   getLearningDataSummary,
   getLearningSessionSummary,
   listLearningRecords,
+  listLegacyLearningSources,
   pauseLearningSession,
   previewLearningImport,
+  previewLegacyLearningMigration,
   rateLearningCard,
   resumeLearningSession,
   startManualLearningSession,
@@ -51,6 +57,7 @@ type LearningOperation =
   | "import_picker"
   | "import_commit"
   | "export_picker"
+  | "legacy_migration"
   | "delete";
 
 export function LearningView() {
@@ -58,6 +65,7 @@ export function LearningView() {
   const [home, setHome] = useState<LearningHomeSnapshot | null>(null);
   const [dashboard, setDashboard] = useState<LearningDashboardSnapshot | null>(null);
   const [dataSummary, setDataSummary] = useState<LearningDataSummary | null>(null);
+  const [legacySources, setLegacySources] = useState<LegacyLearningSourceSummary[]>([]);
   const [session, setSession] = useState<LearningSessionSnapshot | null>(null);
   const [card, setCard] = useState<LearningCardDto | null>(null);
   const [question, setQuestion] = useState<LearningQuestionDto | null>(null);
@@ -73,6 +81,8 @@ export function LearningView() {
   const [error, setError] = useState<string | null>(null);
   const [importPreview, setImportPreview] =
     useState<LearningImportPreview | null>(null);
+  const [legacyMigrationPreview, setLegacyMigrationPreview] =
+    useState<LegacyLearningMigrationPreview | null>(null);
   const [deleteScope, setDeleteScope] = useState<LearningDeleteScope | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [pendingOperation, setPendingOperation] =
@@ -117,12 +127,14 @@ export function LearningView() {
     setBusy(true);
     setError(null);
     try {
-      const [next, nextDataSummary] = await Promise.all([
+      const [next, nextDataSummary, nextLegacySources] = await Promise.all([
         getLearningHome(),
         getLearningDataSummary(),
+        listLegacyLearningSources(),
       ]);
       setHome(next);
       setDataSummary(nextDataSummary);
+      setLegacySources(nextLegacySources);
       if (
         next.activeSession
         && ["created", "active", "paused"].includes(next.activeSession.status)
@@ -463,6 +475,50 @@ export function LearningView() {
     }
   };
 
+  const previewLegacyMigration = async (edition: LegacyLearningEdition) => {
+    setBusy(true);
+    setPendingOperation("legacy_migration");
+    setError(null);
+    setFeedback(null);
+    try {
+      const preview = await previewLegacyLearningMigration(edition);
+      if (preview.status === "already_migrated") {
+        setFeedback("这份旧版学习数据已经迁移过，当前数据没有重复改写。");
+      } else {
+        setLegacyMigrationPreview(preview);
+      }
+    } catch (reason) {
+      setError(`旧版学习数据未能预览：${learningErrorMessage(reason)}`);
+    } finally {
+      setPendingOperation(null);
+      setBusy(false);
+    }
+  };
+
+  const confirmLegacyMigration = async () => {
+    const token = legacyMigrationPreview?.previewToken;
+    if (!token) return;
+    setBusy(true);
+    setPendingOperation("legacy_migration");
+    setError(null);
+    setFeedback(null);
+    try {
+      const result = await confirmLegacyLearningMigration(token);
+      setLegacyMigrationPreview(null);
+      setFeedback(
+        result.status === "already_migrated"
+          ? "这份旧版数据已经迁移过，未重复写入。"
+          : `已迁移 ${result.importedCardCount} 张卡片和 ${result.importedReviewCount} 条复习记录；旧版目录仍完整保留。`,
+      );
+      await loadHome();
+    } catch (reason) {
+      setError(`旧版学习数据没有迁移：${learningErrorMessage(reason)}`);
+    } finally {
+      setPendingOperation(null);
+      setBusy(false);
+    }
+  };
+
   const exportData = async (format: LearningExportFormat) => {
     setBusy(true);
     setPendingOperation("export_picker");
@@ -590,6 +646,7 @@ export function LearningView() {
             <LearningHome
               home={home}
               dataSummary={dataSummary}
+              legacySources={legacySources}
               busy={busy}
               sessionKind={sessionKind}
               onSessionKind={setSessionKind}
@@ -599,6 +656,7 @@ export function LearningView() {
               onSettings={saveSettings}
               onExport={exportData}
               onDelete={setDeleteScope}
+              onLegacyMigration={previewLegacyMigration}
               onOpenWords={() => void openHubSection("words")}
               desktopAvailable={desktopAvailable}
             />
@@ -704,6 +762,14 @@ export function LearningView() {
           busy={busy}
           onCancel={() => setImportPreview(null)}
           onConfirm={confirmImport}
+        />
+      )}
+      {legacyMigrationPreview && (
+        <LegacyMigrationConfirmation
+          preview={legacyMigrationPreview}
+          busy={busy}
+          onCancel={() => setLegacyMigrationPreview(null)}
+          onConfirm={confirmLegacyMigration}
         />
       )}
       {deleteScope && (
@@ -1141,6 +1207,7 @@ function LearningRecords({
 function LearningHome({
   home,
   dataSummary,
+  legacySources,
   busy,
   sessionKind,
   onSessionKind,
@@ -1150,11 +1217,13 @@ function LearningHome({
   onSettings,
   onExport,
   onDelete,
+  onLegacyMigration,
   onOpenWords,
   desktopAvailable,
 }: {
   home: LearningHomeSnapshot;
   dataSummary: LearningDataSummary | null;
+  legacySources: LegacyLearningSourceSummary[];
   busy: boolean;
   sessionKind: LearningSessionKind;
   onSessionKind: (kind: LearningSessionKind) => void;
@@ -1168,6 +1237,7 @@ function LearningHome({
   onSettings: (patch: LearningSettingsPatch) => Promise<void>;
   onExport: (format: LearningExportFormat) => Promise<void>;
   onDelete: (scope: LearningDeleteScope) => void;
+  onLegacyMigration: (edition: LegacyLearningEdition) => Promise<void>;
   onOpenWords: () => void;
   desktopAvailable: boolean;
 }) {
@@ -1420,6 +1490,33 @@ function LearningHome({
         ) : (
           <p className="learning-data-intro">当前没有本机词表或来源记录。</p>
         )}
+        {legacySources.some((source) => source.status !== "missing") && (
+          <section aria-label="旧版本学习数据">
+            <h3>旧版本学习数据</h3>
+            <p className="learning-data-intro">
+              这里只读检查旧版，不会自动搬运或删除。确认迁移前会备份当前学习库，迁移后旧目录仍保留。
+            </p>
+            <div className="learning-source-list">
+              {legacySources
+                .filter((source) => source.status !== "missing")
+                .map((source) => (
+                  <article key={source.edition}>
+                    <strong>{legacyEditionLabel(source.edition)}</strong>
+                    <span>{legacySourceStatusLabel(source)}</span>
+                    {source.status === "available" && (
+                      <button
+                        type="button"
+                        disabled={busy || !desktopAvailable}
+                        onClick={() => void onLegacyMigration(source.edition)}
+                      >
+                        查看迁移影响
+                      </button>
+                    )}
+                  </article>
+                ))}
+            </div>
+          </section>
+        )}
         <div className="learning-export-actions" aria-label="导出学习数据">
           <button type="button" disabled={busy || !desktopAvailable} title={desktopAvailable ? undefined : "仅桌面版可导出文件"} onClick={() => void onExport("native_json")}>
             完整 JSON
@@ -1551,6 +1648,58 @@ function LearningExitConfirmation({
   );
 }
 
+function LegacyMigrationConfirmation({
+  preview,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  preview: LegacyLearningMigrationPreview;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  const dialogRef = useRef<HTMLElement>(null);
+  useModalInitialFocus(dialogRef);
+  return (
+    <div className="learning-dialog-backdrop">
+      <section
+        ref={dialogRef}
+        className="learning-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="legacy-migration-title"
+        aria-describedby="legacy-migration-description"
+        onKeyDown={(event) => handleModalKeyDown(event, onCancel)}
+      >
+        <h2 id="legacy-migration-title">
+          迁移{legacyEditionLabel(preview.edition)}数据？
+        </h2>
+        <p id="legacy-migration-description">
+          将导入 {preview.sourceCardCount} 张卡片和 {preview.sourceReviewCount} 条复习记录。
+          {preview.replacesDestination
+            ? ` 当前 ${preview.destinationCardCount} 张卡片和 ${preview.destinationReviewCount} 条记录会被替换。`
+            : " 当前学习库没有需要替换的内容。"}
+        </p>
+        <ul>
+          <li>写入前自动备份当前学习库；失败会保留原数据。</li>
+          <li>迁移通过事务提交并重新打开核验。</li>
+          <li>旧版目录不会自动删除，稍后仍可自行归档。</li>
+        </ul>
+        {preview.edition === "personal" && (
+          <p>个人版内容只在你本机之间显式迁移，不会进入公开安装包或自动上传。</p>
+        )}
+        <div className="learning-dialog-actions">
+          <button type="button" disabled={busy} onClick={onCancel}>取消</button>
+          <button className="primary" type="button" disabled={busy} onClick={() => void onConfirm()}>
+            备份并迁移
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function DeleteConfirmation({
   scope,
   busy,
@@ -1647,6 +1796,18 @@ function sourceKindLabel(kind: LearningDataSummary["sources"][number]["sourceKin
   }[kind];
 }
 
+function legacyEditionLabel(edition: LegacyLearningEdition) {
+  return edition === "preview" ? "学习预览版" : "旧个人版";
+}
+
+function legacySourceStatusLabel(source: LegacyLearningSourceSummary) {
+  if (source.status === "invalid") return "检测到数据库，但无法安全读取";
+  if (source.status === "already_migrated") {
+    return `已迁移 · ${source.cardCount} 张卡片 · ${source.reviewCount} 条复习记录`;
+  }
+  return `可迁移 · schema ${source.sourceSchemaVersion ?? "?"} · ${source.cardCount} 张卡片 · ${source.reviewCount} 条复习记录`;
+}
+
 function formatLocalTime(unixMs: number) {
   return new Intl.DateTimeFormat("zh-CN", {
     dateStyle: "medium",
@@ -1720,6 +1881,7 @@ function learningOperationMessage(operation: LearningOperation) {
     import_picker: "正在等待系统文件窗口；如果没有看到，请查看任务栏。",
     import_commit: "正在把所选内容写入本机学习库，请稍候。",
     export_picker: "正在等待导出位置；如果没有看到文件窗口，请查看任务栏。",
+    legacy_migration: "正在只读核查旧版数据或执行已确认迁移，请稍候。",
     delete: "正在处理本机学习数据，请稍候。",
   }[operation];
 }

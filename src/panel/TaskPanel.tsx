@@ -2264,7 +2264,7 @@ function SettingsView({
         <div className="backup-heading">
           <div>
             <strong>数据备份</strong>
-            <small>每天启动时自动备份，自动备份保留最近 14 份；恢复前还会再保存当前数据。</small>
+            <small>统一备份提醒、设置及已创建的学习数据；每天启动时自动备份，自动备份保留最近 14 份，恢复前还会再保存当前数据。</small>
           </div>
           <button
             className="primary compact"
@@ -2302,14 +2302,16 @@ function SettingsView({
                 <div>
                   <strong>{backup.automatic ? "自动备份" : backup.fileName.startsWith("manual-before-restore-") ? "恢复前备份" : "手动备份"}</strong>
                   <small>
-                    {new Date(backup.createdAt).toLocaleString("zh-CN")} · {formatBackupSize(backup.sizeBytes)}
+                    {new Date(backup.createdAt).toLocaleString("zh-CN")} · {formatBackupSize(backup.sizeBytes)} · {backup.learningIncluded ? "含学习数据" : "不含学习数据"}
                   </small>
                 </div>
                 <button
                   type="button"
                   disabled={backupWorking}
                   onClick={async () => {
-                    if (!window.confirm("恢复后，当前数据会先自动备份，再替换为所选版本。确定继续吗？")) return;
+                    if (!window.confirm(backup.learningIncluded
+                      ? "恢复后，当前提醒和学习数据会先自动备份，再替换为所选版本。确定继续吗？"
+                      : "这个旧备份不含学习数据；恢复时会替换提醒和设置，并保留当前学习数据。当前提醒和设置仍会先自动备份。确定继续吗？")) return;
                     setBackupWorking(true);
                     try {
                       await restoreBackup(backup.fileName);

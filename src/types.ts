@@ -274,6 +274,44 @@ export interface LearningDataSummary {
   packs: LearningPackSummary[];
 }
 
+export type LegacyLearningEdition = "preview" | "personal";
+
+export interface LegacyLearningSourceSummary {
+  schemaVersion: 1;
+  edition: LegacyLearningEdition;
+  status: "missing" | "invalid" | "available" | "already_migrated";
+  sourceSchemaVersion: number | null;
+  cardCount: number;
+  reviewCount: number;
+  failureReason: "database" | null;
+}
+
+export interface LegacyLearningMigrationPreview {
+  schemaVersion: 1;
+  status: "confirmation_required" | "already_migrated";
+  edition: LegacyLearningEdition;
+  previewToken: string | null;
+  expiresAtUnixMs: number | null;
+  sourceCardCount: number;
+  sourceReviewCount: number;
+  destinationCardCount: number;
+  destinationReviewCount: number;
+  replacesDestination: boolean;
+  backupRequired: boolean;
+  sourceDirectoryPreserved: true;
+}
+
+export interface LegacyLearningMigrationResult {
+  schemaVersion: 1;
+  status: "migrated" | "already_migrated";
+  edition: LegacyLearningEdition;
+  importedCardCount: number;
+  importedReviewCount: number;
+  backupFileName: string | null;
+  sourceDirectoryPreserved: true;
+  destinationVerified: true;
+}
+
 export interface LearningExportResult {
   schemaVersion: 1;
   status: "cancelled" | "saved";
@@ -358,6 +396,7 @@ export interface BackupInfo {
   createdAt: string;
   sizeBytes: number;
   automatic: boolean;
+  learningIncluded: boolean;
 }
 
 export interface TodaySnapshot {

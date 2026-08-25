@@ -6,6 +6,7 @@ use std::{
 };
 
 use chrono::{DateTime, Local, Utc};
+#[cfg(any(not(feature = "learning"), test))]
 use rusqlite::{backup::Progress, Connection, MAIN_DB};
 use uuid::Uuid;
 
@@ -15,9 +16,14 @@ use crate::{
     repository::Repository,
 };
 
+#[cfg(feature = "learning")]
+use crate::learning::LearningRuntime;
+
 const AUTOMATIC_BACKUP_LIMIT: usize = 14;
 const BACKUP_EXTENSION: &str = "sqlite3";
+const LEARNING_BACKUP_SUFFIX: &str = ".learning.sqlite3";
 
+#[cfg(any(not(feature = "learning"), test))]
 pub fn create_startup_backup(database_path: &Path, backup_dir: &Path) -> AppResult<()> {
     if !database_path.is_file() {
         return Ok(());
@@ -35,6 +41,7 @@ pub fn create_startup_backup(database_path: &Path, backup_dir: &Path) -> AppResu
     prune_automatic_backups(backup_dir, AUTOMATIC_BACKUP_LIMIT)
 }
 
+#[cfg(any(not(feature = "learning"), test))]
 pub fn create_manual_backup(repository: &Repository, backup_dir: &Path) -> AppResult<BackupInfo> {
     let file_name = format!(
         "manual-{}-{}.sqlite3",
@@ -42,6 +49,42 @@ pub fn create_manual_backup(repository: &Repository, backup_dir: &Path) -> AppRe
         &Uuid::new_v4().to_string()[..8]
     );
     create_named_backup(repository, backup_dir, &file_name)?;
+    backup_info(&backup_dir.join(file_name))
+}
+
+#[cfg(feature = "learning")]
+pub fn create_unified_startup_backup(
+    repository: &Repository,
+    learning: &LearningRuntime,
+    backup_dir: &Path,
+) -> AppResult<()> {
+    fs::create_dir_all(backup_dir)?;
+    let file_name = format!("auto-{}.sqlite3", Local::now().format("%Y-%m-%d"));
+    let destination = backup_dir.join(&file_name);
+    if !destination.exists() {
+        create_named_backup(repository, backup_dir, &file_name)?;
+        let learning_path = learning_backup_path(&destination)?;
+        if let Err(error) = learning.backup_to_if_present(&learning_path) {
+            let _ = fs::remove_file(&learning_path);
+            prune_automatic_backups(backup_dir, AUTOMATIC_BACKUP_LIMIT)?;
+            return Err(error);
+        }
+    }
+    prune_automatic_backups(backup_dir, AUTOMATIC_BACKUP_LIMIT)
+}
+
+#[cfg(feature = "learning")]
+pub fn create_unified_manual_backup(
+    repository: &Repository,
+    learning: &LearningRuntime,
+    backup_dir: &Path,
+) -> AppResult<BackupInfo> {
+    let file_name = format!(
+        "manual-{}-{}.sqlite3",
+        Local::now().format("%Y-%m-%d-%H%M%S"),
+        &Uuid::new_v4().to_string()[..8]
+    );
+    create_named_unified_backup(repository, learning, backup_dir, &file_name)?;
     backup_info(&backup_dir.join(file_name))
 }
 
@@ -59,6 +102,7 @@ pub fn list_backups(backup_dir: &Path) -> AppResult<Vec<BackupInfo>> {
     Ok(backups)
 }
 
+#[cfg(any(not(feature = "learning"), test))]
 pub fn restore_backup(
     repository: &mut Repository,
     backup_dir: &Path,
@@ -86,6 +130,68 @@ pub fn restore_backup(
     Ok(())
 }
 
+#[cfg(feature = "learning")]
+pub fn restore_unified_backup(
+    repository: &mut Repository,
+    learning: &mut LearningRuntime,
+    backup_dir: &Path,
+    file_name: &str,
+) -> AppResult<()> {
+    let source = resolve_backup_path(backup_dir, file_name)?;
+    Repository::validate_database_file(&source)?;
+    let learning_source = learning_backup_path(&source)?;
+    let restores_learning = learning_source.is_file();
+    if restores_learning {
+        LearningRuntime::validate_backup_file(&learning_source)?;
+    }
+
+    let safety_name = format!(
+        "manual-before-restore-{}-{}.sqlite3",
+        Local::now().format("%Y-%m-%d-%H%M%S"),
+        &Uuid::new_v4().to_string()[..8]
+    );
+    let safety_path = backup_dir.join(&safety_name);
+    if restores_learning {
+        create_named_unified_backup(repository, learning, backup_dir, &safety_name)?;
+    } else {
+        create_named_backup(repository, backup_dir, &safety_name)?;
+    }
+    let learning_safety_path = learning_backup_path(&safety_path)?;
+    let learning_existed_before_restore = learning_safety_path.is_file();
+
+    if let Err(error) = repository.restore_from(&source) {
+        if let Err(rollback_error) = repository.restore_from(&safety_path) {
+            return Err(AppError::Validation(format!(
+                "restore failed ({error}); reminder safety rollback also failed ({rollback_error})"
+            )));
+        }
+        return Err(error);
+    }
+
+    if restores_learning {
+        if let Err(error) = learning.restore_from_backup(&learning_source) {
+            let reminder_rollback = repository.restore_from(&safety_path);
+            let learning_rollback = if learning_existed_before_restore {
+                learning.restore_from_backup(&learning_safety_path)
+            } else {
+                learning.rollback_restore_to_absent_database()
+            };
+            if let Err(rollback_error) = reminder_rollback {
+                return Err(AppError::Validation(format!(
+                    "learning restore failed ({error}); reminder safety rollback also failed ({rollback_error})"
+                )));
+            }
+            if let Err(rollback_error) = learning_rollback {
+                return Err(AppError::Validation(format!(
+                    "learning restore failed ({error}); learning safety rollback also failed ({rollback_error})"
+                )));
+            }
+            return Err(error);
+        }
+    }
+    Ok(())
+}
+
 fn create_named_backup(
     repository: &Repository,
     backup_dir: &Path,
@@ -100,10 +206,31 @@ fn create_named_backup(
     Repository::validate_database_file(&destination)
 }
 
+#[cfg(feature = "learning")]
+fn create_named_unified_backup(
+    repository: &Repository,
+    learning: &LearningRuntime,
+    backup_dir: &Path,
+    file_name: &str,
+) -> AppResult<()> {
+    create_named_backup(repository, backup_dir, file_name)?;
+    let reminder_path = backup_dir.join(file_name);
+    let learning_path = learning_backup_path(&reminder_path)?;
+    match learning.backup_to_if_present(&learning_path) {
+        Ok(_) => Ok(()),
+        Err(error) => {
+            let _ = fs::remove_file(&reminder_path);
+            let _ = fs::remove_file(&learning_path);
+            Err(error)
+        }
+    }
+}
+
 fn resolve_backup_path(backup_dir: &Path, file_name: &str) -> AppResult<PathBuf> {
     let requested = Path::new(file_name);
     if requested.file_name() != Some(OsStr::new(file_name))
         || requested.extension() != Some(OsStr::new(BACKUP_EXTENSION))
+        || file_name.ends_with(LEARNING_BACKUP_SUFFIX)
         || !(file_name.starts_with("auto-") || file_name.starts_with("manual-"))
     {
         return Err(AppError::Validation("invalid backup file name".into()));
@@ -124,12 +251,30 @@ fn backup_info(path: &Path) -> AppResult<BackupInfo> {
         .and_then(OsStr::to_str)
         .ok_or_else(|| AppError::Validation("backup file name is not valid UTF-8".into()))?
         .to_string();
+    let learning_path = learning_backup_path(path)?;
+    let learning_size = if learning_path.is_file() {
+        fs::metadata(&learning_path)?.len()
+    } else {
+        0
+    };
     Ok(BackupInfo {
         automatic: file_name.starts_with("auto-"),
         file_name,
         created_at,
-        size_bytes: metadata.len(),
+        size_bytes: metadata.len().saturating_add(learning_size),
+        learning_included: learning_size > 0,
     })
+}
+
+fn learning_backup_path(reminder_path: &Path) -> AppResult<PathBuf> {
+    let file_name = reminder_path
+        .file_name()
+        .and_then(OsStr::to_str)
+        .ok_or_else(|| AppError::Validation("backup file name is not valid UTF-8".into()))?;
+    let stem = file_name
+        .strip_suffix(".sqlite3")
+        .ok_or_else(|| AppError::Validation("backup file extension is invalid".into()))?;
+    Ok(reminder_path.with_file_name(format!("{stem}{LEARNING_BACKUP_SUFFIX}")))
 }
 
 fn is_visible_backup(path: &Path) -> bool {
@@ -138,7 +283,10 @@ fn is_visible_backup(path: &Path) -> bool {
         && path
             .file_name()
             .and_then(OsStr::to_str)
-            .is_some_and(|name| name.starts_with("auto-") || name.starts_with("manual-"))
+            .is_some_and(|name| {
+                !name.ends_with(LEARNING_BACKUP_SUFFIX)
+                    && (name.starts_with("auto-") || name.starts_with("manual-"))
+            })
 }
 
 fn prune_automatic_backups(backup_dir: &Path, keep: usize) -> AppResult<()> {
@@ -148,12 +296,20 @@ fn prune_automatic_backups(backup_dir: &Path, keep: usize) -> AppResult<()> {
         .filter(|path| {
             path.file_name()
                 .and_then(OsStr::to_str)
-                .is_some_and(|name| name.starts_with("auto-") && name.ends_with(".sqlite3"))
+                .is_some_and(|name| {
+                    name.starts_with("auto-")
+                        && name.ends_with(".sqlite3")
+                        && !name.ends_with(LEARNING_BACKUP_SUFFIX)
+                })
         })
         .collect::<Vec<_>>();
     automatic.sort_by(|left, right| right.file_name().cmp(&left.file_name()));
     for path in automatic.into_iter().skip(keep) {
+        let learning_path = learning_backup_path(&path)?;
         fs::remove_file(path)?;
+        if learning_path.is_file() {
+            fs::remove_file(learning_path)?;
+        }
     }
     Ok(())
 }
@@ -161,10 +317,220 @@ fn prune_automatic_backups(backup_dir: &Path, keep: usize) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "learning")]
+    use crate::learning::LearningRuntime;
     use crate::models::CreateReminderInput;
 
     fn temp_area(label: &str) -> PathBuf {
         std::env::temp_dir().join(format!("yuanyuan-{label}-{}", Uuid::new_v4()))
+    }
+
+    #[cfg(feature = "learning")]
+    fn seed_learning(runtime: &mut LearningRuntime, headword: &str, now_unix_ms: i64) {
+        let preview = runtime
+            .preview_csv_import(
+                format!("headword,meanings_zh\n{headword},含义\n").as_bytes(),
+                now_unix_ms,
+            )
+            .unwrap();
+        runtime
+            .confirm_import(preview.preview_token.as_deref().unwrap(), now_unix_ms + 1)
+            .unwrap();
+    }
+
+    #[cfg(feature = "learning")]
+    fn create_test_reminder(repository: &Repository, title: &str) -> String {
+        repository
+            .create_reminder(CreateReminderInput {
+                title: title.into(),
+                category: "work".into(),
+                schedule_kind: "once".into(),
+                at_local: Some("2035-01-01T09:00".into()),
+                every_minutes: None,
+                active_start_local: None,
+                active_end_local: None,
+                weekdays: None,
+            })
+            .unwrap()
+            .id
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn unified_backup_restores_both_databases_as_one_visible_item() {
+        let root = temp_area("unified-backup-restore");
+        let backup_dir = root.join("backups");
+        let mut repository = Repository::open(&root.join("current.sqlite3")).unwrap();
+        let reminder_id = create_test_reminder(&repository, "backup sentinel");
+        let learning_path = root.join("learning-data").join("current.sqlite3");
+        let mut learning = LearningRuntime::configured(&learning_path);
+        seed_learning(&mut learning, "first-card", 1_000);
+
+        let backup = create_unified_manual_backup(&repository, &learning, &backup_dir).unwrap();
+        assert!(backup.learning_included);
+        assert_eq!(list_backups(&backup_dir).unwrap().len(), 1);
+        assert!(learning_backup_path(&backup_dir.join(&backup.file_name))
+            .unwrap()
+            .is_file());
+
+        repository.archive_reminder(&reminder_id).unwrap();
+        seed_learning(&mut learning, "second-card", 2_000);
+        restore_unified_backup(
+            &mut repository,
+            &mut learning,
+            &backup_dir,
+            &backup.file_name,
+        )
+        .unwrap();
+
+        assert!(repository
+            .get_reminder(&reminder_id)
+            .unwrap()
+            .is_some_and(|reminder| reminder.archived_at.is_none()));
+        assert_eq!(learning.data_summary().unwrap().card_count, 1);
+
+        drop(learning);
+        drop(repository);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn legacy_reminder_only_backup_preserves_current_learning_data() {
+        let root = temp_area("legacy-backup-restore");
+        let backup_dir = root.join("backups");
+        let mut repository = Repository::open(&root.join("current.sqlite3")).unwrap();
+        let reminder_id = create_test_reminder(&repository, "legacy backup sentinel");
+        let backup = create_manual_backup(&repository, &backup_dir).unwrap();
+        assert!(!backup.learning_included);
+        let learning_path = root.join("learning-data").join("current.sqlite3");
+        let mut learning = LearningRuntime::configured(&learning_path);
+        seed_learning(&mut learning, "preserved-card", 1_000);
+        repository.archive_reminder(&reminder_id).unwrap();
+
+        restore_unified_backup(
+            &mut repository,
+            &mut learning,
+            &backup_dir,
+            &backup.file_name,
+        )
+        .unwrap();
+
+        assert!(repository
+            .get_reminder(&reminder_id)
+            .unwrap()
+            .is_some_and(|reminder| reminder.archived_at.is_none()));
+        assert_eq!(learning.data_summary().unwrap().card_count, 1);
+
+        drop(learning);
+        drop(repository);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn unavailable_learning_does_not_block_reminder_only_restore() {
+        let root = temp_area("isolated-reminder-restore");
+        let backup_dir = root.join("backups");
+        let mut repository = Repository::open(&root.join("current.sqlite3")).unwrap();
+        let reminder_id = create_test_reminder(&repository, "isolated restore sentinel");
+        let backup = create_manual_backup(&repository, &backup_dir).unwrap();
+        repository.archive_reminder(&reminder_id).unwrap();
+        let learning_path = root.join("learning-data").join("current.sqlite3");
+        fs::create_dir_all(learning_path.parent().unwrap()).unwrap();
+        fs::write(&learning_path, b"unavailable learning database").unwrap();
+        let learning_before = fs::read(&learning_path).unwrap();
+        let mut learning = LearningRuntime::configured(&learning_path);
+
+        restore_unified_backup(
+            &mut repository,
+            &mut learning,
+            &backup_dir,
+            &backup.file_name,
+        )
+        .unwrap();
+
+        assert!(repository
+            .get_reminder(&reminder_id)
+            .unwrap()
+            .is_some_and(|reminder| reminder.archived_at.is_none()));
+        assert_eq!(fs::read(&learning_path).unwrap(), learning_before);
+
+        drop(learning);
+        drop(repository);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn unavailable_learning_keeps_the_independent_startup_reminder_backup() {
+        let root = temp_area("isolated-startup-backup");
+        let backup_dir = root.join("backups");
+        let repository = Repository::open(&root.join("current.sqlite3")).unwrap();
+        let learning_path = root.join("learning-data").join("current.sqlite3");
+        fs::create_dir_all(learning_path.parent().unwrap()).unwrap();
+        fs::write(&learning_path, b"unavailable learning database").unwrap();
+        let learning = LearningRuntime::configured(&learning_path);
+
+        assert!(create_unified_startup_backup(&repository, &learning, &backup_dir).is_err());
+        let backups = list_backups(&backup_dir).unwrap();
+        assert_eq!(backups.len(), 1);
+        assert!(backups[0].automatic);
+        assert!(!backups[0].learning_included);
+
+        drop(learning);
+        drop(repository);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn unified_backup_does_not_create_an_unused_learning_database() {
+        let root = temp_area("lazy-unified-backup");
+        let backup_dir = root.join("backups");
+        let repository = Repository::open(&root.join("current.sqlite3")).unwrap();
+        let learning_path = root.join("learning-data").join("current.sqlite3");
+        let learning = LearningRuntime::configured(&learning_path);
+
+        let backup = create_unified_manual_backup(&repository, &learning, &backup_dir).unwrap();
+
+        assert!(!backup.learning_included);
+        assert!(!learning_path.exists());
+        drop(learning);
+        drop(repository);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn corrupt_learning_companion_is_rejected_before_reminders_change() {
+        let root = temp_area("corrupt-learning-backup");
+        let backup_dir = root.join("backups");
+        let mut repository = Repository::open(&root.join("current.sqlite3")).unwrap();
+        let reminder_id = create_test_reminder(&repository, "stay archived");
+        let learning_path = root.join("learning-data").join("current.sqlite3");
+        let mut learning = LearningRuntime::configured(&learning_path);
+        seed_learning(&mut learning, "card", 1_000);
+        let backup = create_unified_manual_backup(&repository, &learning, &backup_dir).unwrap();
+        repository.archive_reminder(&reminder_id).unwrap();
+        let companion = learning_backup_path(&backup_dir.join(&backup.file_name)).unwrap();
+        fs::write(companion, b"not sqlite").unwrap();
+
+        assert!(restore_unified_backup(
+            &mut repository,
+            &mut learning,
+            &backup_dir,
+            &backup.file_name,
+        )
+        .is_err());
+        assert!(repository
+            .get_reminder(&reminder_id)
+            .unwrap()
+            .is_some_and(|reminder| reminder.archived_at.is_some()));
+
+        drop(learning);
+        drop(repository);
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
@@ -298,6 +664,8 @@ mod tests {
         for day in 1..=16 {
             fs::write(root.join(format!("auto-2026-07-{day:02}.sqlite3")), b"test").unwrap();
         }
+        fs::write(root.join("auto-2026-07-01.learning.sqlite3"), b"test").unwrap();
+        fs::write(root.join("auto-2026-07-16.learning.sqlite3"), b"test").unwrap();
         fs::write(root.join("manual-keep.sqlite3"), b"test").unwrap();
 
         prune_automatic_backups(&root, AUTOMATIC_BACKUP_LIMIT).unwrap();
@@ -309,12 +677,16 @@ mod tests {
         assert_eq!(
             names
                 .iter()
-                .filter(|name| name.starts_with("auto-"))
+                .filter(|name| {
+                    name.starts_with("auto-") && !name.ends_with(LEARNING_BACKUP_SUFFIX)
+                })
                 .count(),
             14
         );
         assert!(!names.contains(&"auto-2026-07-01.sqlite3".into()));
+        assert!(!names.contains(&"auto-2026-07-01.learning.sqlite3".into()));
         assert!(!names.contains(&"auto-2026-07-02.sqlite3".into()));
+        assert!(names.contains(&"auto-2026-07-16.learning.sqlite3".into()));
         assert!(names.contains(&"manual-keep.sqlite3".into()));
 
         let _ = fs::remove_dir_all(root);

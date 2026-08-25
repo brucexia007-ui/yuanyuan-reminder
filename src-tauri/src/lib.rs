@@ -150,6 +150,12 @@ pub fn run() {
             #[cfg(feature = "learning")]
             commands::confirm_learning_import,
             #[cfg(feature = "learning")]
+            commands::list_legacy_learning_sources,
+            #[cfg(feature = "learning")]
+            commands::preview_legacy_learning_migration,
+            #[cfg(feature = "learning")]
+            commands::confirm_legacy_learning_migration,
+            #[cfg(feature = "learning")]
             commands::get_learning_home,
             #[cfg(feature = "learning")]
             commands::get_learning_dashboard,
@@ -285,6 +291,7 @@ fn prepare_app_state(identifier: &str) -> AppResult<AppState> {
     let guard = logging::init(&log_dir);
     fs::create_dir_all(&app_data)?;
     let database_path = app_data.join("yuanyuan-reminder.sqlite3");
+    #[cfg(not(feature = "learning"))]
     if let Err(error) = backups::create_startup_backup(&database_path, &app_data.join("backups")) {
         tracing::warn!(error = %error, "startup backup could not be created");
     }
@@ -295,6 +302,15 @@ fn prepare_app_state(identifier: &str) -> AppResult<AppState> {
     {
         let learning_data_dir = app_data.join("learning-data");
         app_state.configure_learning(&learning_data_dir.join("yuanyuan-learning.sqlite3"));
+        let repository = app_state.repository.lock();
+        let learning = app_state.learning.lock();
+        if let Err(error) = backups::create_unified_startup_backup(
+            &repository,
+            &learning,
+            &app_data.join("backups"),
+        ) {
+            tracing::warn!(error = %error, "unified startup backup could not be created");
+        }
     }
     Ok(app_state)
 }

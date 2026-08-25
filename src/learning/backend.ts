@@ -23,6 +23,10 @@ import type {
   LearningSessionKind,
   LearningSettings,
   LearningSettingsPatch,
+  LegacyLearningEdition,
+  LegacyLearningMigrationPreview,
+  LegacyLearningMigrationResult,
+  LegacyLearningSourceSummary,
 } from "../types";
 
 const isTauri =
@@ -208,6 +212,38 @@ export async function confirmLearningImport(
 ): Promise<LearningImportCommitResult> {
   if (!isTauri) throw new Error("浏览器演示不会写入本机词表");
   return invoke<LearningImportCommitResult>("confirm_learning_import", {
+    previewToken,
+  });
+}
+
+export async function listLegacyLearningSources(): Promise<LegacyLearningSourceSummary[]> {
+  return isTauri
+    ? invoke<LegacyLearningSourceSummary[]>("list_legacy_learning_sources")
+    : ["preview", "personal"].map((edition) => ({
+        schemaVersion: 1 as const,
+        edition: edition as LegacyLearningEdition,
+        status: "missing" as const,
+        sourceSchemaVersion: null,
+        cardCount: 0,
+        reviewCount: 0,
+        failureReason: null,
+      }));
+}
+
+export async function previewLegacyLearningMigration(
+  edition: LegacyLearningEdition,
+): Promise<LegacyLearningMigrationPreview> {
+  if (!isTauri) throw new Error("浏览器演示不会读取旧版本机数据");
+  return invoke<LegacyLearningMigrationPreview>("preview_legacy_learning_migration", {
+    edition,
+  });
+}
+
+export async function confirmLegacyLearningMigration(
+  previewToken: string,
+): Promise<LegacyLearningMigrationResult> {
+  if (!isTauri) throw new Error("浏览器演示不会迁移旧版本机数据");
+  return invoke<LegacyLearningMigrationResult>("confirm_legacy_learning_migration", {
     previewToken,
   });
 }

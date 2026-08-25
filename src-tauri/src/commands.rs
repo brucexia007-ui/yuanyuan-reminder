@@ -163,6 +163,53 @@ pub async fn confirm_learning_import(
 
 #[cfg(feature = "learning")]
 #[tauri::command]
+pub async fn list_legacy_learning_sources(
+    app: AppHandle,
+) -> AppResult<Vec<crate::learning::LegacyLearningSourceSummary>> {
+    run_learning_background("legacy learning discovery", move || {
+        let state = app.state::<AppState>();
+        let result = state.learning.lock().list_legacy_learning_sources();
+        result
+    })
+    .await
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub async fn preview_legacy_learning_migration(
+    edition: crate::learning::LegacyLearningEdition,
+    app: AppHandle,
+) -> AppResult<crate::learning::LegacyLearningMigrationPreview> {
+    run_learning_background("legacy learning migration preview", move || {
+        let state = app.state::<AppState>();
+        let result = state
+            .learning
+            .lock()
+            .preview_legacy_learning_migration(edition, Utc::now().timestamp_millis());
+        result
+    })
+    .await
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub async fn confirm_legacy_learning_migration(
+    preview_token: String,
+    app: AppHandle,
+) -> AppResult<crate::learning::LegacyLearningMigrationResult> {
+    run_learning_background("legacy learning migration confirmation", move || {
+        let state = app.state::<AppState>();
+        let result = state
+            .learning
+            .lock()
+            .confirm_legacy_learning_migration(&preview_token, Utc::now().timestamp_millis());
+        result
+    })
+    .await
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
 pub fn get_learning_home(
     state: State<'_, AppState>,
 ) -> AppResult<crate::learning::LearningHomeSnapshot> {
@@ -714,7 +761,15 @@ pub fn list_backups(app: AppHandle) -> AppResult<Vec<BackupInfo>> {
 
 #[tauri::command]
 pub fn create_backup(app: AppHandle, state: State<'_, AppState>) -> AppResult<BackupInfo> {
-    let backup = backups::create_manual_backup(&state.repository.lock(), &backup_directory(&app)?)?;
+    let backup_dir = backup_directory(&app)?;
+    #[cfg(feature = "learning")]
+    let backup = {
+        let repository = state.repository.lock();
+        let learning = state.learning.lock();
+        backups::create_unified_manual_backup(&repository, &learning, &backup_dir)?
+    };
+    #[cfg(not(feature = "learning"))]
+    let backup = backups::create_manual_backup(&state.repository.lock(), &backup_dir)?;
     app.emit("backups-updated", &backup)
         .map_err(|error| AppError::Window(error.to_string()))?;
     Ok(backup)
@@ -728,7 +783,19 @@ pub fn restore_backup(
 ) -> AppResult<()> {
     let (mut settings, activity_active_seconds, focus_state, pet_care) = {
         let mut repository = state.repository.lock();
-        backups::restore_backup(&mut repository, &backup_directory(&app)?, &file_name)?;
+        let backup_dir = backup_directory(&app)?;
+        #[cfg(feature = "learning")]
+        {
+            let mut learning = state.learning.lock();
+            backups::restore_unified_backup(
+                &mut repository,
+                &mut learning,
+                &backup_dir,
+                &file_name,
+            )?;
+        }
+        #[cfg(not(feature = "learning"))]
+        backups::restore_backup(&mut repository, &backup_dir, &file_name)?;
         (
             repository.get_settings()?,
             repository.activity_active_seconds()?,

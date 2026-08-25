@@ -1969,6 +1969,19 @@ mod tests {
 
     use super::*;
 
+    fn apply_main_migrations_through_v6(connection: &Connection) {
+        for migration in [
+            include_str!("../migrations/001_initial.sql"),
+            include_str!("../migrations/002_focus_sessions.sql"),
+            include_str!("../migrations/003_pet_interactions.sql"),
+            include_str!("../migrations/004_ball_interaction.sql"),
+            include_str!("../migrations/005_occurrence_history.sql"),
+            include_str!("../migrations/006_activity_tracking.sql"),
+        ] {
+            connection.execute_batch(migration).unwrap();
+        }
+    }
+
     #[cfg(feature = "learning")]
     fn apply_main_migrations_through_v11(connection: &Connection) {
         for migration in [
@@ -2004,6 +2017,111 @@ mod tests {
             )
             .unwrap();
         assert_eq!(table_count, 0);
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
+    fn unified_migration_matrix_stable_v1_3_2_schema_six_upgrades_in_place() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-v1-3-2-upgrade-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let connection = Connection::open(&path).unwrap();
+        apply_main_migrations_through_v6(&connection);
+        connection
+            .execute(
+                "INSERT INTO reminders(
+                    id, title, category, schedule_kind, schedule_json, timezone,
+                    enabled, next_due_at, last_fired_at, created_at, updated_at
+                 ) VALUES(
+                    'v1-3-2-sentinel', '保留的旧提醒', 'work', 'once',
+                    '{\"title\":\"保留的旧提醒\",\"category\":\"work\",\"scheduleKind\":\"once\",\"atLocal\":\"2035-01-01T09:00\"}',
+                    'Asia/Shanghai', 1, '2035-01-01T01:00:00Z', NULL,
+                    '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'
+                 )",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        let repository = Repository::open(&path).unwrap();
+        let version: u32 = repository
+            .conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, if cfg!(feature = "learning") { 12 } else { 11 });
+        let reminder = repository.get_reminder("v1-3-2-sentinel").unwrap().unwrap();
+        assert_eq!(reminder.title, "保留的旧提醒");
+        assert!(reminder.archived_at.is_none());
+        assert!(reminder.system_kind.is_none());
+        repository.get_settings().unwrap();
+        repository.list_today(false).unwrap();
+
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
+    fn unified_migration_matrix_local_v1_4_schema_eleven_upgrades_in_place() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-v1-4-upgrade-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let connection = Connection::open(&path).unwrap();
+        #[cfg(feature = "learning")]
+        apply_main_migrations_through_v11(&connection);
+        #[cfg(not(feature = "learning"))]
+        {
+            apply_main_migrations_through_v6(&connection);
+            for migration in [
+                include_str!("../migrations/007_reminder_management.sql"),
+                include_str!("../migrations/008_companion_attention_budget.sql"),
+                include_str!("../migrations/009_companion_proactive_attention.sql"),
+                include_str!("../migrations/010_companion_reunion_attention.sql"),
+                include_str!("../migrations/011_task_watch_attention_deferrals.sql"),
+            ] {
+                connection.execute_batch(migration).unwrap();
+            }
+        }
+        connection
+            .execute(
+                "INSERT INTO reminders(
+                    id, title, category, schedule_kind, schedule_json, timezone,
+                    enabled, next_due_at, last_fired_at, created_at, updated_at,
+                    archived_at, system_kind
+                 ) VALUES(
+                    'v1-4-sentinel', '本地 1.4 提醒', 'personal', 'once',
+                    '{\"title\":\"本地 1.4 提醒\",\"category\":\"personal\",\"scheduleKind\":\"once\",\"atLocal\":\"2035-02-01T09:00\"}',
+                    'Asia/Shanghai', 1, '2035-02-01T01:00:00Z', NULL,
+                    '2026-02-01T00:00:00Z', '2026-02-01T00:00:00Z', NULL, NULL
+                 )",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        let repository = Repository::open(&path).unwrap();
+        let version: u32 = repository
+            .conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, if cfg!(feature = "learning") { 12 } else { 11 });
+        assert_eq!(
+            repository
+                .get_reminder("v1-4-sentinel")
+                .unwrap()
+                .unwrap()
+                .title,
+            "本地 1.4 提醒"
+        );
+        repository.get_settings().unwrap();
+        repository.list_today(false).unwrap();
+
         drop(repository);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));

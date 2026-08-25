@@ -207,6 +207,7 @@ pub struct BackupInfo {
     pub created_at: String,
     pub size_bytes: u64,
     pub automatic: bool,
+    pub learning_included: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -219,7 +219,15 @@ describe("TaskPanel complete reminder workflows", () => {
     }));
     backend.getPetCare.mockRejectedValue(new Error("care database failure"));
     backend.listHistory.mockResolvedValue([]);
-    backend.listBackups.mockResolvedValue([]);
+    backend.listBackups.mockResolvedValue([
+      {
+        fileName: "manual-2030-01-01-090000-test.sqlite3",
+        createdAt: "2030-01-01T09:00:00Z",
+        sizeBytes: 4096,
+        automatic: false,
+        learningIncluded: true,
+      },
+    ]);
     backend.onBackendEvent.mockResolvedValue(() => {});
     backend.tauriAvailable.mockReturnValue(false);
     backend.setReminderEnabled.mockImplementation(async (id: string, enabled: boolean) => {
@@ -271,6 +279,7 @@ describe("TaskPanel complete reminder workflows", () => {
     await click("前往设置");
     expect(container.textContent).toContain("错过提醒");
     expect(container.textContent).toContain("数据备份");
+    expect(container.textContent).toContain("含学习数据");
     expect(container.textContent).toContain("删除全部本地数据");
     expect(container.textContent).toContain("道具标签");
     expect(button("永久删除本地数据并退出").disabled).toBe(true);

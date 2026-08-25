@@ -8,6 +8,7 @@ const backend = vi.hoisted(() => ({
   abandonLearningSession: vi.fn(),
   answerLearningQuestion: vi.fn(),
   confirmLearningImport: vi.fn(),
+  confirmLegacyLearningMigration: vi.fn(),
   deleteLearningData: vi.fn(),
   exportLearningData: vi.fn(),
   getCurrentLearningCard: vi.fn(),
@@ -17,8 +18,10 @@ const backend = vi.hoisted(() => ({
   getLearningHome: vi.fn(),
   getLearningSessionSummary: vi.fn(),
   listLearningRecords: vi.fn(),
+  listLegacyLearningSources: vi.fn(),
   pauseLearningSession: vi.fn(),
   previewLearningImport: vi.fn(),
+  previewLegacyLearningMigration: vi.fn(),
   rateLearningCard: vi.fn(),
   resumeLearningSession: vi.fn(),
   startManualLearningSession: vi.fn(),
@@ -235,6 +238,26 @@ describe("learning micro-session", () => {
     backend.getLearningHome.mockResolvedValue(structuredClone(home));
     backend.getLearningDashboard.mockResolvedValue(structuredClone(dashboard));
     backend.getLearningDataSummary.mockResolvedValue(structuredClone(dataSummary));
+    backend.listLegacyLearningSources.mockResolvedValue([
+      {
+        schemaVersion: 1,
+        edition: "preview",
+        status: "missing",
+        sourceSchemaVersion: null,
+        cardCount: 0,
+        reviewCount: 0,
+        failureReason: null,
+      },
+      {
+        schemaVersion: 1,
+        edition: "personal",
+        status: "missing",
+        sourceSchemaVersion: null,
+        cardCount: 0,
+        reviewCount: 0,
+        failureReason: null,
+      },
+    ]);
     backend.getLearningSessionSummary.mockResolvedValue(structuredClone(sessionSummary));
     backend.startManualLearningSession.mockResolvedValue(structuredClone(session));
     backend.getCurrentLearningCard.mockResolvedValue(structuredClone(card));
@@ -685,6 +708,73 @@ describe("learning micro-session", () => {
     await flush();
     expect(container.textContent).not.toContain("正在等待导出位置");
     expect(button("完整 JSON").disabled).toBe(false);
+  });
+
+  it("requires a reviewed backup-and-migrate confirmation for legacy personal data", async () => {
+    runtime.tauriAvailable.mockReturnValue(true);
+    backend.listLegacyLearningSources.mockResolvedValue([
+      {
+        schemaVersion: 1,
+        edition: "preview",
+        status: "missing",
+        sourceSchemaVersion: null,
+        cardCount: 0,
+        reviewCount: 0,
+        failureReason: null,
+      },
+      {
+        schemaVersion: 1,
+        edition: "personal",
+        status: "available",
+        sourceSchemaVersion: 6,
+        cardCount: 4_533,
+        reviewCount: 120,
+        failureReason: null,
+      },
+    ]);
+    backend.previewLegacyLearningMigration.mockResolvedValue({
+      schemaVersion: 1,
+      status: "confirmation_required",
+      edition: "personal",
+      previewToken: "legacy-preview-1",
+      expiresAtUnixMs: Date.now() + 60_000,
+      sourceCardCount: 4_533,
+      sourceReviewCount: 120,
+      destinationCardCount: 1,
+      destinationReviewCount: 2,
+      replacesDestination: true,
+      backupRequired: true,
+      sourceDirectoryPreserved: true,
+    });
+    backend.confirmLegacyLearningMigration.mockResolvedValue({
+      schemaVersion: 1,
+      status: "migrated",
+      edition: "personal",
+      importedCardCount: 4_533,
+      importedReviewCount: 120,
+      backupFileName: "legacy-before-personal.sqlite3",
+      sourceDirectoryPreserved: true,
+      destinationVerified: true,
+    });
+
+    await act(async () => root.render(<LearningView />));
+    await flush();
+    const dataDetails = details("来源、导出与删除");
+    await act(async () => dataDetails.querySelector("summary")!.click());
+    expect(container.textContent).toContain("旧个人版");
+    expect(container.textContent).toContain("4533 张卡片");
+
+    await act(async () => button("查看迁移影响").click());
+    await flush();
+    expect(backend.confirmLegacyLearningMigration).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("当前 1 张卡片和 2 条记录会被替换");
+    expect(container.textContent).toContain("旧版目录不会自动删除");
+    expect(container.textContent).toContain("不会进入公开安装包");
+
+    await act(async () => button("备份并迁移").click());
+    await flush();
+    expect(backend.confirmLegacyLearningMigration).toHaveBeenCalledWith("legacy-preview-1");
+    expect(container.textContent).toContain("旧版目录仍完整保留");
   });
 
   it("keeps the learning panel responsive while the native import dialog is open", async () => {

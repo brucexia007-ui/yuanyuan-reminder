@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   findForbiddenArtifactPaths,
+  findForbiddenArtifactTextMarkers,
   findForbiddenPaths,
   findForbiddenSourceMarkers,
   findForbiddenTextMarkers,
@@ -74,4 +75,15 @@ test("rejects personal identifiers from build artifact names", () => {
   assert.deepEqual(findForbiddenArtifactPaths(["assets/learning-personal.js", "assets/app.js"]), [
     { path: "assets/learning-personal.js", rule: "personal-artifact-name" },
   ]);
+});
+
+test("allows only the exact legacy personal identifier inside build artifact content", () => {
+  const identifier = "com.yuanyuan.reminder.learning-personal";
+  assert.deepEqual(findForbiddenArtifactTextMarkers(`binary:${identifier}:migration-only`), []);
+  assert.deepEqual(
+    findForbiddenArtifactTextMarkers(
+      `binary:${identifier}:learning-personal-candidate`,
+    ),
+    ["learning-personal"],
+  );
 });

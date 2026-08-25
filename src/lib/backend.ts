@@ -610,6 +610,7 @@ export async function createBackup(): Promise<BackupInfo> {
     createdAt: now.toISOString(),
     sizeBytes: 0,
     automatic: false,
+    learningIncluded: false,
   };
 }
 
