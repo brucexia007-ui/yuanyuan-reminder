@@ -1,0 +1,18 @@
+UX-RESEARCH-001 SYNTHETIC MATERIAL B
+禁止替换为真实工作内容；每行均为虚构。
+
+N01 [single,recall] 移栽后的前三天只检查土壤湿度，不追加肥料。
+N02 [split,recall] 先清洁剪刀，再修剪枯叶；不同植株之间重复清洁。
+N03 [missing_answer,recall] 叶片出现浅色斑点时，第一步应该检查什么？
+N04 [duplicate,recall] 浇水前用手指检查表层两厘米土壤。
+N05 [near_duplicate,recall] 表土约两厘米仍湿润时暂缓浇水。
+N06 [punctuation,recall] 观察记录包含“日期，光照，湿度”，不得只写日期。
+N07 [non_ascii,recall] 生长状态可标为「稳定」「观察」「隔离」。
+N08 [choice] 哪种情况适合立即换盆：A. 根系明显挤满容器；B. 刚浇水；C. 新叶展开。正确项为 A。
+N09 [single,recall] 隔离植株使用独立托盘，避免排水相互接触。
+N10 [split,recall] 擦拭叶片时托住叶背；完成后清理落叶。
+N11 [punctuation,recall] 名称中出现引号时按标签抄写，例如“银边”。
+N12 [single,recall] 午后强光时先移动遮光帘，不立刻增加浇水量。
+N13 [choice] 发现盆底长期积水应：A. 加肥；B. 排水并检查孔洞；C. 覆盖表土。正确项为 B。
+N14 [single,recall] 每次调整位置后记录朝向，便于比较生长变化。
+N15 [non_ascii,recall] 湿度记录使用百分比符号（%），不写模糊的“很湿”。

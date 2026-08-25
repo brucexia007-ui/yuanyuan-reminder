@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "study_id": "UX-RESEARCH-001",
+  "participant_code": "P01",
+  "background_group": "non_technical",
+  "synthetic_material_id": "A",
+  "anonymous_metrics_consent": true,
+  "completed_steps": [1, 2, 3, 4, 5],
+  "timing_seconds": {
+    "preparation": 0,
+    "first_successful_preview": 0,
+    "total_to_start_learning": 0
+  },
+  "field_help_count": 0,
+  "mapping_error_count_before_preview": 0,
+  "mapping_error_count_after_preview": 0,
+  "fixed_error_code_counts": {
+    "missing_answer": 0,
+    "duplicate": 0,
+    "delimiter": 0,
+    "encoding": 0,
+    "field_mapping": 0,
+    "choice_answer": 0
+  },
+  "repair_within_five_minutes": false,
+  "abandonment_step": 0,
+  "abandonment_reason_code": "none",
+  "facilitator_operated": false,
+  "minimum_edit_need": "none",
+  "interview_theme_codes": [],
+  "prohibited_data_confirmed_absent": true
+}

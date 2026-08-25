@@ -1,0 +1,18 @@
+UX-RESEARCH-001 SYNTHETIC MATERIAL C
+禁止替换为真实工作内容；每行均为虚构。
+
+N01 [single,recall] 使用台钻前确认防护罩已固定。
+N02 [split,recall] 更换钻头前断开电源；更换后手动转动确认无卡阻。
+N03 [missing_answer,recall] 工件尺寸超出夹具范围时应怎样处理？
+N04 [duplicate,recall] 离开工作台前清除台面碎屑。
+N05 [near_duplicate,recall] 当班结束时清理碎屑，并归还量具。
+N06 [punctuation,recall] 检查表按“设备，状态，日期”三列填写。
+N07 [non_ascii,recall] 异常设备挂上「暂停使用」标识。
+N08 [choice] 测量旋转部件前应：A. 停机；B. 降低转速后直接测；C. 戴手套靠近。正确项为 A。
+N09 [single,recall] 松散衣袖进入操作区前必须束紧。
+N10 [split,recall] 发现异响应立即停机；不要反复启动判断来源。
+N11 [punctuation,recall] 交接备注可写“轻微振动”，但必须同时选择状态代码。
+N12 [single,recall] 损坏的量具放入隔离盒，不返回正常工具架。
+N13 [choice] 切屑缠绕时使用：A. 手指；B. 专用刷；C. 压缩空气对人吹。正确项为 B。
+N14 [single,recall] 首件加工完成后先核对尺寸，再继续批量操作。
+N15 [non_ascii,recall] 公差以毫米（mm）记录，并保留规定的小数位。

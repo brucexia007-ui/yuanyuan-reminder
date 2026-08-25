@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none'">
+  <title>UX-RESEARCH-001 私有学习包研究原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: #19212b;
+      background: #f4f6f8;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    button, select, textarea { font: inherit; }
+    button, select { min-height: 42px; }
+    button {
+      border: 1px solid #245e45;
+      border-radius: 8px;
+      padding: 0.55rem 0.9rem;
+      color: white;
+      background: #246c4d;
+      cursor: pointer;
+    }
+    button.secondary { color: #245e45; background: white; }
+    button:disabled { cursor: not-allowed; opacity: 0.55; }
+    button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible {
+      outline: 3px solid #f0a020;
+      outline-offset: 2px;
+    }
+    header {
+      padding: 1rem max(1rem, calc((100% - 1040px) / 2));
+      color: white;
+      background: #183e31;
+    }
+    header h1 { margin: 0.35rem 0; font-size: clamp(1.35rem, 3vw, 2rem); }
+    header p { max-width: 75ch; margin: 0.25rem 0; }
+    .badge {
+      display: inline-block;
+      border: 1px solid #bde0ce;
+      border-radius: 999px;
+      padding: 0.2rem 0.6rem;
+      font-weight: 700;
+      background: #245e45;
+    }
+    main { width: min(1040px, calc(100% - 2rem)); margin: 1.25rem auto 4rem; }
+    .boundary, section {
+      border: 1px solid #d7dce1;
+      border-radius: 12px;
+      padding: 1rem;
+      background: white;
+      box-shadow: 0 2px 10px rgb(20 40 30 / 7%);
+    }
+    .boundary { border-left: 6px solid #cb7724; }
+    section { margin-top: 1rem; }
+    section h2 { margin-top: 0; font-size: 1.2rem; }
+    .steps { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0; list-style: none; }
+    .steps li { border-radius: 999px; padding: 0.4rem 0.7rem; background: #e8ecef; }
+    .steps li.active { color: white; background: #246c4d; }
+    label { display: block; margin: 0.65rem 0 0.3rem; font-weight: 650; }
+    .check { display: flex; align-items: flex-start; gap: 0.6rem; font-weight: 500; }
+    .check input { width: 1.25rem; height: 1.25rem; margin-top: 0.15rem; }
+    textarea { width: 100%; min-height: 220px; resize: vertical; padding: 0.65rem; }
+    select { max-width: 100%; border: 1px solid #87939e; border-radius: 7px; padding: 0.35rem; background: white; }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 0.8rem; }
+    .mapping-grid { display: grid; grid-template-columns: minmax(10rem, 1fr) minmax(12rem, 1fr); gap: 0.55rem 1rem; }
+    .mapping-grid label { margin: 0; align-self: center; overflow-wrap: anywhere; }
+    .status { min-height: 1.6rem; margin: 0.6rem 0; font-weight: 650; }
+    .error-summary { border-left: 5px solid #b94a48; padding: 0.7rem 0.9rem; background: #fff3f2; }
+    .success { border-left: 5px solid #246c4d; padding: 0.7rem 0.9rem; background: #edf8f2; }
+    table { width: 100%; border-collapse: collapse; margin-top: 0.7rem; }
+    th, td { border: 1px solid #cbd2d8; padding: 0.55rem; text-align: left; vertical-align: top; }
+    th { background: #eef2f4; }
+    .scroll { overflow-x: auto; }
+    .card { max-width: 42rem; border: 2px solid #246c4d; border-radius: 12px; padding: 1.1rem; background: #f7fffa; }
+    .muted { color: #56626d; }
+    [hidden] { display: none !important; }
+    @media (max-width: 620px) { .mapping-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body data-prototype-id="ux-research-001-prototype-1">
+  <header>
+    <span class="badge">研究专用 · 仅内存</span>
+    <h1>私有学习包制作研究原型</h1>
+    <p>用于 UX-RESEARCH-001 的交互草图。它不读取文件、不保存数据，也不会把内容导入圆圆提醒。</p>
+  </header>
+  <main>
+    <aside class="boundary" aria-label="研究边界">
+      <strong>先确认边界：</strong>只粘贴研究方提供的合成卡片 CSV。数据只在当前页面内存中。不要粘贴真实工作内容、姓名、账号、客户/项目名或路径；页面刷新后所有内容消失。
+    </aside>
+
+    <ol class="steps" aria-label="任务步骤">
+      <li id="step-1" class="active">1 边界确认</li>
+      <li id="step-2">2 粘贴与解析</li>
+      <li id="step-3">3 字段映射</li>
+      <li id="step-4">4 抽样预览</li>
+      <li id="step-5">5 模拟学习与内容库</li>
+    </ol>
+
+    <section id="consent-section">
+      <h2>1. 边界确认</h2>
+      <label class="check">
+        <input id="boundary-consent" type="checkbox">
+        <span>我确认只使用分配到的合成材料，并理解主持人只记录时间、次数和固定错误代码，不记录卡片原文。</span>
+      </label>
+      <div class="actions"><button id="begin-button" type="button" disabled>开始任务</button></div>
+    </section>
+
+    <section id="paste-section" hidden>
+      <h2>2. 粘贴卡片 CSV</h2>
+      <p>从本地表格工具复制完整 CSV 文本。模板列可以改名，下一步再说明每列的用途。</p>
+      <label for="delimiter">分隔符</label>
+      <select id="delimiter">
+        <option value=",">逗号</option>
+        <option value="tab">制表符</option>
+        <option value=";">分号</option>
+      </select>
+      <label for="csv-input">CSV 文本</label>
+      <textarea id="csv-input" spellcheck="false" autocomplete="off" placeholder="front,back,format,choices,key&#10;问题,答案,recall,,"></textarea>
+      <div class="actions"><button id="parse-button" type="button">解析列</button></div>
+      <p id="parse-status" class="status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section id="mapping-section" hidden>
+      <h2>3. 字段映射</h2>
+      <p>为每一列选择用途。问题和答案各需要一列；选择题还可以使用选项和正确项。</p>
+      <div id="mapping-grid" class="mapping-grid"></div>
+      <div class="actions"><button id="preview-button" type="button">生成抽样预览</button></div>
+    </section>
+
+    <section id="preview-section" hidden>
+      <h2>4. 抽样预览与错误摘要</h2>
+      <div id="error-summary" class="error-summary" role="alert" hidden></div>
+      <div id="preview-success" class="success" role="status" hidden></div>
+      <div id="preview-table" class="scroll"></div>
+      <div class="actions">
+        <button id="retry-button" class="secondary" type="button">返回修复</button>
+        <button id="import-button" type="button" disabled>模拟导入</button>
+      </div>
+      <p class="muted">错误摘要只显示固定代码和数量：missing_answer、duplicate、delimiter、encoding、field_mapping、choice_answer。</p>
+    </section>
+
+    <section id="learning-section" hidden>
+      <h2>5. 模拟学习</h2>
+      <div id="learning-card" class="card"></div>
+      <div class="actions">
+        <button id="reveal-button" type="button">显示答案</button>
+        <button id="library-button" class="secondary" type="button">返回内容库</button>
+      </div>
+    </section>
+
+    <section id="library-section" hidden>
+      <h2>模拟内容库</h2>
+      <div id="library-card" class="card"></div>
+      <p class="muted">这是页面内存中的模拟条目，不是圆圆提醒里的真实学习包。</p>
+      <div class="actions"><button id="reset-button" class="secondary" type="button">结束并清空本场</button></div>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      "use strict";
+      const byId = (id) => document.getElementById(id);
+      const state = { headers: [], rows: [], cards: [], pack: null };
+      const fieldOptions = [
+        ["ignore", "忽略"],
+        ["front", "问题（必需）"],
+        ["back", "答案（必需）"],
+        ["format", "卡片类型"],
+        ["choices", "选择题选项"],
+        ["key", "选择题正确项"],
+      ];
+      const aliases = {
+        front: "front", prompt: "front", question: "front",
+        back: "back", response: "back", answer: "back",
+        format: "format", type: "format", card_type: "format",
+        choices: "choices", options: "choices",
+        key: "key", correct_answer: "key",
+      };
+
+      function setStep(step) {
+        for (let index = 1; index <= 5; index += 1) {
+          byId(`step-${index}`).classList.toggle("active", index === step);
+        }
+      }
+
+      function parseDelimited(text, delimiter) {
+        const rows = [];
+        let row = [];
+        let cell = "";
+        let quoted = false;
+        for (let index = 0; index < text.length; index += 1) {
+          const character = text[index];
+          if (quoted) {
+            if (character === '"' && text[index + 1] === '"') {
+              cell += '"';
+              index += 1;
+            } else if (character === '"') {
+              quoted = false;
+            } else {
+              cell += character;
+            }
+          } else if (character === '"' && cell.length === 0) {
+            quoted = true;
+          } else if (character === delimiter) {
+            row.push(cell.trim());
+            cell = "";
+          } else if (character === "\n" || character === "\r") {
+            if (character === "\r" && text[index + 1] === "\n") index += 1;
+            row.push(cell.trim());
+            if (row.some((value) => value.length > 0)) rows.push(row);
+            row = [];
+            cell = "";
+          } else {
+            cell += character;
+          }
+        }
+        if (quoted) throw new Error("delimiter");
+        row.push(cell.trim());
+        if (row.some((value) => value.length > 0)) rows.push(row);
+        if (rows.length < 2 || rows[0].length < 2) throw new Error("delimiter");
+        const width = rows[0].length;
+        if (rows.some((item) => item.length !== width)) throw new Error("delimiter");
+        return rows;
+      }
+
+      function renderMappings() {
+        const grid = byId("mapping-grid");
+        grid.replaceChildren();
+        state.headers.forEach((header, index) => {
+          const label = document.createElement("label");
+          label.htmlFor = `mapping-${index}`;
+          label.textContent = `第 ${index + 1} 列：${header || "（空标题）"}`;
+          const select = document.createElement("select");
+          select.id = `mapping-${index}`;
+          select.dataset.column = String(index);
+          for (const [value, text] of fieldOptions) {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent = text;
+            select.append(option);
+          }
+          select.value = aliases[header.trim().toLowerCase()] || "ignore";
+          grid.append(label, select);
+        });
+      }
+
+      function mapping() {
+        const result = {};
+        byId("mapping-grid").querySelectorAll("select").forEach((select) => {
+          if (select.value !== "ignore") {
+            if (Object.hasOwn(result, select.value)) result[select.value] = -1;
+            else result[select.value] = Number(select.dataset.column);
+          }
+        });
+        return result;
+      }
+
+      function mappedValue(row, map, key) {
+        const index = map[key];
+        return Number.isInteger(index) && index >= 0 ? (row[index] || "").trim() : "";
+      }
+
+      function buildPreview() {
+        const map = mapping();
+        const counts = {};
+        const addError = (code) => { counts[code] = (counts[code] || 0) + 1; };
+        if (!Number.isInteger(map.front) || map.front < 0 || !Number.isInteger(map.back) || map.back < 0) {
+          addError("field_mapping");
+        }
+        for (const index of Object.values(map)) if (index === -1) addError("field_mapping");
+        const seen = new Set();
+        const cards = [];
+        state.rows.forEach((row) => {
+          const front = mappedValue(row, map, "front");
+          const back = mappedValue(row, map, "back");
+          const format = mappedValue(row, map, "format").toLowerCase() || "recall";
+          const choices = mappedValue(row, map, "choices");
+          const key = mappedValue(row, map, "key");
+          if (!front || !back) addError("missing_answer");
+          const normalized = front.normalize("NFKC").trim().toLocaleLowerCase("zh-CN");
+          if (normalized && seen.has(normalized)) addError("duplicate");
+          if (normalized) seen.add(normalized);
+          if (format === "choice" && (!choices || !key)) addError("choice_answer");
+          if (front && back) cards.push({ front, back, format, choices, key });
+        });
+        state.cards = Object.keys(counts).length === 0 ? cards : [];
+        return { counts, cards };
+      }
+
+      function renderPreview() {
+        const { counts, cards } = buildPreview();
+        const errors = Object.entries(counts);
+        const errorBox = byId("error-summary");
+        const successBox = byId("preview-success");
+        errorBox.hidden = errors.length === 0;
+        successBox.hidden = errors.length !== 0;
+        byId("import-button").disabled = errors.length !== 0 || cards.length < 10 || cards.length > 20;
+        if (errors.length > 0) {
+          errorBox.textContent = `需要修复：${errors.map(([code, count]) => `${code}=${count}`).join("；")}`;
+        } else if (cards.length < 10 || cards.length > 20) {
+          successBox.textContent = `字段有效，但当前有 ${cards.length} 张卡；研究任务需要 10—20 张。`;
+        } else {
+          successBox.textContent = `预览通过：${cards.length} 张卡，可以执行模拟导入。`;
+        }
+        const samples = cards.slice(0, 3);
+        const container = byId("preview-table");
+        container.replaceChildren();
+        if (samples.length > 0) {
+          const table = document.createElement("table");
+          const head = document.createElement("thead");
+          head.innerHTML = "<tr><th>样本</th><th>问题</th><th>答案</th><th>类型</th></tr>";
+          const body = document.createElement("tbody");
+          samples.forEach((card, index) => {
+            const row = document.createElement("tr");
+            [String(index + 1), card.front, card.back, card.format].forEach((value) => {
+              const cell = document.createElement("td");
+              cell.textContent = value;
+              row.append(cell);
+            });
+            body.append(row);
+          });
+          table.append(head, body);
+          container.append(table);
+        }
+        byId("preview-section").hidden = false;
+        setStep(4);
+      }
+
+      function showLearning() {
+        state.pack = { id: "research-pack-current", count: state.cards.length, cards: state.cards.slice() };
+        byId("preview-section").hidden = true;
+        byId("learning-section").hidden = false;
+        const first = state.pack.cards[0];
+        byId("learning-card").replaceChildren();
+        const heading = document.createElement("strong");
+        heading.textContent = "问题";
+        const question = document.createElement("p");
+        question.textContent = first.front;
+        const answer = document.createElement("p");
+        answer.id = "answer-text";
+        answer.hidden = true;
+        answer.textContent = `答案：${first.back}`;
+        byId("learning-card").append(heading, question, answer);
+        setStep(5);
+      }
+
+      byId("boundary-consent").addEventListener("change", (event) => {
+        byId("begin-button").disabled = !event.target.checked;
+      });
+      byId("begin-button").addEventListener("click", () => {
+        byId("consent-section").hidden = true;
+        byId("paste-section").hidden = false;
+        byId("csv-input").focus();
+        setStep(2);
+      });
+      byId("parse-button").addEventListener("click", () => {
+        const status = byId("parse-status");
+        try {
+          const selected = byId("delimiter").value;
+          const delimiter = selected === "tab" ? "\t" : selected;
+          const parsed = parseDelimited(byId("csv-input").value, delimiter);
+          state.headers = parsed[0];
+          state.rows = parsed.slice(1);
+          renderMappings();
+          byId("mapping-section").hidden = false;
+          status.textContent = `解析到 ${state.headers.length} 列、${state.rows.length} 行。`;
+          setStep(3);
+        } catch {
+          byId("mapping-section").hidden = true;
+          status.textContent = "需要修复：delimiter=1。请检查分隔符、引号和每行列数。";
+        }
+      });
+      byId("preview-button").addEventListener("click", renderPreview);
+      byId("retry-button").addEventListener("click", () => {
+        byId("preview-section").hidden = true;
+        byId("paste-section").hidden = false;
+        byId("mapping-section").hidden = false;
+        setStep(3);
+      });
+      byId("import-button").addEventListener("click", showLearning);
+      byId("reveal-button").addEventListener("click", () => {
+        byId("answer-text").hidden = false;
+      });
+      byId("library-button").addEventListener("click", () => {
+        byId("learning-section").hidden = true;
+        byId("library-section").hidden = false;
+        byId("library-card").textContent = `本场合成学习包 · ${state.pack.count} 张卡 · research-pack-current`;
+      });
+      byId("reset-button").addEventListener("click", () => window.location.reload());
+    })();
+  </script>
+</body>
+</html>

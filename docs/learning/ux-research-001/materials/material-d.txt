@@ -1,0 +1,18 @@
+UX-RESEARCH-001 SYNTHETIC MATERIAL D
+禁止替换为真实工作内容；每行均为虚构。
+
+N01 [single,recall] 开放前确认所有通道没有临时堆放物。
+N02 [split,recall] 先核对展项编号，再启动设备；启动后观察一分钟。
+N03 [missing_answer,recall] 访客报告展项无响应时，第一项检查是什么？
+N04 [duplicate,recall] 闭馆后把移动讲解器放回充电位。
+N05 [near_duplicate,recall] 每日结束时清点讲解器，并确认充电指示灯亮起。
+N06 [punctuation,recall] 状态备注依次写“区域，展项，现象”。
+N07 [non_ascii,recall] 临时关闭的展项显示「维护中」，不要显示空白页。
+N08 [choice] 发现通道被占用时应：A. 先移除障碍；B. 等闭馆；C. 只做记录。正确项为 A。
+N09 [single,recall] 音量调整后站到区域边界复听一次。
+N10 [split,recall] 触摸屏清洁前停用交互；表面干燥后再恢复。
+N11 [punctuation,recall] 标题中的引号按展签保留，例如“光与影”。
+N12 [single,recall] 备用电池按充电日期从早到晚轮换使用。
+N13 [choice] 遗失物品应放到：A. 任意抽屉；B. 指定保管盒并登记代码；C. 展台后方。正确项为 B。
+N14 [single,recall] 讲解开始前确认辅助听音设备可借用。
+N15 [non_ascii,recall] 方向标记统一使用箭头（→），不混用手写符号。

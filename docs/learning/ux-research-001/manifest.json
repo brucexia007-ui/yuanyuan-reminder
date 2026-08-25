@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "study_id": "UX-RESEARCH-001",
+  "prototype_version": "ux-research-001-prototype-1",
+  "status": "internal_dry_run_ready_real_participant_execution_incomplete",
+  "digest_algorithm": "sha256_lf_utf8",
+  "synthetic_materials": [
+    {
+      "id": "A",
+      "path": "materials/material-a.txt",
+      "note_count": 15,
+      "required_tags": ["single", "split", "missing_answer", "duplicate", "near_duplicate", "punctuation", "non_ascii", "choice", "recall"]
+    },
+    {
+      "id": "B",
+      "path": "materials/material-b.txt",
+      "note_count": 15,
+      "required_tags": ["single", "split", "missing_answer", "duplicate", "near_duplicate", "punctuation", "non_ascii", "choice", "recall"]
+    },
+    {
+      "id": "C",
+      "path": "materials/material-c.txt",
+      "note_count": 15,
+      "required_tags": ["single", "split", "missing_answer", "duplicate", "near_duplicate", "punctuation", "non_ascii", "choice", "recall"]
+    },
+    {
+      "id": "D",
+      "path": "materials/material-d.txt",
+      "note_count": 15,
+      "required_tags": ["single", "split", "missing_answer", "duplicate", "near_duplicate", "punctuation", "non_ascii", "choice", "recall"]
+    }
+  ],
+  "files": {
+    "README.md": "d287fd696aca015af58dbe7517e191700e2a752f659d366b61da2c68ea3270de",
+    "materials/card-builder-template.csv": "2def9a1c066e3faca8201a6ba554300fa5db87f45b69786775a8ad0e90ba6175",
+    "materials/material-a.txt": "158dfe574b29e3eee6ed820f8a58bbf016fc5320889241ecd2b1e8006abd6a45",
+    "materials/material-b.txt": "aa314554842fc922315ee2884bd816a34966f3b7eb90f952fc2b51468b2ac862",
+    "materials/material-c.txt": "75042882f570751d1de52fa6785449c5a3d8d83bb1b4e82bec950e624bea324a",
+    "materials/material-d.txt": "992fc2b3f6549af1f8203e21dbb30336a101dfee7ca395cd135f6e302a475f62",
+    "prototype.html": "b746266fd093214d56bdb84a65516679be35229626b2941da2f54b7c4b6072fb",
+    "templates/named-deferral.template.md": "a1306c3249e52e14e0780db8089af9fcf388428c54a1860323cf777de7736267",
+    "templates/session-record.template.json": "a88293ed18a98dbf685220ab6ce42d4a52d16203952463a4d1364f3c7f4e4959",
+    "templates/summary.template.md": "5a3ae07688e834777d7ce2be3008755fad98ac3036eac5873193088c479a86ac"
+  }
+}

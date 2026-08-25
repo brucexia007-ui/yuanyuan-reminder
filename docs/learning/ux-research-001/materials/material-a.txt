@@ -1,0 +1,18 @@
+UX-RESEARCH-001 SYNTHETIC MATERIAL A
+禁止替换为真实工作内容；每行均为虚构。
+
+N01 [single,recall] 闭店前先确认冷藏展示柜温度不高于 5°C。
+N02 [split,recall] 玻璃器皿先自然冷却，再放入清洗架；热器皿不得直接冲冷水。
+N03 [missing_answer,recall] 交接班时需要复核哪一项记录？
+N04 [duplicate,recall] 每周一检查备用照明是否可用。
+N05 [near_duplicate,recall] 每周首个营业日测试备用照明，并记录结果。
+N06 [punctuation,recall] 标签写成“品名，日期，批次”，三项之间保留逗号。
+N07 [non_ascii,recall] 温度异常时把状态标为「待复核」，不要写“已完成”。
+N08 [choice] 哪种容器可进入高温清洗：A. 标有耐热符号；B. 有裂纹；C. 未知材质。正确项为 A。
+N09 [single,recall] 地面有积水时先设置警示牌，再处理积水。
+N10 [split,recall] 新批次开封时记录日期；旧批次应放在新批次前方。
+N11 [punctuation,recall] 备注含引号时保留原意，例如“暂停使用”。
+N12 [single,recall] 清洁剂不得与食品容器放在同一层。
+N13 [choice] 发现标签缺失时应：A. 继续使用；B. 隔离并补充确认；C. 猜测日期。正确项为 B。
+N14 [single,recall] 当日未完成的检查必须在交接表中标为待办。
+N15 [non_ascii,recall] 计量单位统一使用毫升（mL），不要混用“勺”。
