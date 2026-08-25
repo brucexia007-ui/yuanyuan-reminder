@@ -1,19 +1,20 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  DELETE_ALL_LOCAL_DATA_CONFIRMATION,
   applyConnectorTrustChange,
   applyProjectHookInspection,
   cancelProjectHookInspection,
   clearAiDiagnostics,
   completeOccurrence,
+  DELETE_ALL_LOCAL_DATA_CONFIRMATION,
+  deleteAllLocalDataAndExit,
   discoverBuiltinConnectors,
   deferTaskWatchAttention,
-  deleteAllLocalDataAndExit,
   exportAiDiagnostics,
   getAiSupervisorStatus,
   getCompanionExpressionSnapshot,
   getConnectorTrustStatus,
+  getRuntimeCapabilities,
   inspectConnectorHookConfig,
   getSettings,
   getTaskWatchSnapshot,
@@ -27,6 +28,19 @@ import {
 } from "./backend";
 
 describe("浏览器演示后端", () => {
+  it("默认能力快照不会伪造学习能力", async () => {
+    expect(await getRuntimeCapabilities()).toEqual({
+      schemaVersion: 1,
+      learning: {
+        compiled: false,
+        available: false,
+        contentPackReady: false,
+        autoInvitationAvailable: false,
+        failureReason: "disabled",
+      },
+    });
+  });
+
   it("完成喝水提醒会同步增加一杯且不会重复计数", async () => {
     const before = await listToday();
     const water = before.occurrences.find(

@@ -25,6 +25,114 @@
   cursor: pointer;
 }
 
+.pet-hit-region.learning-stage {
+  aspect-ratio: auto;
+  cursor: default;
+}
+
+.desktop-learning-stage-loading {
+  display: grid;
+  width: 520px;
+  height: 420px;
+  place-items: center;
+  border: 8px solid #95623b;
+  border-radius: 16px;
+  color: #f8f1df;
+  background: #203d34;
+  box-shadow: 0 14px 28px rgb(52 37 25 / 24%);
+}
+
+.pet-learning-quick-start {
+  position: absolute;
+  z-index: 9;
+  bottom: 10px;
+  left: 2px;
+  display: grid;
+  width: 38px;
+  height: 31px;
+  place-items: center;
+  padding: 0;
+  border: 4px solid #95623b;
+  border-radius: 7px;
+  color: #f5efda;
+  background: #24473d;
+  box-shadow: 0 4px 10px rgb(52 37 25 / 18%);
+  cursor: pointer;
+  opacity: .58;
+  transform: translateY(2px) scale(.94);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.pet-hit-region:hover .pet-learning-quick-start,
+.pet-learning-quick-start:focus-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.pet-learning-quick-start:focus-visible {
+  outline: 2px solid #f0dba4;
+  outline-offset: 2px;
+}
+
+.pet-learning-quick-start:disabled {
+  cursor: wait;
+  opacity: .4;
+}
+
+.pet-learning-quick-start span {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.pet-learning-quick-start::after {
+  position: absolute;
+  right: -3px;
+  bottom: -6px;
+  left: -3px;
+  height: 4px;
+  border-radius: 3px;
+  background: #b77a49;
+  content: "";
+}
+
+.pet-hit-region:hover .pet-learning-quick-start span,
+.pet-learning-quick-start:focus-visible span {
+  animation: pet-learning-chalk-tap 520ms cubic-bezier(.2, .8, .2, 1) both;
+}
+
+.pet-hit-region:hover .pet-learning-quick-start::after,
+.pet-learning-quick-start:focus-visible::after {
+  animation: pet-learning-board-lift 520ms cubic-bezier(.2, .8, .2, 1) both;
+}
+
+@keyframes pet-learning-chalk-tap {
+  0%, 100% { translate: 0; }
+  42% { translate: 0 -3px; }
+  68% { translate: 0 1px; }
+}
+
+@keyframes pet-learning-board-lift {
+  0%, 100% { scale: 1 1; }
+  48% { scale: 1.08 .8; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pet-learning-quick-start,
+  .pet-learning-quick-start span,
+  .pet-learning-quick-start::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+.pet-hit-region.pet-motion-reduced .pet-learning-quick-start,
+.pet-hit-region.pet-motion-reduced .pet-learning-quick-start span,
+.pet-hit-region.pet-motion-reduced .pet-learning-quick-start::after {
+  animation: none !important;
+  transition: none !important;
+}
 .alert-stage .sprite-animator {
   position: absolute;
   right: 20px;
@@ -590,6 +698,89 @@
 
 .companion-prop-system-card strong {
   font-size: 9px;
+}
+
+.companion-prop-learning-card {
+  position: absolute;
+  right: 3px;
+  bottom: 10px;
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 42px;
+  border: 2px solid rgb(112 84 64 / 45%);
+  border-radius: 9px;
+  background: #fff8ed;
+  box-shadow: 5px 5px 0 rgb(240 221 197 / 92%);
+}
+
+.companion-prop-learning-card i {
+  width: 25px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgb(112 84 64 / 28%);
+  box-shadow: 0 7px 0 rgb(112 84 64 / 20%);
+}
+
+.companion-prop-learning-card strong {
+  position: absolute;
+  right: 4px;
+  bottom: 3px;
+  font-size: 9px;
+  font-style: normal;
+}
+
+.companion-learning-invitation-controls {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+}
+
+.companion-learning-invitation-controls .companion-prop-open,
+.companion-learning-dismiss,
+.companion-learning-pause {
+  pointer-events: auto;
+}
+
+.companion-learning-dismiss,
+.companion-learning-pause {
+  position: absolute;
+  z-index: 3;
+  border: 1px solid rgb(112 84 64 / 32%);
+  color: #5f4b3d;
+  background: rgb(255 250 240 / 96%);
+  box-shadow: 0 2px 5px rgb(70 46 30 / 14%);
+  cursor: pointer;
+}
+
+.companion-learning-dismiss {
+  top: 2px;
+  right: 1px;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.companion-learning-pause {
+  right: 0;
+  bottom: 0;
+  padding: 3px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.companion-learning-dismiss:focus-visible,
+.companion-learning-pause:focus-visible {
+  outline: 2px solid #6c8b74;
+  outline-offset: 2px;
 }
 
 .motion-reduced .companion-prop,

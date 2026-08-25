@@ -19,6 +19,7 @@ const fixedLabelCopy = {
   status_unknown: "状态不明",
   information: "有资料",
   decision_required: "待确认",
+  review_ready: "复习",
 } as const;
 
 const fixedAccessibleCopy = {
@@ -45,6 +46,8 @@ const fixedAccessibleCopy = {
   task_status_unknown: "圆圆暂时无法确认任务状态",
   information_available: "圆圆把资料放到了提词器上",
   formal_decision_required: "圆圆把待确认事项放到了确认台上",
+  learning_invitation: "圆圆叼来一张英语复习卡，打开后才会显示单词",
+  learning_session: "圆圆在一旁安静守着这叠英语复习卡",
 } as const;
 
 const knownProps = new Set<CompanionProp>([
@@ -54,6 +57,7 @@ const knownProps = new Set<CompanionProp>([
   "basket",
   "prompter",
   "system_card",
+  "learning_card",
 ]);
 
 const adaptiveLabels = new Set([
@@ -61,6 +65,7 @@ const adaptiveLabels = new Set([
   "failed",
   "possibly_stalled",
   "status_unknown",
+  "review_ready",
 ]);
 
 export interface CompanionPresentation {

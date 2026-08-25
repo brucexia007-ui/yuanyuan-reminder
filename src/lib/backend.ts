@@ -11,8 +11,10 @@ import type {
   HistoryQuery,
   Occurrence,
   PetCareSnapshot,
+  PetActivitySnapshot,
   PetInteractionKind,
   Reminder,
+  RuntimeCapabilities,
   TaskWatchSnapshot,
   TaskWatchSource,
   TaskWatchState,
@@ -416,6 +418,23 @@ export async function listToday(): Promise<TodaySnapshot> {
     : structuredClone(demoSnapshot);
 }
 
+export async function getRuntimeCapabilities(): Promise<RuntimeCapabilities> {
+  const demoLearningAvailable =
+    __YUANYUAN_LEARNING_ENABLED__ && import.meta.env.DEV;
+  return isTauri
+    ? invoke<RuntimeCapabilities>("get_runtime_capabilities")
+    : {
+        schemaVersion: 1,
+        learning: {
+          compiled: demoLearningAvailable,
+          available: demoLearningAvailable,
+          contentPackReady: demoLearningAvailable,
+          autoInvitationAvailable: false,
+          failureReason: demoLearningAvailable ? null : "disabled",
+        },
+      };
+}
+
 export async function listHistory(query: HistoryQuery): Promise<Occurrence[]> {
   if (isTauri) {
     return invoke<Occurrence[]>("list_history", {
@@ -752,6 +771,20 @@ export async function getCompanionExpressionSnapshot(): Promise<CompanionExpress
       demoFocusState.session?.phase === "focus"
         ? "focused_quietly"
         : "quiet_presence",
+  };
+}
+
+export async function getPetActivitySnapshot(): Promise<PetActivitySnapshot> {
+  if (isTauri) {
+    return invoke<PetActivitySnapshot>("get_pet_activity_snapshot");
+  }
+  return {
+    revision: 0,
+    activity: demoFocusState.session?.phase === "focus" ? "focusing" : "idle",
+    source: demoFocusState.session?.phase === "focus" ? "focus" : "schedule",
+    leaseId: null,
+    resumableLearningSessionId: null,
+    restoreTarget: null,
   };
 }
 
@@ -1122,7 +1155,7 @@ export async function setClickThrough(enabled: boolean): Promise<void> {
 
 export async function requestSleep(): Promise<void> {
   if (isTauri) await invoke("request_sleep");
-  else await emit("pet-request-sleep");
+  else await emit("pet-request-sleep", { source: "manual" });
 }
 
 export async function requestWake(): Promise<void> {

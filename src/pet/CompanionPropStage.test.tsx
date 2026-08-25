@@ -116,4 +116,49 @@ describe("CompanionPropStage label modes", () => {
     await act(async () => root.unmount());
     container.remove();
   });
+
+  it("offers explicit open, dismiss, and pause actions for a learning invitation", async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const onOpenLearning = vi.fn();
+    const onDismissLearning = vi.fn();
+    const onPauseLearningToday = vi.fn();
+    await act(async () => {
+      root.render(
+        <CompanionPropStage
+          snapshot={snapshot({
+            tier: "n1",
+            intent: "present_information",
+            pose: "review",
+            props: ["learning_card"],
+            label: "review_ready",
+            attention: "present_once",
+            taskSource: null,
+            accessibleState: "learning_invitation",
+          })}
+          labelMode="adaptive"
+          onOpenLearning={onOpenLearning}
+          onDismissLearning={onDismissLearning}
+          onPauseLearningToday={onPauseLearningToday}
+        />,
+      );
+    });
+
+    const controls = [...container.querySelectorAll<HTMLButtonElement>("button")];
+    expect(controls).toHaveLength(3);
+    for (const control of controls) {
+      await act(async () => {
+        control.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+    }
+    expect(onOpenLearning).toHaveBeenCalledOnce();
+    expect(onDismissLearning).toHaveBeenCalledOnce();
+    expect(onPauseLearningToday).toHaveBeenCalledOnce();
+    expect(container.textContent).toContain("今天不再");
+
+    await act(async () => root.unmount());
+    container.remove();
+  });
 });

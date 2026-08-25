@@ -34,12 +34,18 @@ export type LifeAnimationName =
   | "ball-carry"
   | "ball-drop"
   | "alert-glass-paws";
+export type LearningAnimationName =
+  | "learning-study-sit"
+  | "learning-study-curious"
+  | "learning-press-correct"
+  | "learning-press-wrong";
 export type AnimationName =
   | StandardAnimationName
   | SleepAnimationName
-  | LifeAnimationName;
+  | LifeAnimationName
+  | LearningAnimationName;
 
-export type SpriteSheetName = "standard" | "sleep" | "life";
+export type SpriteSheetName = "standard" | "sleep" | "life" | "learning";
 
 export interface AnimationDefinition {
   sheet?: SpriteSheetName;
@@ -60,6 +66,8 @@ export interface PetManifest {
   sleepSpritesheet: string;
   lifeSpritesheet: string;
   lifeRows: number;
+  learningSpritesheet: string;
+  learningRows: number;
   animations: Record<AnimationName, AnimationDefinition>;
 }
 
@@ -74,6 +82,8 @@ export const fallbackManifest: PetManifest = {
   sleepSpritesheet: "/assets/pet/sleep-atlas.webp",
   lifeSpritesheet: "/assets/pet/life-atlas.webp",
   lifeRows: 21,
+  learningSpritesheet: "/assets/pet/learning-atlas.webp",
+  learningRows: 4,
   animations: {
     idle: {
       row: 0,
@@ -190,6 +200,34 @@ export const fallbackManifest: PetManifest = {
     },
     "alert-glass-paws": {
       ...lifeRow(20, [190, 150, 145, 190, 170, 150, 145, 210]),
+      loopStart: null,
+    },
+    "learning-study-sit": {
+      sheet: "learning",
+      row: 0,
+      frames: [0, 1, 2, 4, 5, 6, 7],
+      durations: [720, 520, 420, 240, 560, 680, 760],
+      loopStart: 0,
+    },
+    "learning-study-curious": {
+      sheet: "learning",
+      row: 1,
+      frames: [0, 1, 2, 3, 4, 5, 6, 7],
+      durations: [180, 160, 170, 220, 240, 180, 170, 220],
+      loopStart: null,
+    },
+    "learning-press-correct": {
+      sheet: "learning",
+      row: 2,
+      frames: [0, 1, 2, 3, 4, 5, 6, 7],
+      durations: [150, 120, 110, 105, 100, 190, 125, 180],
+      loopStart: null,
+    },
+    "learning-press-wrong": {
+      sheet: "learning",
+      row: 3,
+      frames: [0, 1, 2, 3, 4, 5, 6, 7],
+      durations: [150, 120, 110, 105, 100, 190, 125, 180],
       loopStart: null,
     },
   },

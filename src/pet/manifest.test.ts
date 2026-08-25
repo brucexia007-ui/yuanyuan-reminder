@@ -43,6 +43,10 @@ describe("圆圆动画清单", () => {
         "ball-carry",
         "ball-drop",
         "alert-glass-paws",
+        "learning-study-sit",
+        "learning-study-curious",
+        "learning-press-correct",
+        "learning-press-wrong",
       ]),
     );
   });
@@ -138,6 +142,32 @@ describe("圆圆动画清单", () => {
     expect(fallbackManifest.animations["ball-drop"].row).toBe(19);
     expect(fallbackManifest.animations["alert-glass-paws"].row).toBe(20);
     expect(fallbackManifest.animations["alert-glass-paws"].loopStart).toBeNull();
+  });
+
+  it("学习端坐、等待和左右爪反馈使用四个独立动画行", () => {
+    expect(fallbackManifest.learningRows).toBe(4);
+    const names = [
+      "learning-study-sit",
+      "learning-study-curious",
+      "learning-press-correct",
+      "learning-press-wrong",
+    ] as const;
+
+    names.forEach((name, row) => {
+      const animation = fallbackManifest.animations[name];
+      expect(animation.sheet).toBe("learning");
+      expect(animation.row).toBe(row);
+      if (name !== "learning-study-sit") {
+        expect(animation.frames).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+      }
+    });
+    expect(fallbackManifest.animations["learning-study-sit"].frames).toEqual([
+      0, 1, 2, 4, 5, 6, 7,
+    ]);
+    expect(fallbackManifest.animations["learning-study-sit"].loopStart).toBe(0);
+    expect(fallbackManifest.animations["learning-study-curious"].loopStart).toBeNull();
+    expect(fallbackManifest.animations["learning-press-correct"].loopStart).toBeNull();
+    expect(fallbackManifest.animations["learning-press-wrong"].loopStart).toBeNull();
   });
 
   it("keeps the complete grooming routine around eleven seconds", () => {

@@ -298,6 +298,11 @@ describe("TaskPanel complete reminder workflows", () => {
     expect(backend.updateSettings).toHaveBeenCalledWith({
       companionLabelMode: "motion_only",
     });
+
+    backend.requestSleep.mockResolvedValue(undefined);
+    await click("让圆圆睡觉");
+    expect(backend.requestSleep).toHaveBeenCalledOnce();
+    expect(container.textContent).toContain("圆圆已经去睡觉了");
   });
 
   it("starts an explicit non-diagnostic support path with only a fixed path and duration", async () => {

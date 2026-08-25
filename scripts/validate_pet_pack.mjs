@@ -42,6 +42,17 @@ const requiredAnimations = [
   "ball-carry",
   "ball-drop",
   "alert-glass-paws",
+  "learning-study-sit",
+  "learning-study-curious",
+  "learning-press-correct",
+  "learning-press-wrong",
+];
+
+const requiredLearningRows = [
+  ["learning-study-sit", 0, [0, 1, 2, 4, 5, 6, 7], 0],
+  ["learning-study-curious", 1, [0, 1, 2, 3, 4, 5, 6, 7], null],
+  ["learning-press-correct", 2, [0, 1, 2, 3, 4, 5, 6, 7], null],
+  ["learning-press-wrong", 3, [0, 1, 2, 3, 4, 5, 6, 7], null],
 ];
 
 function fail(message) {
@@ -109,26 +120,43 @@ if (manifest.spriteVersionNumber !== 2) fail("pet manifest must declare spriteVe
 if (manifest.cellWidth !== 192 || manifest.cellHeight !== 208) fail("pet cells must be 192x208");
 if (manifest.columns !== 8 || manifest.rows !== 11) fail("the standard pet atlas must be 8 columns by 11 rows");
 if (manifest.lifeRows !== 21) fail("the life atlas must declare 21 rows");
+if (manifest.learningRows !== 4) fail("the learning atlas must declare 4 rows");
 
 const files = {
   standard: path.basename(manifest.spritesheet ?? ""),
   sleep: path.basename(manifest.sleepSpritesheet ?? ""),
   life: path.basename(manifest.lifeSpritesheet ?? ""),
+  learning: path.basename(manifest.learningSpritesheet ?? ""),
 };
-if (files.standard !== "spritesheet.webp" || files.sleep !== "sleep-atlas.webp" || files.life !== "life-atlas.webp") {
-  fail("manifest must reference spritesheet.webp, sleep-atlas.webp, and life-atlas.webp");
+if (
+  files.standard !== "spritesheet.webp" ||
+  files.sleep !== "sleep-atlas.webp" ||
+  files.life !== "life-atlas.webp" ||
+  files.learning !== "learning-atlas.webp"
+) {
+  fail("manifest must reference the standard, sleep, life, and learning WebP atlases");
 }
 
 expectSize(files.standard, 1536, 2288);
 expectSize(files.sleep, 1536, 624);
 expectSize(files.life, 1536, 4368);
+expectSize(files.learning, 1536, 832);
 
 const animations = manifest.animations ?? {};
 for (const name of requiredAnimations) {
   const animation = animations[name];
   if (!animation) fail(`missing animation: ${name}`);
   const sheet = animation.sheet ?? "standard";
-  const rowLimit = sheet === "standard" ? 11 : sheet === "sleep" ? 3 : sheet === "life" ? 21 : 0;
+  const rowLimit =
+    sheet === "standard"
+      ? 11
+      : sheet === "sleep"
+        ? 3
+        : sheet === "life"
+          ? 21
+          : sheet === "learning"
+            ? 4
+            : 0;
   if (rowLimit === 0) fail(`${name} references unknown sheet: ${sheet}`);
   if (!Number.isInteger(animation.row) || animation.row < 0 || animation.row >= rowLimit) fail(`${name} has an invalid row`);
   if (!Array.isArray(animation.frames) || animation.frames.length === 0) fail(`${name} has no frames`);
@@ -138,5 +166,17 @@ for (const name of requiredAnimations) {
   if (animation.loopStart !== null && (!Number.isInteger(animation.loopStart) || animation.loopStart < 0 || animation.loopStart >= animation.frames.length)) fail(`${name} has an invalid loopStart`);
 }
 
+for (const [name, row, frames, loopStart] of requiredLearningRows) {
+  const animation = animations[name];
+  if (animation.sheet !== "learning") fail(`${name} must use the learning atlas`);
+  if (animation.row !== row) fail(`${name} must use learning row ${row}`);
+  if (JSON.stringify(animation.frames) !== JSON.stringify(frames)) {
+    fail(`${name} has an invalid learning frame sequence`);
+  }
+  if (animation.loopStart !== loopStart) {
+    fail(`${name} has an invalid learning loop policy`);
+  }
+}
+
 console.log(`Pet pack OK: ${manifest.displayName ?? manifest.id ?? "unnamed pet"}`);
-console.log(`Validated ${requiredAnimations.length} animations and 3 WebP atlases.`);
+console.log(`Validated ${requiredAnimations.length} animations and 4 WebP atlases.`);

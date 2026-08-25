@@ -8,6 +8,9 @@ interface CompanionPropStageProps {
   snapshot: CompanionExpressionSnapshot;
   labelMode: CompanionLabelMode;
   onOpenTaskWatch?: () => void;
+  onOpenLearning?: () => void;
+  onDismissLearning?: () => void;
+  onPauseLearningToday?: () => void;
 }
 
 function FixedProp({
@@ -67,6 +70,13 @@ function FixedProp({
           {label && <strong>{label}</strong>}
         </span>
       );
+    case "learning_card":
+      return (
+        <span className="companion-prop companion-prop-learning-card" aria-hidden="true">
+          <i />
+          {label && <strong>{label}</strong>}
+        </span>
+      );
   }
 }
 
@@ -74,6 +84,9 @@ export function CompanionPropStage({
   snapshot,
   labelMode,
   onOpenTaskWatch,
+  onOpenLearning,
+  onDismissLearning,
+  onPauseLearningToday,
 }: CompanionPropStageProps) {
   const presentation = companionPresentation(snapshot, labelMode);
   if (snapshot.tier === "n0") return null;
@@ -100,6 +113,8 @@ export function CompanionPropStage({
     />
   ));
   const canOpenTaskWatch = snapshot.taskSource !== null && onOpenTaskWatch;
+  const canOpenLearning =
+    snapshot.accessibleState === "learning_invitation" && onOpenLearning;
 
   return (
     <div
@@ -112,7 +127,46 @@ export function CompanionPropStage({
       aria-label={presentation.accessibleLabel}
       data-expression-intent={snapshot.intent}
     >
-      {canOpenTaskWatch ? (
+      {canOpenLearning ? (
+        <div className="companion-learning-invitation-controls">
+          <button
+            className="companion-prop-open"
+            type="button"
+            aria-label={`打开英语复习。${presentation.accessibleLabel}`}
+            onPointerDown={(event) => event.stopPropagation()}
+            onPointerMove={(event) => event.stopPropagation()}
+            onPointerUp={(event) => event.stopPropagation()}
+            onPointerCancel={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenLearning();
+            }}
+          >
+            {fixedProps}
+          </button>
+          <button
+            className="companion-learning-dismiss"
+            type="button"
+            aria-label="收起这次英语复习邀请"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDismissLearning?.();
+            }}
+          >
+            ×
+          </button>
+          <button
+            className="companion-learning-pause"
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onPauseLearningToday?.();
+            }}
+          >
+            今天不再
+          </button>
+        </div>
+      ) : canOpenTaskWatch ? (
         <button
           className="companion-prop-open"
           type="button"
@@ -123,7 +177,7 @@ export function CompanionPropStage({
           onPointerCancel={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
-            onOpenTaskWatch();
+            onOpenTaskWatch?.();
           }}
         >
           {fixedProps}

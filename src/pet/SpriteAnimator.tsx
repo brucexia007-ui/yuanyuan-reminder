@@ -16,12 +16,14 @@ interface SpriteAnimatorProps {
   offsetX?: number;
   settings: Pick<AppSettings, "animationMode" | "animationSpeed">;
   onComplete?: (animation: AnimationName) => void;
+  onFrameChange?: (animation: AnimationName, frameIndex: number) => void;
 }
 
 function shouldAnimate(mode: AppSettings["animationMode"]): boolean {
   if (mode === "always") return true;
   if (mode === "off") return false;
-  return !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return typeof window.matchMedia !== "function"
+    || !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 export function SpriteAnimator({
@@ -32,11 +34,13 @@ export function SpriteAnimator({
   offsetX = 0,
   settings,
   onComplete,
+  onFrameChange,
 }: SpriteAnimatorProps) {
   const [manifest, setManifest] = useState<PetManifest>(fallbackManifest);
   const [frameIndex, setFrameIndex] = useState(0);
   const [sleepSheetAvailable, setSleepSheetAvailable] = useState(true);
   const [lifeSheetAvailable, setLifeSheetAvailable] = useState(true);
+  const [learningSheetAvailable, setLearningSheetAvailable] = useState(true);
 
   useEffect(() => {
     void loadPetManifest().then(setManifest);
@@ -47,6 +51,7 @@ export function SpriteAnimator({
 
   useEffect(() => {
     setFrameIndex(0);
+    onFrameChange?.(animation, 0);
     if (
       lookFrame !== null ||
       frameOverride !== null ||
@@ -67,6 +72,7 @@ export function SpriteAnimator({
           const next = index + 1;
           if (next < definition.frames.length) {
             setFrameIndex(next);
+            onFrameChange?.(animation, next);
             schedule(next);
             return;
           }
@@ -93,6 +99,7 @@ export function SpriteAnimator({
     frameOverride,
     lookFrame,
     onComplete,
+    onFrameChange,
     settings.animationSpeed,
   ]);
 
@@ -122,6 +129,8 @@ export function SpriteAnimator({
             ? 3
             : requestedSheet === "life"
               ? manifest.lifeRows
+              : requestedSheet === "learning"
+                ? manifest.learningRows
               : manifest.rows,
         sheet: requestedSheet,
       };
@@ -132,7 +141,9 @@ export function SpriteAnimator({
         ? sleepSheetAvailable
         : requestedSheet === "life"
           ? lifeSheetAvailable
-          : true;
+          : requestedSheet === "learning"
+            ? learningSheetAvailable
+            : true;
     const sheet: SpriteSheetName = sheetAvailable ? requestedSheet : "standard";
     if (sheet === "standard" && requestedSheet !== "standard") {
       return {
@@ -152,7 +163,9 @@ export function SpriteAnimator({
           ? 3
           : requestedSheet === "life"
             ? manifest.lifeRows
-            : manifest.rows,
+            : requestedSheet === "learning"
+              ? manifest.learningRows
+              : manifest.rows,
       sheet,
     };
   }, [
@@ -160,6 +173,7 @@ export function SpriteAnimator({
     frameOverride,
     frameIndex,
     lifeSheetAvailable,
+    learningSheetAvailable,
     lookFrame,
     manifest,
     sleepSheetAvailable,
@@ -170,9 +184,11 @@ export function SpriteAnimator({
       ? manifest.sleepSpritesheet
       : frame.sheet === "life"
         ? manifest.lifeSpritesheet
-        : manifest.spritesheet;
+        : frame.sheet === "learning"
+          ? manifest.learningSpritesheet
+          : manifest.spritesheet;
   const x = (frame.column / (frame.columns - 1)) * 100;
-  const y = (frame.row / (frame.rows - 1)) * 100;
+  const y = frame.rows <= 1 ? 0 : (frame.row / (frame.rows - 1)) * 100;
 
   useEffect(() => {
     const requestedSheet = definition.sheet ?? "standard";
@@ -180,17 +196,21 @@ export function SpriteAnimator({
     const probe = new Image();
     const updateAvailability = (available: boolean) => {
       if (requestedSheet === "sleep") setSleepSheetAvailable(available);
-      else setLifeSheetAvailable(available);
+      else if (requestedSheet === "life") setLifeSheetAvailable(available);
+      else setLearningSheetAvailable(available);
     };
     probe.onload = () => updateAvailability(true);
     probe.onerror = () => updateAvailability(false);
     probe.src =
       requestedSheet === "sleep"
         ? manifest.sleepSpritesheet
-        : manifest.lifeSpritesheet;
+        : requestedSheet === "life"
+          ? manifest.lifeSpritesheet
+          : manifest.learningSpritesheet;
   }, [
     definition.sheet,
     manifest.lifeSpritesheet,
+    manifest.learningSpritesheet,
     manifest.sleepSpritesheet,
   ]);
 

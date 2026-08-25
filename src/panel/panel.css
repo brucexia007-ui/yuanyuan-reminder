@@ -66,6 +66,14 @@
   grid-template-columns: repeat(8, 1fr);
 }
 
+.segmented.has-learning {
+  grid-template-columns: repeat(8, 1fr);
+}
+
+.segmented.has-task-watch.has-learning {
+  grid-template-columns: repeat(9, 1fr);
+}
+
 .care-summary {
   display: grid;
   grid-template-columns: 66px 1fr;

@@ -1,4 +1,296 @@
 export type ReminderCategory = "water" | "work" | "personal";
+
+export interface RuntimeCapabilities {
+  schemaVersion: 1;
+  learning: {
+    compiled: boolean;
+    available: boolean;
+    contentPackReady: boolean;
+    autoInvitationAvailable: boolean;
+    failureReason: "disabled" | "not_implemented" | "database" | "content" | null;
+  };
+}
+
+export type LearningMode = "manual_only" | "automatic_opt_in";
+export type LearningRating = "again" | "hard" | "good";
+export type LearningStage = "new" | "learning" | "stable";
+export type LearningEntrySource =
+  | "manual"
+  | "focus_finished"
+  | "scheduled_window"
+  | "work_gap_experimental";
+export type LearningSessionKind = "daily" | "mistakes";
+
+export interface LearningSettings {
+  mode: LearningMode;
+  cardsPerSession: 3 | 5 | 10;
+  /** Legacy export compatibility only. Active learning is never capped by day. */
+  dailyNewLimit: 0 | 5 | 10 | 20 | 30;
+  dailyGoal: 0 | 5 | 10 | 20 | 30 | 50;
+  focusFinishedEnabled: boolean;
+  scheduledWindowsEnabled: boolean;
+  workGapExperimentalEnabled: boolean;
+  dailyInvitationLimit: 1 | 2 | 3;
+  invitationCooldownMinutes: 60 | 120 | 240;
+  invitationTtlSeconds: 20;
+  pausedForLocalDay: string | null;
+  updatedAtUnixMs: number;
+}
+
+export type LearningSettingsPatch = Partial<
+  Pick<
+    LearningSettings,
+    | "mode"
+    | "cardsPerSession"
+    | "dailyNewLimit"
+    | "dailyGoal"
+    | "focusFinishedEnabled"
+    | "scheduledWindowsEnabled"
+    | "workGapExperimentalEnabled"
+    | "dailyInvitationLimit"
+    | "invitationCooldownMinutes"
+  >
+>;
+
+export interface LearningSessionSnapshot {
+  schemaVersion: 1;
+  sessionId: string;
+  entrySource: LearningEntrySource;
+  sessionKind: LearningSessionKind;
+  status: "created" | "active" | "paused" | "completed" | "abandoned" | "expired";
+  stateRevision: number;
+  currentItemId: string | null;
+  plannedCount: number;
+  completedCount: number;
+  startedAtUnixMs: number;
+  pausedAtUnixMs: number | null;
+  pauseReason: string | null;
+  lastActivityAtUnixMs: number;
+  expiresAtUnixMs: number;
+  endedAtUnixMs: number | null;
+  exitReason: string | null;
+}
+
+export interface LearningCardDto {
+  schemaVersion: 1;
+  cardId: string;
+  headword: string;
+  phonetic: string | null;
+  partOfSpeech: string[];
+  meaningsZh: string[];
+  wordFamily: string[];
+  stage: LearningStage;
+  sourceIds: string[];
+}
+
+export type LearningQuestionKind = "multiple_choice" | "recall_fallback";
+
+export interface LearningQuestionOptionDto {
+  optionId: string;
+  meaningZh: string;
+}
+
+export interface LearningQuestionDto {
+  schemaVersion: 1;
+  questionId: string;
+  kind: LearningQuestionKind;
+  cardId: string;
+  headword: string;
+  phonetic: string | null;
+  partOfSpeech: string[];
+  stage: LearningStage;
+  isRemediation: boolean;
+  options: LearningQuestionOptionDto[];
+}
+
+export interface LearningAnswerResult {
+  schemaVersion: 1;
+  questionId: string;
+  selectedOptionId: string;
+  correctOptionId: string;
+  correctMeaningZh: string;
+  correct: boolean;
+  isRemediation: boolean;
+  replayed: boolean;
+  session: LearningSessionSnapshot;
+}
+
+export type LearningRecordFilter =
+  | "mistakes"
+  | "studied"
+  | "new"
+  | "learning"
+  | "stable"
+  | "all";
+
+export interface LearningRecordItem {
+  cardId: string;
+  headword: string;
+  phonetic: string | null;
+  partOfSpeech: string[];
+  meaningsZh: string[];
+  stage: LearningStage;
+  dueAtUnixMs: number;
+  reviewCount: number;
+  correctCount: number;
+  wrongCount: number;
+  lastStudiedAtUnixMs: number | null;
+  lastWrongAtUnixMs: number | null;
+  latestOutcome: "correct" | "incorrect" | null;
+  mistakeStatus:
+    | "needs_correction"
+    | "pending_recheck"
+    | "consolidated"
+    | null;
+}
+
+export interface LearningRecordPage {
+  schemaVersion: 1;
+  filter: LearningRecordFilter;
+  query: string;
+  page: number;
+  pageSize: number;
+  total: number;
+  items: LearningRecordItem[];
+}
+
+export interface LearningHomeSnapshot {
+  schemaVersion: 1;
+  capabilities: RuntimeCapabilities["learning"];
+  dueCount: number;
+  newAvailableCount: number;
+  newRemainingCount: number;
+  newStudiedTodayCount: number;
+  mistakeCount: number;
+  pendingRecheckCount: number;
+  stableCount: number;
+  tomorrowDueCount: number;
+  averageResponseMs: number | null;
+  reviewsLast7Days: number;
+  completedSessionsLast7Days: number;
+  settings: LearningSettings;
+  activeSession: LearningSessionSnapshot | null;
+}
+
+export interface LearningDashboardDay {
+  localDay: string;
+  newCount: number;
+  reviewCount: number;
+  firstAnswerCorrectCount: number;
+  firstAnswerCount: number;
+}
+
+export interface LearningDashboardSnapshot {
+  schemaVersion: 1;
+  totalCount: number;
+  studiedCount: number;
+  newCount: number;
+  learningCount: number;
+  mistakeCount: number;
+  pendingRecheckCount: number;
+  stableCount: number;
+  correctedMistakeCount: number;
+  firstAnswerCorrectCount7Days: number;
+  firstAnswerCount7Days: number;
+  days: LearningDashboardDay[];
+}
+
+export interface LearningSessionSummary {
+  schemaVersion: 1;
+  session: LearningSessionSnapshot;
+  correctCount: number;
+  wrongCount: number;
+  newCount: number;
+  reviewCount: number;
+  durationSeconds: number;
+  averageResponseMs: number | null;
+  targetableWrongCount: number;
+}
+
+export interface LearningRateResult {
+  schemaVersion: 1;
+  session: LearningSessionSnapshot;
+  nextCard: LearningCardDto | null;
+}
+
+export interface LearningImportPreview {
+  schemaVersion: 1;
+  status: "cancelled" | "confirmation_required";
+  previewToken: string | null;
+  expiresAtUnixMs: number | null;
+  format: "csv" | "json" | null;
+  sourceLabel: string | null;
+  cardCount: number;
+  newCount: number;
+  learningCount: number;
+  reviewKnownCount: number;
+  sampleHeadwords: string[];
+  selectedPathReturned: false;
+}
+
+export interface LearningImportCommitResult {
+  schemaVersion: 1;
+  packId: string;
+  importedCount: number;
+  preservedScheduleCount: number;
+}
+
+export interface LearningInvitationDto {
+  schemaVersion: 1;
+  invitationId: string;
+  triggerSource: Exclude<LearningEntrySource, "manual">;
+  expiresAtUnixMs: number;
+  dueReviewCount: number;
+}
+
+export type LearningExportFormat =
+  | "native_json"
+  | "cards_csv"
+  | "review_logs_csv";
+export type LearningDeleteScope = "progress_only" | "all_learning_data";
+
+export interface LearningSourceSummary {
+  sourceId: string;
+  sourceKind: "user_import" | "authorized" | "open_data";
+  version: string;
+  sourceUrl: string | null;
+  licenseExpression: string | null;
+  noticeText: string | null;
+}
+
+export interface LearningPackSummary {
+  packId: string;
+  title: string;
+  examScope: string;
+  status: "preview" | "ready" | "disabled";
+}
+
+export interface LearningDataSummary {
+  schemaVersion: 1;
+  cardCount: number;
+  reviewCount: number;
+  lastSuccessfulExportAtUnixMs: number | null;
+  sources: LearningSourceSummary[];
+  packs: LearningPackSummary[];
+}
+
+export interface LearningExportResult {
+  schemaVersion: 1;
+  status: "cancelled" | "saved";
+  format: LearningExportFormat;
+  recordCount: number;
+  bytes: number;
+  exportedAtUnixMs: number | null;
+  selectedPathReturned: false;
+}
+
+export interface LearningDeleteResult {
+  schemaVersion: 1;
+  scope: LearningDeleteScope;
+  keptCardCount: number;
+  deletedReviewCount: number;
+}
+
 export type ScheduleKind = "once" | "interval" | "daily" | "weekly";
 export type OccurrenceStatus =
   | "pending"
@@ -139,7 +431,8 @@ export type CompanionProp =
   | "task_card"
   | "basket"
   | "prompter"
-  | "system_card";
+  | "system_card"
+  | "learning_card";
 
 export interface CompanionExpressionSnapshot {
   schemaVersion: 1;
@@ -162,6 +455,7 @@ export interface CompanionExpressionSnapshot {
     | "status_unknown"
     | "information"
     | "decision_required"
+    | "review_ready"
     | null;
   attention: "silent" | "present_once" | "ring_once";
   motion: "full" | "reduced";
@@ -193,7 +487,37 @@ export interface CompanionExpressionSnapshot {
     | "task_possibly_stalled"
     | "task_status_unknown"
     | "information_available"
-    | "formal_decision_required";
+    | "formal_decision_required"
+    | "learning_invitation"
+    | "learning_session";
+}
+
+export type PetActivity =
+  | "idle"
+  | "sleeping"
+  | "reminding"
+  | "focusing"
+  | "learning"
+  | "interrupted";
+export type PetActivitySource =
+  | "manual"
+  | "schedule"
+  | "reminder"
+  | "focus"
+  | "learning";
+export type PetRestoreTarget =
+  | "idle"
+  | "sleeping"
+  | "focusing"
+  | "learning";
+
+export interface PetActivitySnapshot {
+  revision: number;
+  activity: PetActivity;
+  source: PetActivitySource;
+  leaseId: string | null;
+  resumableLearningSessionId: string | null;
+  restoreTarget: PetRestoreTarget | null;
 }
 
 export type TaskWatchSource = "codex" | "claude_code";
@@ -241,6 +565,7 @@ export type PanelRoute =
   | "taskwatch"
   | "focus"
   | "care"
+  | "learning"
   | "history"
   | "manage"
   | "add"

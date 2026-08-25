@@ -6,6 +6,8 @@ import {
 import {
   cloneElement,
   isValidElement,
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useId,
@@ -14,17 +16,18 @@ import {
   useState,
 } from "react";
 import {
-  DELETE_ALL_LOCAL_DATA_CONFIRMATION,
   completeOccurrence,
   cancelFocus,
   createBackup,
   createReminder,
   deferTaskWatchAttention,
+  DELETE_ALL_LOCAL_DATA_CONFIRMATION,
   deleteAllLocalDataAndExit,
   deleteReminder,
   getBasicSupportState,
   getFocusState,
   getPetCare,
+  getRuntimeCapabilities,
   getSettings,
   getTaskWatchSnapshot,
   listBackups,
@@ -69,12 +72,17 @@ import type {
   TodaySnapshot,
 } from "../types";
 import { loadDashboard, type DashboardModule } from "./dashboardLoader";
+import { learningBuildEnabled } from "../learning/featureGate";
 import { AiCompanionStatusCard } from "./AiCompanionStatus";
 import { ConnectorDiscoveryStatusCard } from "./ConnectorDiscoveryStatus";
 import { plannedDueLabel, plannedReminders } from "./todayReminders";
 import "./panel.css";
 
 type Tab = PanelRoute;
+
+const LazyLearningView = learningBuildEnabled
+  ? lazy(() => import("../learning/LearningView").then((module) => ({ default: module.LearningView })))
+  : null;
 
 const emptySnapshot: TodaySnapshot = {
   reminders: [],
@@ -161,6 +169,7 @@ export function TaskPanel() {
   const [taskWatch, setTaskWatch] = useState<TaskWatchSnapshot>(emptyTaskWatchSnapshot);
   const [taskWatchLoading, setTaskWatchLoading] = useState(true);
   const [taskWatchError, setTaskWatchError] = useState<string | null>(null);
+  const [learningAvailable, setLearningAvailable] = useState(false);
   const [moduleLoading, setModuleLoading] = useState(initialModuleState);
   const [moduleErrors, setModuleErrors] = useState(initialModuleErrors);
   const [notice, setNotice] = useState<string | null>(null);
@@ -288,6 +297,25 @@ export function TaskPanel() {
   const refresh = refreshToday;
 
   useEffect(() => {
+    if (!learningBuildEnabled) return;
+    let cancelled = false;
+    void getRuntimeCapabilities()
+      .then((capabilities) => {
+        if (cancelled) return;
+        const available = capabilities.learning.available;
+        setLearningAvailable(available);
+        const requested = new URLSearchParams(window.location.search).get("tab");
+        if (available && requested === "learning") setTab("learning");
+      })
+      .catch(() => {
+        if (!cancelled) setLearningAvailable(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     void refreshAll();
     const cleanups: Array<() => void> = [];
     void Promise.all([
@@ -306,18 +334,20 @@ export function TaskPanel() {
         setCare(value);
         setModuleErrors((current) => ({ ...current, care: null }));
       }),
-      onBackendEvent<{ route: Tab }>("panel-route", ({ route }) => setTab(route)),
+      onBackendEvent<{ route: Tab }>("panel-route", ({ route }) => {
+        if (route !== "learning" || learningAvailable) setTab(route);
+      }),
     ]).then((unlisten) => cleanups.push(...unlisten));
 
     const keydown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") void panelWindow?.hide();
+      if (event.key === "Escape" && tab !== "learning") void panelWindow?.hide();
     };
     window.addEventListener("keydown", keydown);
     return () => {
       cleanups.forEach((cleanup) => cleanup());
       window.removeEventListener("keydown", keydown);
     };
-  }, [panelWindow, refreshAll, refreshToday]);
+  }, [learningAvailable, panelWindow, refreshAll, refreshToday, tab]);
 
   useEffect(() => {
     let cancelled = false;
@@ -399,8 +429,10 @@ export function TaskPanel() {
                 ? "任务守望"
               : tab === "focus"
                 ? "专注"
-                : tab === "care"
+              : tab === "care"
                   ? "陪圆圆"
+                  : tab === "learning"
+                    ? "英语复习"
                   : tab === "history"
                     ? "历史记录"
                     : tab === "manage"
@@ -430,7 +462,7 @@ export function TaskPanel() {
       )}
 
       <nav
-        className={`segmented ${taskWatch.available ? "has-task-watch" : ""}`}
+        className={`segmented ${taskWatch.available ? "has-task-watch" : ""} ${learningAvailable ? "has-learning" : ""}`}
         aria-label="圆圆提醒页面"
       >
         <TabButton active={tab === "today"} onClick={() => setTab("today")}>
@@ -447,6 +479,11 @@ export function TaskPanel() {
         <TabButton active={tab === "care"} onClick={() => setTab("care")}>
           互动
         </TabButton>
+        {learningAvailable && (
+          <TabButton active={tab === "learning"} onClick={() => setTab("learning")}>
+            学习
+          </TabButton>
+        )}
         <TabButton active={tab === "history"} onClick={() => setTab("history")}>
           历史
         </TabButton>
@@ -509,6 +546,10 @@ export function TaskPanel() {
             onNotice={setNotice}
             onInteractiveStarted={() => void panelWindow?.hide()}
           />
+        ) : tab === "learning" && learningAvailable && LazyLearningView ? (
+          <Suspense fallback={<div className="empty-state">圆圆正在取复习卡…</div>}>
+            <LazyLearningView />
+          </Suspense>
         ) : tab === "history" ? (
           <HistoryView />
         ) : tab === "manage" ? (
@@ -2041,7 +2082,7 @@ function SettingsView({
         >
           {[0.6, 0.8, 1, 1.25, 1.5].map((speed) => (
             <option key={speed} value={speed}>
-              {speed}×
+              {speed}×{speed === 1.25 ? " · 轻快" : ""}
             </option>
           ))}
         </select>
@@ -2291,11 +2332,13 @@ function SettingsView({
         <div className="delete-data-heading">
           <strong id="delete-local-data-title">删除全部本地数据</strong>
           <small>
-            将永久删除提醒、历史、专注记录、设置、备份和日志，然后完全退出。如果没有保存在应用数据目录之外的副本，请不要继续。
+            将永久删除提醒、历史、专注记录、设置、备份、学习数据和日志，然后完全退出。如果没有保存在应用数据目录之外的副本，请不要继续。
           </small>
         </div>
         <label className="delete-data-confirmation" htmlFor={deleteConfirmationId}>
-          <span>输入“{DELETE_ALL_LOCAL_DATA_CONFIRMATION}”以确认</span>
+          <span>
+            输入“{DELETE_ALL_LOCAL_DATA_CONFIRMATION}”以确认
+          </span>
           <input
             id={deleteConfirmationId}
             type="text"
@@ -2346,7 +2389,10 @@ function SettingsView({
             setDeleteWorking(true);
             setDeleteError(null);
             try {
-              await deleteAllLocalDataAndExit(deleteConfirmation, deleteNoRecovery);
+              await deleteAllLocalDataAndExit(
+                deleteConfirmation,
+                deleteNoRecovery,
+              );
             } catch (error) {
               setDeleteError(`删除未启动：${String(error)}`);
               setDeleteWorking(false);
@@ -2357,10 +2403,30 @@ function SettingsView({
         </button>
       </section>
       <div className="settings-actions">
-        <button type="button" onClick={() => void requestSleep()}>
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await requestSleep();
+              onNotice("圆圆已经去睡觉了；右键圆圆可叫醒它。");
+            } catch (error) {
+              onNotice(`圆圆暂时没能睡下：${String(error)}`);
+            }
+          }}
+        >
           让圆圆睡觉
         </button>
-        <button type="button" onClick={() => void requestWake()}>
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await requestWake();
+              onNotice("圆圆醒来了。");
+            } catch (error) {
+              onNotice(`圆圆暂时没能醒来：${String(error)}`);
+            }
+          }}
+        >
           叫醒圆圆
         </button>
         <button
