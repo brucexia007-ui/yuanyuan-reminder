@@ -199,6 +199,9 @@ export async function writeNewUnsignedBetaStage(
 }
 
 async function main() {
+  fail(
+    "v1.4.0 freeze is historical and disabled; use release:unified-candidate:freeze for v1.5",
+  );
   const { confirmedBy } = parseUnsignedBetaFreezeArguments(process.argv.slice(2));
   const startedAt = new Date();
   const sourceBefore = collectUnsignedBetaGitSource();

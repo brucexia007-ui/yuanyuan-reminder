@@ -45,6 +45,9 @@ export async function writeNewUnsignedBetaGithubReport(
 }
 
 async function main() {
+  fail(
+    "v1.4.0 publication capture is historical and disabled; v1.5 requires the unified candidate release flow",
+  );
   try {
     await access(defaultUnsignedBetaGithubReportPath);
     fail("GitHub publication evidence already exists; refusing to overwrite it");
