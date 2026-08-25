@@ -178,8 +178,8 @@ impl AppState {
     }
 
     #[cfg(feature = "learning")]
-    pub fn initialize_learning(&self, path: &std::path::Path) {
-        *self.learning.lock() = LearningRuntime::initialize(path);
+    pub fn configure_learning(&self, path: &std::path::Path) {
+        *self.learning.lock() = LearningRuntime::configured(path);
     }
 
     pub fn runtime_capabilities(&self) -> crate::models::RuntimeCapabilities {

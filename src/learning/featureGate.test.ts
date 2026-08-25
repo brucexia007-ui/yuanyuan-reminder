@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { parseLearningBuildFlag } from "./featureGate";
+import { LEARNING_BUNDLE_MARKER, learningBuildEnabled } from "./featureGate";
 
-describe("learning preview build gate", () => {
-  it("requires the exact explicit opt-in value", () => {
-    expect(parseLearningBuildFlag("1")).toBe(true);
-    for (const value of [undefined, null, "", "0", "true", 1]) {
-      expect(parseLearningBuildFlag(value)).toBe(false);
-    }
+describe("integrated learning build contract", () => {
+  it("keeps learning enabled in the unified product", () => {
+    expect(learningBuildEnabled).toBe(true);
+    expect(LEARNING_BUNDLE_MARKER).toBe("yuanyuan-learning-integrated-ui");
   });
 });

@@ -419,8 +419,7 @@ export async function listToday(): Promise<TodaySnapshot> {
 }
 
 export async function getRuntimeCapabilities(): Promise<RuntimeCapabilities> {
-  const demoLearningAvailable =
-    __YUANYUAN_LEARNING_ENABLED__ && import.meta.env.DEV;
+  const demoLearningAvailable = import.meta.env.DEV;
   return isTauri
     ? invoke<RuntimeCapabilities>("get_runtime_capabilities")
     : {

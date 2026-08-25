@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   findForbiddenArtifactPaths,
   findForbiddenPaths,
+  findForbiddenSourceMarkers,
   findForbiddenTextMarkers,
   isAuditedSourcePath,
   normalizeRepositoryPath,
@@ -43,6 +44,24 @@ test("rejects personal edition markers and user-specific absolute paths in sourc
     "user-absolute-data-path",
   ]);
   assert.deepEqual(findForbiddenTextMarkers("com.yuanyuan.reminder.learning-preview"), []);
+});
+
+test("allows only the exact legacy personal identifier in migration contract files", () => {
+  const identifier = "com.yuanyuan.reminder.learning-personal";
+  assert.deepEqual(
+    findForbiddenSourceMarkers("scripts/sync_unified_product_version.mjs", `"${identifier}"`),
+    [],
+  );
+  assert.deepEqual(
+    findForbiddenSourceMarkers(
+      "scripts/sync_unified_product_version.mjs",
+      `"${identifier}"; const target = "learning-personal-candidate";`,
+    ),
+    ["learning-personal"],
+  );
+  assert.deepEqual(findForbiddenSourceMarkers("src/runtime.ts", `"${identifier}"`), [
+    "learning-personal",
+  ]);
 });
 
 test("keeps policy and documentation references outside source marker scanning", () => {

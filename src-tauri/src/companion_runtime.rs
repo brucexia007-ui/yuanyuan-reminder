@@ -664,6 +664,9 @@ fn try_present_learning_invitation(
     now_unix_ms: i64,
 ) -> AppResult<bool> {
     let state = app.state::<AppState>();
+    if !state.learning.lock().automatic_invitation_state_loaded() {
+        return Ok(false);
+    }
     let local_now = Utc
         .timestamp_millis_opt(now_unix_ms)
         .single()

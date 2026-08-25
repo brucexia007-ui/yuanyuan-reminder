@@ -64,7 +64,10 @@ async function runtimeFindings() {
     path.join(tauriRoot, "tauri.learning-preview.conf.json"),
     ...(await filesUnder(path.join(tauriRoot, "capabilities"))),
   ];
-  return inspectTextFiles([...sourceFiles, ...configFiles], findRuntimeReferences);
+  return inspectTextFiles(
+    [...sourceFiles, ...configFiles].filter((file) => existsSync(file)),
+    findRuntimeReferences,
+  );
 }
 
 async function crateFindings() {

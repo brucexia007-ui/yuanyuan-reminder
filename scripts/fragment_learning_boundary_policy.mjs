@@ -99,6 +99,22 @@ export function findForbiddenTextMarkers(text) {
   return findings;
 }
 
+const LEGACY_MIGRATION_IDENTIFIER_PATHS = new Set([
+  "product-version.json",
+  "scripts/sync_unified_product_version.mjs",
+  "scripts/sync_unified_product_version.node-test.mjs",
+  "scripts/verify_unified_product_boundary.mjs",
+  "scripts/verify_unified_product_boundary.node-test.mjs",
+]);
+
+export function findForbiddenSourceMarkers(path, text) {
+  const normalized = normalizeRepositoryPath(path);
+  const auditedText = LEGACY_MIGRATION_IDENTIFIER_PATHS.has(normalized)
+    ? String(text).replaceAll("com.yuanyuan.reminder.learning-personal", "")
+    : text;
+  return findForbiddenTextMarkers(auditedText);
+}
+
 export function isTextFile(path) {
   const normalized = normalizeRepositoryPath(path).toLowerCase();
   const dot = normalized.lastIndexOf(".");

@@ -77,41 +77,19 @@ use tauri_plugin_autostart::MacosLauncher;
 
 use crate::{error::AppResult, repository::Repository, state::AppState};
 
-#[cfg(all(feature = "learning", not(feature = "runtime-qa")))]
-const LEARNING_EDITION_IDENTIFIER: &str = "com.yuanyuan.reminder.learning-preview";
-
-#[cfg(all(feature = "learning", not(feature = "runtime-qa")))]
-fn isolate_learning_edition_context<R: tauri::Runtime>(context: &mut tauri::Context<R>) {
-    // The CLI config controls installer metadata, but the runtime context must also
-    // carry the preview identity so single-instance state and local data cannot
-    // collide with the stable application.
-    context.config_mut().identifier = LEARNING_EDITION_IDENTIFIER.into();
-}
-
-#[cfg(all(test, feature = "learning", not(feature = "runtime-qa")))]
-mod learning_preview_context_tests {
+#[cfg(all(test, not(feature = "runtime-qa")))]
+mod unified_product_context_tests {
     #[test]
-    fn learning_runtime_identity_is_isolated_from_stable() {
-        let mut context: tauri::Context<tauri::Wry> = tauri::generate_context!();
-        super::isolate_learning_edition_context(&mut context);
-
-        assert_eq!(
-            context.config().identifier,
-            super::LEARNING_EDITION_IDENTIFIER
-        );
-        assert_ne!(context.config().identifier, "com.yuanyuan.reminder");
+    fn default_runtime_uses_the_single_product_identity() {
+        let context: tauri::Context<tauri::Wry> = tauri::generate_context!();
+        assert_eq!(context.config().product_name.as_deref(), Some("圆圆提醒"));
+        assert_eq!(context.config().identifier, "com.yuanyuan.reminder");
     }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let context = tauri::generate_context!();
-    #[cfg(all(feature = "learning", not(feature = "runtime-qa")))]
-    let context = {
-        let mut context = context;
-        isolate_learning_edition_context(&mut context);
-        context
-    };
     #[cfg(feature = "runtime-qa")]
     let context = {
         let mut context = context;
@@ -316,7 +294,7 @@ fn prepare_app_state(identifier: &str) -> AppResult<AppState> {
     #[cfg(feature = "learning")]
     {
         let learning_data_dir = app_data.join("learning-data");
-        app_state.initialize_learning(&learning_data_dir.join("yuanyuan-learning.sqlite3"));
+        app_state.configure_learning(&learning_data_dir.join("yuanyuan-learning.sqlite3"));
     }
     Ok(app_state)
 }

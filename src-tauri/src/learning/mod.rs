@@ -59,6 +59,7 @@ struct PendingLearningInvitation {
 pub struct LearningRuntime {
     repository: Option<repository::LearningRepository>,
     database_path: Option<PathBuf>,
+    initialization_failed: bool,
     pending_imports: BTreeMap<String, PendingImportPreview>,
     pending_invitation: Option<PendingLearningInvitation>,
 }
@@ -68,6 +69,7 @@ impl Default for LearningRuntime {
         Self {
             repository: None,
             database_path: None,
+            initialization_failed: false,
             pending_imports: BTreeMap::new(),
             pending_invitation: None,
         }
@@ -75,11 +77,22 @@ impl Default for LearningRuntime {
 }
 
 impl LearningRuntime {
+    pub fn configured(path: &Path) -> Self {
+        if path.exists() {
+            return Self::initialize(path);
+        }
+        Self {
+            database_path: Some(path.to_path_buf()),
+            ..Self::default()
+        }
+    }
+
     pub fn initialize(path: &Path) -> Self {
         match repository::LearningRepository::open(path) {
             Ok(repository) => Self {
                 repository: Some(repository),
                 database_path: Some(path.to_path_buf()),
+                initialization_failed: false,
                 pending_imports: BTreeMap::new(),
                 pending_invitation: None,
             },
@@ -87,20 +100,55 @@ impl LearningRuntime {
                 tracing::warn!("learning database is unavailable; learning remains disabled");
                 Self {
                     database_path: Some(path.to_path_buf()),
+                    initialization_failed: true,
                     ..Self::default()
                 }
             }
         }
     }
 
+    fn ensure_repository(&mut self) -> AppResult<&mut repository::LearningRepository> {
+        if self.repository.is_none() {
+            let path = self.database_path.clone().ok_or_else(|| {
+                AppError::Validation("learning database path is unavailable".into())
+            })?;
+            match repository::LearningRepository::open(&path) {
+                Ok(repository) => {
+                    self.repository = Some(repository);
+                    self.initialization_failed = false;
+                }
+                Err(error) => {
+                    self.initialization_failed = true;
+                    tracing::warn!(error = %error, "learning database activation failed");
+                    return Err(error);
+                }
+            }
+        }
+        Ok(self
+            .repository
+            .as_mut()
+            .expect("learning repository must exist after successful activation"))
+    }
+
+    pub fn automatic_invitation_state_loaded(&self) -> bool {
+        self.repository.is_some()
+    }
+
     pub fn capabilities(&self) -> LearningCapabilities {
         let Some(repository) = self.repository.as_ref() else {
+            let configured = self.database_path.is_some();
             return LearningCapabilities {
                 compiled: true,
-                available: false,
+                available: configured && !self.initialization_failed,
                 content_pack_ready: false,
                 auto_invitation_available: false,
-                failure_reason: Some("database".into()),
+                failure_reason: if self.initialization_failed {
+                    Some("database".into())
+                } else if configured {
+                    None
+                } else {
+                    Some("not_configured".into())
+                },
             };
         };
         match repository.has_ready_content() {
@@ -126,11 +174,12 @@ impl LearningRuntime {
         bytes: &[u8],
         now_unix_ms: i64,
     ) -> AppResult<LearningImportPreview> {
-        if self.repository.is_none() || now_unix_ms < 0 {
+        if now_unix_ms < 0 {
             return Err(AppError::Validation(
                 "learning import is unavailable".into(),
             ));
         }
+        self.ensure_repository()?;
         self.pending_imports
             .retain(|_, pending| pending.expires_at_unix_ms > now_unix_ms);
         if self.pending_imports.len() >= MAX_PENDING_IMPORT_PREVIEWS {
@@ -212,11 +261,12 @@ impl LearningRuntime {
         bytes: &[u8],
         now_unix_ms: i64,
     ) -> AppResult<LearningImportPreview> {
-        if self.repository.is_none() || now_unix_ms < 0 {
+        if now_unix_ms < 0 {
             return Err(AppError::Validation(
                 "learning import is unavailable".into(),
             ));
         }
+        self.ensure_repository()?;
         self.pending_imports
             .retain(|_, pending| pending.expires_at_unix_ms > now_unix_ms);
         if self.pending_imports.len() >= MAX_PENDING_IMPORT_PREVIEWS {
@@ -269,10 +319,7 @@ impl LearningRuntime {
         let pending = self.pending_imports.remove(preview_token).ok_or_else(|| {
             AppError::Validation("learning import preview is invalid or expired".into())
         })?;
-        let repository = self
-            .repository
-            .as_mut()
-            .ok_or_else(|| AppError::Validation("learning import is unavailable".into()))?;
+        let repository = self.ensure_repository()?;
         match pending.import {
             PendingLearningImport::Csv(import) => {
                 repository.commit_user_import(&import, now_unix_ms)
@@ -288,24 +335,16 @@ impl LearningRuntime {
         format: LearningExportFormat,
         now_unix_ms: i64,
     ) -> AppResult<repository::portability::LearningExportPayload> {
-        self.repository
-            .as_mut()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
+        self.ensure_repository()?
             .export_payload(format, now_unix_ms)
     }
 
     pub fn mark_export_succeeded(&mut self, now_unix_ms: i64) -> AppResult<()> {
-        self.repository
-            .as_mut()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
-            .mark_export_succeeded(now_unix_ms)
+        self.ensure_repository()?.mark_export_succeeded(now_unix_ms)
     }
 
-    pub fn data_summary(&self) -> AppResult<LearningDataSummary> {
-        self.repository
-            .as_ref()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
-            .data_summary()
+    pub fn data_summary(&mut self) -> AppResult<LearningDataSummary> {
+        self.ensure_repository()?.data_summary()
     }
 
     pub fn delete_data(
@@ -323,9 +362,7 @@ impl LearningRuntime {
         self.pending_invitation = None;
         match scope {
             LearningDeleteScope::ProgressOnly => self
-                .repository
-                .as_mut()
-                .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
+                .ensure_repository()?
                 .clear_learning_progress(now_unix_ms),
             LearningDeleteScope::AllLearningData => {
                 let review_count = self.data_summary()?.review_count;
@@ -359,11 +396,7 @@ impl LearningRuntime {
     }
 
     pub fn home(&mut self, now_unix_ms: i64) -> AppResult<LearningHomeSnapshot> {
-        let mut home = self
-            .repository
-            .as_mut()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
-            .learning_home(now_unix_ms)?;
+        let mut home = self.ensure_repository()?.learning_home(now_unix_ms)?;
         home.capabilities = self.capabilities();
         Ok(home)
     }
@@ -373,9 +406,7 @@ impl LearningRuntime {
         patch: LearningSettingsPatch,
         now_unix_ms: i64,
     ) -> AppResult<LearningSettings> {
-        self.repository
-            .as_mut()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
+        self.ensure_repository()?
             .update_learning_settings(patch, now_unix_ms)
     }
 
@@ -386,52 +417,42 @@ impl LearningRuntime {
         source_session_id: Option<&str>,
         now_unix_ms: i64,
     ) -> AppResult<LearningSessionSnapshot> {
-        self.repository
-            .as_mut()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
-            .create_manual_session_scoped(card_count, session_kind, source_session_id, now_unix_ms)
+        self.ensure_repository()?.create_manual_session_scoped(
+            card_count,
+            session_kind,
+            source_session_id,
+            now_unix_ms,
+        )
     }
 
-    pub fn dashboard(&self, now_unix_ms: i64) -> AppResult<LearningDashboardSnapshot> {
-        self.repository
-            .as_ref()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
-            .learning_dashboard(now_unix_ms)
+    pub fn dashboard(&mut self, now_unix_ms: i64) -> AppResult<LearningDashboardSnapshot> {
+        self.ensure_repository()?.learning_dashboard(now_unix_ms)
     }
 
-    pub fn current_card(&self, session_id: &str) -> AppResult<LearningCardDto> {
-        self.repository
-            .as_ref()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
-            .current_learning_card(session_id)
+    pub fn current_card(&mut self, session_id: &str) -> AppResult<LearningCardDto> {
+        self.ensure_repository()?.current_learning_card(session_id)
     }
 
-    pub fn current_question(&self, session_id: &str) -> AppResult<LearningQuestionDto> {
-        self.repository
-            .as_ref()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
+    pub fn current_question(&mut self, session_id: &str) -> AppResult<LearningQuestionDto> {
+        self.ensure_repository()?
             .current_learning_question(session_id)
     }
 
     pub fn session_summary(
-        &self,
+        &mut self,
         session_id: &str,
         now_unix_ms: i64,
     ) -> AppResult<LearningSessionSummary> {
-        self.repository
-            .as_ref()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
+        self.ensure_repository()?
             .learning_session_summary(session_id, now_unix_ms)
     }
 
     pub fn completed_session(
-        &self,
+        &mut self,
         session_id: &str,
         expected_revision: u64,
     ) -> AppResult<LearningSessionSnapshot> {
-        self.repository
-            .as_ref()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
+        self.ensure_repository()?
             .completed_learning_session(session_id, expected_revision)
     }
 
@@ -444,29 +465,24 @@ impl LearningRuntime {
         response_ms: Option<u32>,
         now_unix_ms: i64,
     ) -> AppResult<LearningAnswerResult> {
-        self.repository
-            .as_mut()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
-            .answer_learning_question(
-                session_id,
-                question_id,
-                selected_option_id,
-                client_answer_id,
-                response_ms,
-                now_unix_ms,
-            )
+        self.ensure_repository()?.answer_learning_question(
+            session_id,
+            question_id,
+            selected_option_id,
+            client_answer_id,
+            response_ms,
+            now_unix_ms,
+        )
     }
 
     pub fn list_records(
-        &self,
+        &mut self,
         filter: LearningRecordFilter,
         query: &str,
         page: u32,
         page_size: u8,
     ) -> AppResult<LearningRecordPage> {
-        self.repository
-            .as_ref()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
+        self.ensure_repository()?
             .list_learning_records(filter, query, page, page_size)
     }
 
@@ -478,16 +494,13 @@ impl LearningRuntime {
         expected_revision: u64,
         now_unix_ms: i64,
     ) -> AppResult<LearningRateResult> {
-        self.repository
-            .as_mut()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
-            .rate_learning_card_with_revision(
-                session_id,
-                card_id,
-                rating,
-                expected_revision,
-                now_unix_ms,
-            )
+        self.ensure_repository()?.rate_learning_card_with_revision(
+            session_id,
+            card_id,
+            rating,
+            expected_revision,
+            now_unix_ms,
+        )
     }
 
     pub fn present_session(
@@ -496,10 +509,11 @@ impl LearningRuntime {
         expected_revision: u64,
         now_unix_ms: i64,
     ) -> AppResult<LearningSessionSnapshot> {
-        self.repository
-            .as_mut()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
-            .present_learning_session(session_id, expected_revision, now_unix_ms)
+        self.ensure_repository()?.present_learning_session(
+            session_id,
+            expected_revision,
+            now_unix_ms,
+        )
     }
 
     pub fn pause_session(
@@ -509,10 +523,12 @@ impl LearningRuntime {
         reason: &str,
         now_unix_ms: i64,
     ) -> AppResult<LearningSessionSnapshot> {
-        self.repository
-            .as_mut()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
-            .pause_learning_session(session_id, expected_revision, reason, now_unix_ms)
+        self.ensure_repository()?.pause_learning_session(
+            session_id,
+            expected_revision,
+            reason,
+            now_unix_ms,
+        )
     }
 
     pub fn resume_session(
@@ -531,19 +547,19 @@ impl LearningRuntime {
         reason: &str,
         now_unix_ms: i64,
     ) -> AppResult<LearningSessionSnapshot> {
-        self.repository
-            .as_mut()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
-            .abandon_learning_session(session_id, expected_revision, reason, now_unix_ms)
+        self.ensure_repository()?.abandon_learning_session(
+            session_id,
+            expected_revision,
+            reason,
+            now_unix_ms,
+        )
     }
 
     pub fn resumable_session(
         &mut self,
         now_unix_ms: i64,
     ) -> AppResult<Option<LearningSessionSnapshot>> {
-        self.repository
-            .as_mut()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
+        self.ensure_repository()?
             .get_resumable_learning_session(now_unix_ms)
     }
 
@@ -554,9 +570,7 @@ impl LearningRuntime {
         exit_reason: &str,
         now_unix_ms: i64,
     ) -> AppResult<LearningSessionSnapshot> {
-        self.repository
-            .as_mut()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
+        self.ensure_repository()?
             .finish_learning_session(session_id, exit_reason, now_unix_ms)
     }
 
@@ -617,10 +631,13 @@ impl LearningRuntime {
         reason: Option<LearningSuppressionReason>,
         now_unix_ms: i64,
     ) -> AppResult<()> {
-        self.repository
-            .as_mut()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
-            .record_invitation_event(invitation_id, trigger_source, stage, reason, now_unix_ms)
+        self.ensure_repository()?.record_invitation_event(
+            invitation_id,
+            trigger_source,
+            stage,
+            reason,
+            now_unix_ms,
+        )
     }
 
     pub fn begin_invitation(
@@ -707,10 +724,7 @@ impl LearningRuntime {
                 "learning invitation is invalid or expired".into(),
             ));
         }
-        let repository = self
-            .repository
-            .as_mut()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?;
+        let repository = self.ensure_repository()?;
         let result =
             repository.start_invitation_session(invitation_id, pending.trigger_source, now_unix_ms);
         if result.is_err() {
@@ -724,9 +738,7 @@ impl LearningRuntime {
         local_day: &str,
         now_unix_ms: i64,
     ) -> AppResult<LearningSettings> {
-        self.repository
-            .as_mut()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
+        self.ensure_repository()?
             .pause_invitations_for_day(local_day, now_unix_ms)
     }
 
@@ -746,9 +758,7 @@ impl LearningRuntime {
         &mut self,
         now_unix_ms: i64,
     ) -> AppResult<Option<LearningSessionSnapshot>> {
-        self.repository
-            .as_mut()
-            .ok_or_else(|| AppError::Validation("learning is unavailable".into()))?
+        self.ensure_repository()?
             .interrupt_active_session(now_unix_ms)
     }
 }
@@ -766,6 +776,65 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+
+    #[test]
+    fn configured_runtime_defers_database_creation_until_first_learning_use() {
+        let directory = tempdir().unwrap();
+        let path = directory
+            .path()
+            .join("learning-data")
+            .join("learning.sqlite3");
+        let mut runtime = LearningRuntime::configured(&path);
+
+        assert!(!path.exists());
+        assert!(!path.parent().unwrap().exists());
+        assert!(!runtime.automatic_invitation_state_loaded());
+        assert_eq!(
+            runtime.capabilities(),
+            LearningCapabilities {
+                compiled: true,
+                available: true,
+                content_pack_ready: false,
+                auto_invitation_available: false,
+                failure_reason: None,
+            }
+        );
+
+        let home = runtime.home(1_000).unwrap();
+        assert!(path.exists());
+        assert!(runtime.automatic_invitation_state_loaded());
+        assert!(home.capabilities.available);
+        assert!(!home.capabilities.content_pack_ready);
+        assert!(!home.capabilities.auto_invitation_available);
+        assert_eq!(home.settings.mode, models::LearningMode::ManualOnly);
+    }
+
+    #[test]
+    fn configured_runtime_opens_existing_database_without_changing_identity() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("learning.sqlite3");
+        drop(LearningRuntime::initialize(&path));
+
+        let runtime = LearningRuntime::configured(&path);
+
+        assert!(runtime.automatic_invitation_state_loaded());
+        assert!(runtime.capabilities().available);
+    }
+
+    #[test]
+    fn corrupt_existing_database_fails_learning_closed() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("learning.sqlite3");
+        std::fs::write(&path, b"not a sqlite database").unwrap();
+
+        let runtime = LearningRuntime::configured(&path);
+
+        assert!(!runtime.automatic_invitation_state_loaded());
+        assert_eq!(
+            runtime.capabilities().failure_reason.as_deref(),
+            Some("database")
+        );
+    }
 
     #[test]
     fn runtime_becomes_available_without_claiming_content_or_auto_invites() {

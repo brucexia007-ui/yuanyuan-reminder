@@ -8,6 +8,7 @@ import type { AppSettings, TodaySnapshot } from "../types";
 
 const backend = vi.hoisted(() => ({
   listToday: vi.fn(),
+  getRuntimeCapabilities: vi.fn(),
   getSettings: vi.fn(),
   getFocusState: vi.fn(),
   getPetCare: vi.fn(),
@@ -184,6 +185,16 @@ describe("TaskPanel complete reminder workflows", () => {
       notificationAvailable: true,
     };
     backend.listToday.mockImplementation(async () => structuredClone(snapshot));
+    backend.getRuntimeCapabilities.mockResolvedValue({
+      schemaVersion: 1,
+      learning: {
+        compiled: true,
+        available: false,
+        contentPackReady: false,
+        autoInvitationAvailable: false,
+        failureReason: "database",
+      },
+    });
     backend.getSettings.mockResolvedValue(structuredClone(settings));
     backend.getFocusState.mockResolvedValue({ session: null });
     backend.getBasicSupportState.mockResolvedValue(null);

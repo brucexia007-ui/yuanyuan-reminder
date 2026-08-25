@@ -17,7 +17,7 @@ name = "yuanyuan_reminder_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
-default = []
+default = ["learning"]
 learning = ["dep:csv", "dep:fsrs", "dep:unicode-normalization"]
 runtime-qa = ["rusqlite/hooks"]
 migration-qa = []

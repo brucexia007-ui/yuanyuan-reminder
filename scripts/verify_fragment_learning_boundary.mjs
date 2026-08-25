@@ -7,6 +7,7 @@ import {
   FORBIDDEN_PATH_RULES,
   findForbiddenArtifactPaths,
   findForbiddenPaths,
+  findForbiddenSourceMarkers,
   findForbiddenTextMarkers,
   isAuditedSourcePath,
   isTextFile,
@@ -84,7 +85,7 @@ function branchAudit() {
     for (const path of changedPaths.filter(isAuditedSourcePath).filter(isTextFile)) {
       const blob = runGit(["show", `${commit}:${path}`], { allowFailure: true });
       if (blob.status !== 0) continue;
-      for (const marker of findForbiddenTextMarkers(blob.stdout)) {
+      for (const marker of findForbiddenSourceMarkers(path, blob.stdout)) {
         findings.push({ path, rule: `source-marker:${marker}`, commit });
       }
     }
@@ -98,7 +99,7 @@ function sourceFindings(paths) {
     const absolutePath = join(repositoryRoot, path);
     if (!existsSync(absolutePath) || statSync(absolutePath).size > 16 * 1024 * 1024) continue;
     const text = readFileSync(absolutePath, "utf8");
-    for (const marker of findForbiddenTextMarkers(text)) {
+    for (const marker of findForbiddenSourceMarkers(path, text)) {
       findings.push({ path, rule: `source-marker:${marker}` });
     }
   }

@@ -28,15 +28,15 @@ import {
 } from "./backend";
 
 describe("浏览器演示后端", () => {
-  it("默认能力快照不会伪造学习能力", async () => {
+  it("统一产品的浏览器演示提供通用学习能力但不启用自动邀请", async () => {
     expect(await getRuntimeCapabilities()).toEqual({
       schemaVersion: 1,
       learning: {
-        compiled: false,
-        available: false,
-        contentPackReady: false,
+        compiled: true,
+        available: true,
+        contentPackReady: true,
         autoInvitationAvailable: false,
-        failureReason: "disabled",
+        failureReason: null,
       },
     });
   });
