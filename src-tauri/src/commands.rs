@@ -1173,6 +1173,15 @@ pub fn set_click_through_inner(app: &AppHandle, enabled: bool) -> AppResult<()> 
         .map_err(|error| AppError::Window(error.to_string()))
 }
 
+pub fn set_learning_quick_start_visible_inner(app: &AppHandle, visible: bool) -> AppResult<()> {
+    let state = app.state::<AppState>();
+    let mut settings = state.repository.lock().get_settings()?;
+    settings.learning_quick_start_visible = visible;
+    state.repository.lock().save_settings(&settings)?;
+    app.emit("settings-updated", &settings)
+        .map_err(|error| AppError::Window(error.to_string()))
+}
+
 #[tauri::command]
 pub fn request_sleep(app: AppHandle) -> AppResult<()> {
     request_sleep_inner(&app)

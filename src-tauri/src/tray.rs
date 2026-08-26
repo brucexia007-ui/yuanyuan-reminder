@@ -110,6 +110,16 @@ pub fn handle_menu_event(app: &AppHandle, id: &str) {
                 .unwrap_or(false);
             let _ = commands::set_click_through_inner(app, !current);
         }
+        "pet-learning-quick-start-visible" => {
+            let current = app
+                .state::<crate::state::AppState>()
+                .repository
+                .lock()
+                .get_settings()
+                .map(|settings| settings.learning_quick_start_visible)
+                .unwrap_or(true);
+            let _ = commands::set_learning_quick_start_visible_inner(app, !current);
+        }
         "pet-sleep" => {
             let _ = handle_pet_sleep_menu_event(app);
         }

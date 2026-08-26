@@ -9,6 +9,8 @@ use crate::{
     state::AppState,
 };
 
+pub const PET_LEARNING_QUICK_START_LABEL: &str = "显示课程快捷按键";
+
 const PET_SLEEP_TOGGLE_LABEL: &str = "立即睡觉/叫醒圆圆";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -248,6 +250,15 @@ pub fn show_pet_context_menu(app: &AppHandle) -> AppResult<()> {
         None::<&str>,
     )
     .map_err(|error| AppError::Window(error.to_string()))?;
+    let learning_quick_start = CheckMenuItem::with_id(
+        app,
+        "pet-learning-quick-start-visible",
+        PET_LEARNING_QUICK_START_LABEL,
+        true,
+        settings.learning_quick_start_visible,
+        None::<&str>,
+    )
+    .map_err(|error| AppError::Window(error.to_string()))?;
     let settings_item = MenuItem::with_id(app, "pet-settings", "设置", true, None::<&str>)
         .map_err(|error| AppError::Window(error.to_string()))?;
     let hide = MenuItem::with_id(app, "pet-hide", "隐藏圆圆", true, None::<&str>)
@@ -268,6 +279,7 @@ pub fn show_pet_context_menu(app: &AppHandle) -> AppResult<()> {
             &separator,
             &always,
             &click_through,
+            &learning_quick_start,
             &settings_item,
             &hide,
             &quit,
@@ -281,8 +293,14 @@ pub fn show_pet_context_menu(app: &AppHandle) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        logical_size_in_physical, visible_position, DisplayBounds, PET_SLEEP_TOGGLE_LABEL,
+        logical_size_in_physical, visible_position, DisplayBounds, PET_LEARNING_QUICK_START_LABEL,
+        PET_SLEEP_TOGGLE_LABEL,
     };
+
+    #[test]
+    fn learning_quick_start_menu_uses_a_clear_visibility_label() {
+        assert_eq!(PET_LEARNING_QUICK_START_LABEL, "显示课程快捷按键");
+    }
 
     #[test]
     fn sleep_toggle_menu_uses_one_unambiguous_label() {

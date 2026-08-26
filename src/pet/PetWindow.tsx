@@ -115,6 +115,7 @@ const defaultSettings: AppSettings = {
   cursorFollow: true,
   alwaysOnTop: true,
   clickThrough: false,
+  learningQuickStartVisible: true,
   petWidth: 192,
   quietStart: "23:00",
   quietEnd: "07:30",
@@ -2168,6 +2169,7 @@ export function PetWindow() {
           </button>
         )}
         {learningBuildEnabled &&
+          settings.learningQuickStartVisible &&
           !desktopLearningActive &&
           !strongAlertActive &&
           !activeIntent &&

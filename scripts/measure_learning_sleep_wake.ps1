@@ -34,6 +34,10 @@ $sleepMenuName = -join @(
     [char]0x2F,
     [char]0x53EB, [char]0x9192, [char]0x5706, [char]0x5706
 )
+$learningQuickStartMenuName = -join @(
+    [char]0x663E, [char]0x793A, [char]0x8BFE, [char]0x7A0B,
+    [char]0x5FEB, [char]0x6377, [char]0x6309, [char]0x952E
+)
 $sleepStatusName = -join @(
     [char]0x5706, [char]0x5706, [char]0x6B63, [char]0x5728,
     [char]0x7761, [char]0x89C9
@@ -352,8 +356,12 @@ function Open-PetContextMenu(
     [System.IO.File]::WriteAllBytes($trigger, [byte[]]@())
     $menu = Wait-NativeMenuWindow $Process 5
     $items = @([YuanyuanLearningSleepWindowProbe]::MenuItems($menu))
-    if ($items.Count -lt 5 -or $items[4] -ne $sleepMenuName) {
-        throw "native context menu does not expose the expected sleep/wake item at the frozen position"
+    if (
+        $items.Count -lt 9 -or
+        $items[4] -ne $sleepMenuName -or
+        $items[8] -ne $learningQuickStartMenuName
+    ) {
+        throw "native context menu does not expose the expected sleep/wake and course shortcut items at their frozen positions"
     }
     return [pscustomobject]@{
         handle = $menu

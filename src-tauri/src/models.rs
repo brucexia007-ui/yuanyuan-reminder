@@ -150,6 +150,7 @@ pub struct AppSettings {
     pub cursor_follow: bool,
     pub always_on_top: bool,
     pub click_through: bool,
+    pub learning_quick_start_visible: bool,
     pub pet_width: u32,
     pub pet_x: Option<i32>,
     pub pet_y: Option<i32>,
@@ -179,6 +180,7 @@ impl Default for AppSettings {
             cursor_follow: true,
             always_on_top: true,
             click_through: false,
+            learning_quick_start_visible: true,
             pet_width: 192,
             pet_x: None,
             pet_y: None,
@@ -292,6 +294,7 @@ mod tests {
         assert_eq!(settings.animation_mode, "off");
         assert_eq!(settings.companion_intensity, "everyday");
         assert_eq!(settings.companion_label_mode, "adaptive");
+        assert!(settings.learning_quick_start_visible);
         assert!(settings.activity_enabled);
         assert_eq!(settings.activity_start, "09:00");
         assert_eq!(settings.activity_end, "18:00");

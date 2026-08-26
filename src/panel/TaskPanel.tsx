@@ -100,6 +100,7 @@ const fallbackSettings: AppSettings = {
   cursorFollow: true,
   alwaysOnTop: true,
   clickThrough: false,
+  learningQuickStartVisible: true,
   petWidth: 192,
   quietStart: "23:00",
   quietEnd: "07:30",

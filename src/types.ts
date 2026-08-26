@@ -372,6 +372,7 @@ export interface AppSettings {
   cursorFollow: boolean;
   alwaysOnTop: boolean;
   clickThrough: boolean;
+  learningQuickStartVisible: boolean;
   petWidth: number;
   petX?: number | null;
   petY?: number | null;

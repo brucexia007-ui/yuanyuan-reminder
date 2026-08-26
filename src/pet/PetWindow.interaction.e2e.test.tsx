@@ -57,6 +57,7 @@ const settings: AppSettings = {
   cursorFollow: true,
   alwaysOnTop: true,
   clickThrough: false,
+  learningQuickStartVisible: true,
   petWidth: 192,
   quietStart: "23:00",
   quietEnd: "07:30",
@@ -163,6 +164,31 @@ describe("PetWindow interaction bubble E2E", () => {
     await act(async () => root.unmount());
     container.remove();
     vi.clearAllMocks();
+  });
+
+  it("immediately follows the persisted course shortcut visibility setting", async () => {
+    const quickStart = () =>
+      container.querySelector<HTMLButtonElement>(
+        'button[aria-label="不用打开菜单，直接开始英语复习"]',
+      );
+
+    expect(quickStart()).not.toBeNull();
+
+    await act(async () => {
+      handlers.get("settings-updated")?.({
+        ...settings,
+        learningQuickStartVisible: false,
+      });
+    });
+    expect(quickStart()).toBeNull();
+
+    await act(async () => {
+      handlers.get("settings-updated")?.({
+        ...settings,
+        learningQuickStartVisible: true,
+      });
+    });
+    expect(quickStart()).not.toBeNull();
   });
 
   it("keeps every interaction hint in its face-safe dock while replacing controls", async () => {

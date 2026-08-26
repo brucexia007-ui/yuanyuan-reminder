@@ -2280,6 +2280,42 @@ mod tests {
     }
 
     #[test]
+    fn learning_quick_start_visibility_is_persisted() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-learning-quick-start-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let repository = Repository::open(&path).unwrap();
+
+        assert!(
+            repository
+                .get_settings()
+                .unwrap()
+                .learning_quick_start_visible
+        );
+        let updated = repository
+            .update_settings(serde_json::json!({
+                "learningQuickStartVisible": false
+            }))
+            .unwrap();
+        assert!(!updated.learning_quick_start_visible);
+
+        drop(repository);
+        let reopened = Repository::open(&path).unwrap();
+        assert!(
+            !reopened
+                .get_settings()
+                .unwrap()
+                .learning_quick_start_visible
+        );
+
+        drop(reopened);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
     fn focus_session_replaces_and_cancels_the_active_timer() {
         let path = std::env::temp_dir().join(format!(
             "yuanyuan-reminder-focus-{}.sqlite3",
