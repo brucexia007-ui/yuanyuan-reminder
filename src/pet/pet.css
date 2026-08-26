@@ -226,6 +226,15 @@
   background: rgb(248 244 237 / 97%);
 }
 
+.pet-system-card.tool-card {
+  top: auto;
+  bottom: 6px;
+}
+
+.pet-system-card.tool-card.ball-card {
+  bottom: 63px;
+}
+
 .pet-system-card.alert-banner,
 .pet-system-card.alert-banner:hover,
 .pet-system-card.alert-banner:focus-visible {

@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -19,8 +21,10 @@ import {
   getSettings,
   getTaskWatchSnapshot,
   listToday,
+  onBackendEvent,
   previewAiDiagnostics,
   previewConnectorTrustChange,
+  startPetInteraction,
   updateSettings,
   retryAiAfterFailure,
   resumeTaskWatchAttention,
@@ -66,6 +70,21 @@ describe("浏览器演示后端", () => {
   it("设置修改在演示会话内保持有效", async () => {
     await updateSettings({ activityIntervalMinutes: 45 });
     expect((await getSettings()).activityIntervalMinutes).toBe(45);
+  });
+
+  it("浏览器演示把面板互动事件送到桌宠监听器", async () => {
+    const received: Array<{ id: string; kind: string }> = [];
+    const unlisten = await onBackendEvent<{ id: string; kind: string }>(
+      "pet-interaction-started",
+      (payload) => received.push(payload),
+    );
+
+    await startPetInteraction("treat");
+
+    expect(received).toHaveLength(1);
+    expect(received[0]?.kind).toBe("treat");
+    expect(received[0]?.id).toMatch(/^[0-9a-f-]{36}$/i);
+    unlisten();
   });
 
   it("浏览器演示不会伪造全部本地数据已删除", async () => {

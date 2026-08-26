@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AppSettings,
   BackupInfo,
@@ -23,6 +23,50 @@ import type {
 
 const isTauri =
   typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+const DEMO_BACKEND_EVENT_TYPE = "yuanyuan-demo-backend-event-v1";
+const DEMO_BACKEND_CHANNEL = "yuanyuan-demo-backend-channel-v1";
+const demoBackendOrigin =
+  typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `demo-${Date.now()}-${Math.random()}`;
+
+interface DemoBackendEventEnvelope {
+  origin: string;
+  event: string;
+  payload: unknown;
+}
+
+function isDemoBackendEventEnvelope(
+  value: unknown,
+): value is DemoBackendEventEnvelope {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<DemoBackendEventEnvelope>;
+  return (
+    typeof candidate.origin === "string" &&
+    typeof candidate.event === "string" &&
+    candidate.event.length > 0 &&
+    candidate.event.length <= 80
+  );
+}
+
+async function emitDemoBackendEvent(event: string, payload?: unknown) {
+  if (typeof window === "undefined") return;
+  const envelope: DemoBackendEventEnvelope = {
+    origin: demoBackendOrigin,
+    event,
+    payload,
+  };
+  window.dispatchEvent(
+    new CustomEvent<DemoBackendEventEnvelope>(DEMO_BACKEND_EVENT_TYPE, {
+      detail: envelope,
+    }),
+  );
+  if (typeof BroadcastChannel === "undefined") return;
+  const channel = new BroadcastChannel(DEMO_BACKEND_CHANNEL);
+  channel.postMessage(envelope);
+  channel.close();
+}
 
 export type AiSupervisorStatus =
   | "unavailable"
@@ -957,7 +1001,7 @@ export async function startPetInteraction(
     [kind]: demoCare[kind] + 1,
     lastInteractionAt: new Date().toISOString(),
   };
-  await emit("pet-interaction-started", {
+  await emitDemoBackendEvent("pet-interaction-started", {
     id: crypto.randomUUID(),
     kind,
   });
@@ -1155,12 +1199,12 @@ export async function setClickThrough(enabled: boolean): Promise<void> {
 
 export async function requestSleep(): Promise<void> {
   if (isTauri) await invoke("request_sleep");
-  else await emit("pet-request-sleep", { source: "manual" });
+  else await emitDemoBackendEvent("pet-request-sleep", { source: "manual" });
 }
 
 export async function requestWake(): Promise<void> {
   if (isTauri) await invoke("request_wake");
-  else await emit("pet-request-wake");
+  else await emitDemoBackendEvent("pet-request-wake");
 }
 
 export async function pauseReminders(minutes: number): Promise<void> {
@@ -1175,8 +1219,37 @@ export async function onBackendEvent<T>(
   event: string,
   callback: (payload: T) => void,
 ): Promise<UnlistenFn> {
-  if (!isTauri) return () => {};
-  return listen<T>(event, ({ payload }) => callback(payload));
+  if (isTauri) return listen<T>(event, ({ payload }) => callback(payload));
+  if (typeof window === "undefined") return () => {};
+
+  const forward = (envelope: DemoBackendEventEnvelope) => {
+    if (envelope.event === event) callback(envelope.payload as T);
+  };
+  const handleWindowEvent = (rawEvent: Event) => {
+    const envelope = (rawEvent as CustomEvent<unknown>).detail;
+    if (isDemoBackendEventEnvelope(envelope)) forward(envelope);
+  };
+  window.addEventListener(DEMO_BACKEND_EVENT_TYPE, handleWindowEvent);
+
+  const channel =
+    typeof BroadcastChannel === "undefined"
+      ? null
+      : new BroadcastChannel(DEMO_BACKEND_CHANNEL);
+  if (channel) {
+    channel.onmessage = ({ data }: MessageEvent<unknown>) => {
+      if (
+        isDemoBackendEventEnvelope(data) &&
+        data.origin !== demoBackendOrigin
+      ) {
+        forward(data);
+      }
+    };
+  }
+
+  return () => {
+    window.removeEventListener(DEMO_BACKEND_EVENT_TYPE, handleWindowEvent);
+    channel?.close();
+  };
 }
 
 export function tauriAvailable(): boolean {

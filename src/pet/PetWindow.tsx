@@ -2013,11 +2013,15 @@ export function PetWindow() {
         ) : !desktopLearningActive && informationCard ? (
           <button
             className={`pet-system-card ${
-              toolInteraction &&
-              toolInteraction.kind !== "pet" &&
-              toolInteraction.x >= settings.petWidth / 2
-                ? "card-left"
-                : "card-right"
+              informationCard.surface === "tool" ? "tool-card" : ""
+            } ${
+              toolInteraction?.kind === "ball"
+                ? "ball-card card-right"
+                : toolInteraction &&
+                    toolInteraction.kind !== "pet" &&
+                    toolInteraction.x >= settings.petWidth / 2
+                  ? "card-left"
+                  : "card-right"
             }`}
             data-information-surface={informationCard.surface}
             type="button"
