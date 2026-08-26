@@ -52,6 +52,12 @@ npm.cmd run tauri build
 
 For UI changes, inspect the panel and pet at representative Windows scaling values. For pet changes, inspect real animated playback as well as static contact sheets.
 
+## Versioning policy
+
+- Every completed user-visible fix must increment the unified product patch version before reporting completion.
+- Treat `product-version.json` as the version authority, then run `npm.cmd run product:version:sync` so the npm, Cargo, and Tauri manifests remain identical.
+- Keep historical version references in release RFCs and prior evidence unchanged.
+
 ## Repository hygiene
 
 - Do not commit `release/`, `work/`, `dist/`, `node_modules/`, `src-tauri/target/`, logs, original private photos, or failed generations.
