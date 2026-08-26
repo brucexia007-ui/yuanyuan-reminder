@@ -1182,6 +1182,10 @@ export async function showTaskPanel(route = "today"): Promise<void> {
   if (isTauri) await invoke("show_task_panel", { route });
 }
 
+export async function showPetWindow(): Promise<void> {
+  if (isTauri) await invoke("show_pet_window");
+}
+
 export async function hidePetWindow(): Promise<void> {
   if (isTauri) await invoke("hide_pet_window");
 }

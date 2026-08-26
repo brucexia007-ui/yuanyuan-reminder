@@ -223,6 +223,7 @@ pub fn run() {
             commands::get_settings,
             commands::update_settings,
             commands::show_task_panel,
+            commands::show_pet_window,
             commands::hide_pet_window,
             commands::save_pet_position,
             commands::set_pet_size,

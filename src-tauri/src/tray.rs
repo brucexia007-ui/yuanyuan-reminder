@@ -77,9 +77,7 @@ pub fn handle_menu_event(app: &AppHandle, id: &str) {
             let _ = windows::show_task_panel(app, "settings");
         }
         "tray-show-pet" => {
-            if let Some(window) = app.get_webview_window("pet") {
-                let _ = window.show();
-            }
+            let _ = commands::show_pet_window_inner(app);
         }
         "tray-water" | "pet-record-water" => {
             let _ = commands::record_water_inner(app);
@@ -124,9 +122,7 @@ pub fn handle_menu_event(app: &AppHandle, id: &str) {
             let _ = handle_pet_sleep_menu_event(app);
         }
         "pet-hide" => {
-            if let Some(window) = app.get_webview_window("pet") {
-                let _ = window.hide();
-            }
+            let _ = commands::hide_pet_window_inner(app);
         }
         "tray-quit" | "pet-quit" => {
             commands::quit_inner(app);

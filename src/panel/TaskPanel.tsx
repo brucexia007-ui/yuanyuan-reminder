@@ -41,6 +41,7 @@ import {
   requestWake,
   resumeTaskWatchAttention,
   restoreBackup,
+  showPetWindow,
   setReminderEnabled,
   skipOccurrence,
   snoozeOccurrence,
@@ -156,6 +157,20 @@ export function TaskPanel() {
   const panelWindow = useMemo(
     () => (tauriAvailable() ? getCurrentWindow() : null),
     [],
+  );
+  const startPanelDrag = useCallback(
+    (event: React.MouseEvent<HTMLElement>) => {
+      if (event.button !== 0 || !panelWindow) return;
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest("button, input, select, textarea, a, [role='button']")
+      ) {
+        return;
+      }
+      void panelWindow.startDragging().catch(() => undefined);
+    },
+    [panelWindow],
   );
   const [tab, setTab] = useState<Tab>(() => {
     const requested = new URLSearchParams(window.location.search).get("tab");
@@ -420,7 +435,11 @@ export function TaskPanel() {
 
   return (
     <main className="panel-shell">
-      <header className="panel-header">
+      <header
+        className="panel-header"
+        aria-label="拖动功能框"
+        onMouseDown={startPanelDrag}
+      >
         <div>
           <p className="eyebrow">YUANYUAN REMINDER</p>
           <h1>
@@ -2423,14 +2442,15 @@ function SettingsView({
           type="button"
           onClick={async () => {
             try {
+              await showPetWindow();
               await requestWake();
-              onNotice("圆圆醒来了。");
+              onNotice("圆圆已经显示并醒来了。");
             } catch (error) {
-              onNotice(`圆圆暂时没能醒来：${String(error)}`);
+              onNotice(`圆圆暂时没能显示或醒来：${String(error)}`);
             }
           }}
         >
-          叫醒圆圆
+          显示并叫醒圆圆
         </button>
         <button
           type="button"

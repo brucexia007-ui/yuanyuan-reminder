@@ -18,6 +18,12 @@
   align-items: flex-start;
   justify-content: space-between;
   margin-bottom: 16px;
+  cursor: grab;
+  user-select: none;
+}
+
+.panel-header:active {
+  cursor: grabbing;
 }
 
 .panel-header h1 {

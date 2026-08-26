@@ -1114,10 +1114,28 @@ pub fn show_task_panel(app: AppHandle, route: Option<String>) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub fn hide_pet_window(app: AppHandle) -> AppResult<()> {
+pub fn show_pet_window(app: AppHandle) -> AppResult<()> {
+    show_pet_window_inner(&app)
+}
+
+pub fn show_pet_window_inner(app: &AppHandle) -> AppResult<()> {
     let pet = app
         .get_webview_window("pet")
         .ok_or_else(|| AppError::Window("pet window is unavailable".into()))?;
+    pet.show()
+        .map_err(|error| AppError::Window(error.to_string()))
+}
+
+#[tauri::command]
+pub fn hide_pet_window(app: AppHandle) -> AppResult<()> {
+    hide_pet_window_inner(&app)
+}
+
+pub fn hide_pet_window_inner(app: &AppHandle) -> AppResult<()> {
+    let pet = app
+        .get_webview_window("pet")
+        .ok_or_else(|| AppError::Window("pet window is unavailable".into()))?;
+    windows::show_task_panel(app, "settings")?;
     pet.hide()
         .map_err(|error| AppError::Window(error.to_string()))
 }

@@ -5,7 +5,7 @@ resolver = "2"
 
 [package]
 name = "yuanyuan-reminder"
-version = "1.5.1"
+version = "1.5.2"
 description = "独立运行的圆圆桌面提醒工具"
 authors = ["Yuanyuan"]
 edition = "2021"

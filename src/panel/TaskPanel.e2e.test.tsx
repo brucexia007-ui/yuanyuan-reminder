@@ -38,6 +38,7 @@ const backend = vi.hoisted(() => ({
   pauseReminders: vi.fn(),
   requestSleep: vi.fn(),
   requestWake: vi.fn(),
+  showPetWindow: vi.fn(),
   quitApplication: vi.fn(),
   onBackendEvent: vi.fn(),
   tauriAvailable: vi.fn(),
@@ -53,8 +54,13 @@ vi.mock("@tauri-apps/plugin-notification", () => ({
   requestPermission: vi.fn(async () => "granted"),
 }));
 
+const panelWindow = vi.hoisted(() => ({
+  hide: vi.fn(async () => undefined),
+  startDragging: vi.fn(async () => undefined),
+}));
+
 vi.mock("@tauri-apps/api/window", () => ({
-  getCurrentWindow: vi.fn(),
+  getCurrentWindow: vi.fn(() => panelWindow),
 }));
 
 import { TaskPanel } from "./TaskPanel";
@@ -324,6 +330,38 @@ describe("TaskPanel complete reminder workflows", () => {
     await click("让圆圆睡觉");
     expect(backend.requestSleep).toHaveBeenCalledOnce();
     expect(container.textContent).toContain("圆圆已经去睡觉了");
+
+    backend.showPetWindow.mockResolvedValue(undefined);
+    backend.requestWake.mockResolvedValue(undefined);
+    await click("显示并叫醒圆圆");
+    expect(backend.showPetWindow).toHaveBeenCalledOnce();
+    expect(backend.requestWake).toHaveBeenCalledOnce();
+    expect(container.textContent).toContain("圆圆已经显示并醒来了");
+  });
+
+  it("drags the frameless panel from its header without hijacking header buttons", async () => {
+    backend.tauriAvailable.mockReturnValue(true);
+    await remount();
+
+    const header = container.querySelector<HTMLElement>(".panel-header")!;
+    await act(async () => {
+      header.dispatchEvent(
+        new MouseEvent("mousedown", { bubbles: true, button: 0 }),
+      );
+    });
+    await flush();
+    expect(panelWindow.startDragging).toHaveBeenCalledOnce();
+
+    const closeButton = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="隐藏任务面板"]',
+    )!;
+    await act(async () => {
+      closeButton.dispatchEvent(
+        new MouseEvent("mousedown", { bubbles: true, button: 0 }),
+      );
+    });
+    await flush();
+    expect(panelWindow.startDragging).toHaveBeenCalledOnce();
   });
 
   it("starts an explicit non-diagnostic support path with only a fixed path and duration", async () => {

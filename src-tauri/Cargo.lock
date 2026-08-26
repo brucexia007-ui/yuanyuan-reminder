@@ -5513,7 +5513,7 @@ dependencies = [
 
 [[package]]
 name = "yuanyuan-reminder"
-version = "1.5.1"
+version = "1.5.2"
 dependencies = [
  "chrono",
  "csv",
