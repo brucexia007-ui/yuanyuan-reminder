@@ -209,10 +209,24 @@ function Get-OwnedProcessIds([int]$RootProcessId) {
 }
 
 function Stop-OwnedProcessTree([int]$RootProcessId) {
-    $observed = [System.Collections.Generic.HashSet[int]]::new()
+    $observed = [System.Collections.Generic.Dictionary[int, long]]::new()
     for ($attempt = 0; $attempt -lt 3; $attempt += 1) {
         $owned = @(Get-OwnedProcessIds $RootProcessId)
-        foreach ($processId in $owned) { $observed.Add([int]$processId) | Out-Null }
+        foreach ($processId in $owned) {
+            $ownedProcess = Get-Process -Id $processId -ErrorAction SilentlyContinue
+            if ($null -ne $ownedProcess -and -not $observed.ContainsKey([int]$processId)) {
+                $observed.Add(
+                    [int]$processId,
+                    [long]$ownedProcess.StartTime.ToUniversalTime().Ticks
+                )
+            }
+        }
+        if ($attempt -eq 0 -and
+            $null -ne (Get-Process -Id $RootProcessId -ErrorAction SilentlyContinue)) {
+            & (Join-Path $env:WINDIR "System32\taskkill.exe") `
+                /PID $RootProcessId /T /F *> $null
+            Start-Sleep -Milliseconds 250
+        }
         foreach ($processId in @($owned | Sort-Object -Descending)) {
             Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
         }
@@ -221,11 +235,19 @@ function Stop-OwnedProcessTree([int]$RootProcessId) {
         }
         if (-not (Get-Process -Id $RootProcessId -ErrorAction SilentlyContinue)) { break }
     }
-    $remaining = @($observed | Where-Object {
-        Get-Process -Id $_ -ErrorAction SilentlyContinue
+    $remaining = @($observed.GetEnumerator() | Where-Object {
+        $remainingProcess = Get-Process -Id $_.Key -ErrorAction SilentlyContinue
+        $null -ne $remainingProcess -and
+            $remainingProcess.StartTime.ToUniversalTime().Ticks -eq $_.Value
     })
     if ($remaining.Count -gt 0) {
-        throw "legacy_candidate_process_tree_not_stopped"
+        $remainingDetails = @($remaining | ForEach-Object {
+            $remainingProcess = Get-Process -Id $_.Key -ErrorAction SilentlyContinue
+            if ($null -ne $remainingProcess) {
+                "{0}:{1}:{2}" -f $_.Key, $remainingProcess.ProcessName, $_.Value
+            }
+        }) -join ","
+        throw "legacy_candidate_process_tree_not_stopped:$remainingDetails"
     }
 }
 

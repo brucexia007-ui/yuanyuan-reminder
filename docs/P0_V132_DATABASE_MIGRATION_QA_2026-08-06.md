@@ -1,13 +1,21 @@
 # v1.3.2 真实数据库迁移验收
 
-更新时间：2026-08-09  
+更新时间：2026-08-27
 对应任务：P0-004
 
 ## 当前结论
 
-验收工具和自动回归已经完成，也已取得并核对 GitHub 正式发布的 v1.3.2 Portable 与 Setup EXE；但隔离普通账户中的两种发布路径都没有进入 Tauri `setup`，因此没有生成业务数据库，**P0-004 仍未完成真实样本验收**。任何现有用户数据库内容都没有被打开、复制或修改；隔离测试账户只生成 WebView 文件并已精确清理。
+**P0-004 已完成官方 v1.3.2 发布件的真实运行数据库闭环。** 在全新 Windows Sandbox 账户中，使用 GitHub 正式发布的 v1.3.2 Portable、精确发布哈希、对应 Git 标签归档和微软签名 WebView2 Runtime，已真实进入 Tauri `setup` 并生成 schema v6 数据库。随后使用当前 1.5.3 生产 `Repository::open` 迁移到 schema v12，原有表、列和值逻辑摘要完全一致，生产备份恢复、迁移失败安全快照回滚和回滚后健康读取全部通过。
 
-自动回归使用的是代码生成的 schema v6 数据库，只证明验收链和失败注入可以工作，不能替代真实用户升级证据。真实执行成功后，还需要由提供样本的人确认该副本确实来自 v1.3.2；`PRAGMA user_version = 6` 是必要条件，但单独不能证明应用版本来源。
+本次来源不是仅凭 `PRAGMA user_version = 6` 推断：执行链同时绑定 v1.3.2 Git 标签提交、标签归档、GitHub 发布资产、发布页 `SHA256SUMS.txt`、Windows Product/File Version、隔离运行时创建时间和捕获辅助程序。测试仅使用旧版首次启动生成的默认本地数据，没有打开、复制或修改本机现有用户数据库；Sandbox 内的应用数据根和暂存根在报告写出前已按所有权标记精确清理。
+
+## 2026-08-27 官方发布件隔离闭环
+
+- 官方 Portable SHA-256：`D142095E41EA4A1D6BB89D7A20D8F44CBA3519C085E4EC5E674E4FB25CFF89AD`；发布校验文件 SHA-256：`A3553273D4EE693FED5B9DB50C83A675EB0C1650B022A75067C6A1A83CDB160D`；标签归档 SHA-256：`ED91C071372B08BECAC0D7DA258B1B80154C2C25834FCCA87F338A33A592024E`。
+- 旧版运行库在关闭前真实使用 WAL/SHM；SQLite Backup API 将其规范化为无 sidecar 的 77,824-byte schema v6 副本，捕获前后主库和 WAL 哈希保持不变。
+- v1.3.2 默认运行数据包含 2 条提醒、1 条设置和 1 条活动状态；迁移后这些原有表的逐值逻辑摘要完全一致。
+- 当前生产迁移目标为 schema v12；`source_read_only`、`source_integrity`、`v132_schema_identity`、`production_migration`、`row_preservation`、`backup_restore`、`failed_restore_rollback`、`post_restore_health` 八项全部通过。
+- `npm.cmd run release:community:v132-sandbox` 可重新生成隔离证据；`npm.cmd run release:community:v132:verify -- --evidence-root <绝对目录>` 会独立重算源码、辅助程序、旧版资产、数据库和报告哈希，并拒绝脏工作区冒充正式证据。
 
 ## 已实现的验收边界
 
@@ -23,7 +31,7 @@
 
 这轮故障注入发现并修复了一个真实缺陷：历史迁移脚本中的事务在 SQL 失败后可能保持打开，导致同一连接上的安全快照恢复看似成功、实际仍暴露半迁移结构。现在每次迁移失败都会先显式回滚未关闭事务，默认 Rust 回归会永久覆盖该路径。
 
-## 正式发布件复核
+## 2026-08-09 历史失败复核（已由上述 Sandbox 闭环取代）
 
 - Git 标签 `v1.3.2` 指向提交 `11841b88cf7b3e6d10502fd0158401e2c02167ae`；确定性标签归档 SHA-256 为 `ED91C071372B08BECAC0D7DA258B1B80154C2C25834FCCA87F338A33A592024E`。
 - GitHub 正式发布资产 `Yuanyuan-Reminder-1.3.2-x64-Portable.exe` 为 20,574,720 bytes，Windows Product/File Version 均为 `1.3.2`，SHA-256 为 `D142095E41EA4A1D6BB89D7A20D8F44CBA3519C085E4EC5E674E4FB25CFF89AD`；该值同时匹配 GitHub 资产摘要和发布中的 `SHA256SUMS.txt`。校验文件 SHA-256 为 `A3553273D4EE693FED5B9DB50C83A675EB0C1650B022A75067C6A1A83CDB160D`，发布件未签名。
@@ -35,9 +43,9 @@
 
 为安全接收真实运行库，新增 `database:migration:capture`：它允许关闭态源库保留 WAL，先核对主库和 WAL 在捕获前后哈希稳定，再用 SQLite Backup API 生成无 sidecar 的单文件副本，切回 `DELETE` journal，复核 `quick_check`、schema v6、全部表/列/值逻辑摘要和聚合计数。捕获报告同样不包含源路径或用户内容。
 
-## 执行方法
+## 可选的长期用户样本补充方法
 
-先完全退出 v1.3.2，在文件资源管理器中复制其数据库；不要直接对正式用户数据库执行验收。确认复制品旁边没有同名 `-wal` 或 `-shm` 文件后运行：
+官方发布件的稳定发布阻塞项已经由隔离闭环关闭；如果后续希望额外覆盖长期使用、包含更多历史记录的用户样本，可在用户明确授权后按以下方式补充。先完全退出 v1.3.2，在文件资源管理器中复制其数据库；不要直接对正式用户数据库执行验收。确认复制品旁边没有同名 `-wal` 或 `-shm` 文件后运行：
 
 ```powershell
 npm.cmd run database:migration:qa -- --fixture "F:\绝对路径\v1.3.2-copy.sqlite3" --report "F:\绝对路径\v1.3.2-migration-report.json" --attest-source-release 1.3.2
@@ -67,4 +75,4 @@ npm.cmd run database:migration:test
 - 原样本只读与逻辑数据逐值保持：由自动链覆盖；
 - v1.3.2 正式 Portable 来源、版本和双重 SHA-256：通过；
 - v1.3.2 正式 Setup 来源、版本、静默安装和安装载荷 SHA-256：通过；
-- v1.3.2 真实副本：正式发布件在隔离账户中未进入 `setup`，尚未生成，待外部样本或可正常初始化的独立账户。
+- v1.3.2 官方发布件真实运行副本：Windows Sandbox 中已进入 `setup` 并生成 schema v6 数据库；来源、捕获、迁移、备份恢复、失败回滚、数据根清理和独立防篡改复核均通过。
