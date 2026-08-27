@@ -124,7 +124,7 @@
 - `Yuanyuan-Reminder-*-x64-Setup.exe`：安装版，适合长期使用；
 - `Yuanyuan-Reminder-*-x64-Portable.exe`：便携版，下载后直接运行。
 
-当前支持 Windows 10/11 x64。程序尚未购买商业代码签名证书，Windows SmartScreen 可能显示“未知发布者”。你可以核对 Release 中的 `SHA256SUMS.txt`，也可以从源码自行构建。
+当前支持 Windows 10/11 x64。GitHub 社区稳定版以系统稳定、核心功能、数据迁移/备份、关键 E2E 和可重复构建为发布硬门，不把商业代码签名证书作为阻断条件。由于程序尚未购买商业代码签名证书，Windows 可能显示“未知发布者”或 SmartScreen 提示，Smart App Control/组织策略也可能直接阻止运行。请只从本项目的 GitHub Release 下载并核对 `SHA256SUMS.txt`，受限环境可从完全对应的源码标签自行构建。
 
 应用数据默认保存在：
 
@@ -160,7 +160,15 @@ npm.cmd run tauri build
 npm.cmd run release:preflight
 ```
 
-`release:preflight`会生成产物哈希、CycloneDX依赖清单、许可证清单和签名状态报告。它还会在一次性当前用户目录中静默安装并卸载 NSIS，提取真正随安装包落盘的 `NSS` 主程序；便携主程序、NSIS 实际主程序和安装包都会独立进入哈希、签名与安全软件门。随后使用冻结哈希的官方 v1.3.2 Setup 执行 `1.3.2→1.4.0→卸载1.4.0→回装1.3.2` 隔离探测，验证程序身份、四份许可证、正式数据目录合成哨兵和零残留；缺少该历史安装器时可通过 `release:upgrade-rollback -- --HistoricalInstallerPath ...` 显式传入。预检还会自动运行 `release:install-failure-recovery`：确定性损坏候选与旧主程序独占锁验证写入前失败边界；受限 Windows Job 则在观察到部分主程序写入后终止整棵安装器进程树，要求不完整文件集、旧卸载器、许可缺席和数据哨兵均符合预期，随后未修改候选必须完整恢复。默认安装目录证据不会由普通预检重复制造；只能在明确干净的测试账户先运行 `npm.cmd run release:upgrade-rollback:default`，之后预检会按当前候选与脚本哈希复核该报告，并把控制面板注册是否真正可见保留为独立事实。交互式卸载数据选择也不会在普通预检中重复点击；在干净交互账户运行 `npm.cmd run release:uninstall-data-choice` 后，预检会按候选和脚本哈希复核报告，要求默认卸载保留 LocalAppData/RoamingAppData，且只有明确勾选真实 NSIS 复选框才删除两处数据。首次启动写库恢复同样不会由普通预检自动触发；只可在正式数据目录不存在的一次性账户运行 `npm.cmd run release:first-start-recovery`。该探针在观察到非空 SQLite WAL 后终止受限 Job，再以同一候选恢复到可见窗口、架构 11 和完整默认数据；预检会独立重开规范化样本并复算候选、脚本与数据库哈希。上述流程会拒绝已有圆圆默认安装目录、产品注册、快捷方式、启动项、运行进程或正式数据目录。正式构建还会生成逐生产组件的[第三方许可证全文归档](THIRD_PARTY_LICENSES.txt)，并把代码、素材、第三方摘要和全文四份许可材料安装到应用的`licenses`目录。真正发布前使用`npm.cmd run release:gate`；当前产物尚未签名，因此严格门应当阻断，不能把本地构建当成正式发布批准。完整流程见[发布签名、误报与回退SOP](docs/release/P0_RELEASE_SIGNING_AND_FALSE_POSITIVE_SOP.md)、[NSIS 实际安装主程序验收](docs/P0_NSIS_INSTALLED_PAYLOAD_QA_2026-08-09.md)、[安装升级与安全回装旧版隔离探测](docs/P0_RELEASE_UPGRADE_ROLLBACK_PROBE_2026-08-09.md)、[安装失败与恢复隔离验收](docs/P0_RELEASE_INSTALL_FAILURE_RECOVERY_QA_2026-08-09.md)、[首次启动数据库恢复验收](docs/P0_RELEASE_FIRST_START_RECOVERY_QA_2026-08-10.md)、[卸载数据选择验收](docs/P0_RELEASE_UNINSTALL_DATA_CHOICE_QA_2026-08-09.md)和[默认安装路径验收](docs/P0_RELEASE_DEFAULT_INSTALL_PATH_QA_2026-08-09.md)。
+### GitHub 社区稳定版
+
+准备标签前先把 `product-version.json` 的 `channel` 改为 `stable` 并提交，再运行 `npm.cmd run release:community:gate`。该门依次验证稳定通道、统一版本、完整前端/合同/关键 E2E 回归、Rust 后端测试和 Windows 正式构建；发布工作流还要求标签精确等于 `v<版本号>`、提交属于 `main`，并自动生成带源码提交、两份 EXE 哈希和未签名风险提示的发布清单。冻结合同见[社区稳定版发布策略](docs/release/COMMUNITY_STABLE_RELEASE_POLICY_V1.json)。
+
+社区稳定版可以在未购买商业证书时发布，但证书缺失不能用于放宽功能、数据兼容、离线边界、许可证归档、哈希或构建门。推送精确版本标签后，GitHub 工作流只会发布与该稳定版本和源码提交绑定的产物。
+
+### 商业签名或商店分发
+
+`release:preflight` 会生成产物哈希、CycloneDX 依赖清单、许可证清单和签名状态报告，并执行安装/卸载、升级回退、失败恢复、首次启动恢复、安装后实际主程序和许可证落盘等隔离检查。需要商业签名、RFC 3161 时间戳、SmartScreen/第三方安全软件外部信任证明或 Microsoft Store 分发时，继续使用更严格的 `npm.cmd run release:gate`；未签名产物按设计会被这条商业门阻断，但不会阻断上面的 GitHub 社区稳定版。完整流程见[发布签名、误报与回退 SOP](docs/release/P0_RELEASE_SIGNING_AND_FALSE_POSITIVE_SOP.md)、[NSIS 实际安装主程序验收](docs/P0_NSIS_INSTALLED_PAYLOAD_QA_2026-08-09.md)、[安装升级与安全回装旧版隔离探测](docs/P0_RELEASE_UPGRADE_ROLLBACK_PROBE_2026-08-09.md)、[安装失败与恢复隔离验收](docs/P0_RELEASE_INSTALL_FAILURE_RECOVERY_QA_2026-08-09.md)、[首次启动数据库恢复验收](docs/P0_RELEASE_FIRST_START_RECOVERY_QA_2026-08-10.md)、[卸载数据选择验收](docs/P0_RELEASE_UNINSTALL_DATA_CHOICE_QA_2026-08-09.md)和[默认安装路径验收](docs/P0_RELEASE_DEFAULT_INSTALL_PATH_QA_2026-08-09.md)。
 
 许可证人工门不再接受裸布尔值。`release:preflight` 会生成候选绑定的 `release-license-review-packet.json`；发布渠道和精确发布者冻结后，具名人工复核人必须从 `docs/release/RELEASE_LICENSE_REVIEW_ATTESTATION_V1.template.json` 创建实际签字文件，逐项确认地区、NOTICE、回退来源、MPL 源码、素材权利、商标与适用的专业法律复核。`npm.cmd run release:license-review:verify` 会拒绝 AI/自动化签字、候选或渠道漂移、未解决发现及仅修改 `licenseReviewVerified` 的伪通过。当前实际签字文件不存在，因此许可证门继续待完成。
 

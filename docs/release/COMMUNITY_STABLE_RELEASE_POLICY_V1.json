@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "channel": "github_releases",
+  "audience": "open_source_community",
+  "product": {
+    "name": "圆圆提醒",
+    "identifier": "com.yuanyuan.reminder"
+  },
+  "artifactPolicy": {
+    "installerFormat": "nsis-exe",
+    "portableFormat": "windows-pe",
+    "codeSigningRequired": false,
+    "unsignedDisclosureRequired": true,
+    "sha256Required": true,
+    "sourceTagRequired": true
+  },
+  "blockingCommands": [
+    "npm.cmd run release:community:authority",
+    "npm.cmd run product:version:check",
+    "npm.cmd run verify",
+    "cargo test --manifest-path src-tauri/Cargo.toml --locked",
+    "npm.cmd run tauri build"
+  ],
+  "blockingQualityGates": [
+    "clean-main-tag",
+    "version-tag-match",
+    "system-stability-regressions",
+    "critical-e2e",
+    "database-migration-and-backup",
+    "offline-boundary",
+    "license-archive",
+    "artifact-hashes"
+  ],
+  "advisoryOnly": [
+    "commercial-code-signing-certificate",
+    "rfc3161-timestamp",
+    "smartscreen-reputation",
+    "third-party-antivirus-matrix",
+    "microsoft-store-certification",
+    "named-commercial-release-attestations"
+  ],
+  "requiredWarnings": [
+    "Windows may show an unknown-publisher or SmartScreen warning for this community release.",
+    "Smart App Control or organization policy may block unsigned executables.",
+    "Download only from the official GitHub Release and verify SHA256SUMS.txt, or build from the matching source tag."
+  ]
+}

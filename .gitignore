@@ -4,6 +4,7 @@ src-tauri/target/
 src-tauri/gen/
 /work/
 /release/
+/release-assets/
 /qa/
 /src-tauri/resources/personal-learning/
 /src-tauri/tauri.learning-personal.conf.json
