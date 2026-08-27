@@ -29,6 +29,7 @@ export function validateUnifiedSourceContract({
   cargoToml,
   libRs,
   tauriConfig,
+  windowCapabilities,
   viteConfig,
   featureGate,
   initialLearningMigration,
@@ -42,6 +43,12 @@ export function validateUnifiedSourceContract({
     tauriConfig.version !== manifest.version
   ) {
     throw new Error("Tauri product identity must match the unified product manifest");
+  }
+  if (
+    windowCapabilities?.identifier !== "default" ||
+    !windowCapabilities.permissions?.includes("core:window:allow-start-dragging")
+  ) {
+    throw new Error("the frameless task panel must retain start-dragging permission");
   }
   const scripts = packageJson.scripts ?? {};
   for (const forbiddenName of [
@@ -118,6 +125,7 @@ async function main() {
     cargoToml,
     libRs,
     tauriConfig,
+    windowCapabilities,
     viteConfig,
     featureGate,
     initialLearningMigration,
@@ -127,6 +135,7 @@ async function main() {
     readFile(path.join(projectRoot, "src-tauri", "Cargo.toml"), "utf8"),
     readFile(path.join(projectRoot, "src-tauri", "src", "lib.rs"), "utf8"),
     readFile(path.join(projectRoot, "src-tauri", "tauri.conf.json"), "utf8").then(JSON.parse),
+    readFile(path.join(projectRoot, "src-tauri", "capabilities", "default.json"), "utf8").then(JSON.parse),
     readFile(path.join(projectRoot, "vite.config.ts"), "utf8"),
     readFile(path.join(projectRoot, "src", "learning", "featureGate.ts"), "utf8"),
     readFile(
@@ -140,6 +149,7 @@ async function main() {
     cargoToml,
     libRs,
     tauriConfig,
+    windowCapabilities,
     viteConfig,
     featureGate,
     initialLearningMigration,

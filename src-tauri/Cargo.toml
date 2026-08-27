@@ -5,7 +5,7 @@ resolver = "2"
 
 [package]
 name = "yuanyuan-reminder"
-version = "1.5.2"
+version = "1.5.3"
 description = "独立运行的圆圆桌面提醒工具"
 authors = ["Yuanyuan"]
 edition = "2021"
@@ -31,6 +31,11 @@ required-features = ["runtime-qa"]
 [[bin]]
 name = "yuanyuan-runtime-qa-fixture"
 path = "src/bin/runtime_qa_fixture.rs"
+required-features = ["runtime-qa"]
+
+[[bin]]
+name = "yuanyuan-installed-candidate-qa"
+path = "src/bin/installed_candidate_qa.rs"
 required-features = ["runtime-qa"]
 
 [[bin]]

@@ -37,6 +37,8 @@ mod connector_discovery;
 mod connector_trust_control;
 mod cursor_direction;
 mod error;
+#[cfg(feature = "runtime-qa")]
+pub mod installed_candidate_qa;
 #[cfg(feature = "learning")]
 mod learning;
 #[cfg(windows)]

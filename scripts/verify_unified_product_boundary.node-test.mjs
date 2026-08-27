@@ -35,6 +35,10 @@ const valid = {
     identifier: "com.yuanyuan.reminder",
     version: "1.5.0",
   },
+  windowCapabilities: {
+    identifier: "default",
+    permissions: ["core:window:allow-start-dragging"],
+  },
   viteConfig: 'plugins: [react()]',
   featureGate:
     'export const LEARNING_BUNDLE_MARKER = "yuanyuan-learning-integrated-ui";\nexport const learningBuildEnabled = true;',
@@ -73,6 +77,14 @@ test("accepts only one product identity and one default frontend build", () => {
         initialLearningMigration: "VALUES(1, 'automatic_opt_in', 3, 5);",
       }),
     /default-off/u,
+  );
+  assert.throws(
+    () =>
+      validateUnifiedSourceContract({
+        ...valid,
+        windowCapabilities: { identifier: "default", permissions: [] },
+      }),
+    /start-dragging/u,
   );
 });
 
