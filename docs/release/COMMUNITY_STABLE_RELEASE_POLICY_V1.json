@@ -14,8 +14,14 @@
     "sha256Required": true,
     "sourceTagRequired": true
   },
+  "acceptanceContract": {
+    "file": "docs/release/COMMUNITY_STABLE_ACCEPTANCE_V1.json",
+    "template": "docs/release/COMMUNITY_STABLE_ACCEPTANCE_V1.template.json",
+    "codeSigningEvidenceRequired": false
+  },
   "blockingCommands": [
     "npm.cmd run release:community:authority",
+    "npm.cmd run release:community:acceptance",
     "npm.cmd run product:version:check",
     "npm.cmd run verify",
     "cargo test --manifest-path src-tauri/Cargo.toml --locked",
@@ -24,6 +30,10 @@
   "blockingQualityGates": [
     "clean-main-tag",
     "version-tag-match",
+    "current-candidate-24-hour-endurance-with-sleep-and-lock",
+    "current-installer-critical-e2e",
+    "authentic-legacy-data-upgrade-backup-and-rollback",
+    "integrated-learning-real-runtime",
     "system-stability-regressions",
     "critical-e2e",
     "database-migration-and-backup",

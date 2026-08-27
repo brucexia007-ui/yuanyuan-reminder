@@ -112,6 +112,8 @@ test("keeps the GitHub workflow bound to a stable main tag and generated disclos
   assert.match(workflow, /rev-parse\s+"\$\{\{ github\.ref_name \}\}\^\{commit\}"/u);
   assert.match(workflow, /merge-base --is-ancestor/u);
   assert.match(workflow, /COMMUNITY_SOURCE_COMMIT/u);
+  assert.match(workflow, /release:community:acceptance/u);
+  assert.match(workflow, /--release-commit\s+"\$env:COMMUNITY_SOURCE_COMMIT"/u);
   assert.match(workflow, /release build changed tracked source/u);
   assert.match(workflow, /release:community:prepare/u);
   assert.match(workflow, /--commit\s+"\$env:COMMUNITY_SOURCE_COMMIT"/u);

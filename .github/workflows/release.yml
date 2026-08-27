@@ -39,6 +39,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "stable release tag must belong to main" }
           if (git status --porcelain=v1) { throw "release source must remain clean" }
           "COMMUNITY_SOURCE_COMMIT=$sourceCommit" >> $env:GITHUB_ENV
+      - name: Verify completed community stable acceptance
+        shell: pwsh
+        run: npm.cmd run release:community:acceptance -- --release-commit "$env:COMMUNITY_SOURCE_COMMIT"
       - name: Verify project
         run: npm.cmd run verify
       - name: Test Rust backend

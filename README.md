@@ -162,7 +162,9 @@ npm.cmd run release:preflight
 
 ### GitHub 社区稳定版
 
-准备标签前先把 `product-version.json` 的 `channel` 改为 `stable` 并提交，再运行 `npm.cmd run release:community:gate`。该门依次验证稳定通道、统一版本、完整前端/合同/关键 E2E 回归、Rust 后端测试和 Windows 正式构建；发布工作流还要求标签精确等于 `v<版本号>`、提交属于 `main`，并自动生成带源码提交、两份 EXE 哈希和未签名风险提示的发布清单。冻结合同见[社区稳定版发布策略](docs/release/COMMUNITY_STABLE_RELEASE_POLICY_V1.json)。
+准备标签前先从[社区稳定验收模板](docs/release/COMMUNITY_STABLE_ACCEPTANCE_V1.template.json)生成实际验收文件。它必须绑定已经测试的提交和安装包，并关闭四项核心门：24 小时常驻且真实经历睡眠/锁屏，最终安装包关键 E2E，真实 v1.3.2 数据升级/备份/回滚，以及集成学习的真实导入/取消/分页/增长/恢复。实际文件缺失、任一结果待完成、存在未解决问题，或测试提交之后除验收文件和稳定通道外又改了源码时，稳定门都会拒绝发布。
+
+验收完成后，把 `product-version.json` 的 `channel` 改为 `stable`，并在只包含验收文件和通道提升的提交上运行 `npm.cmd run release:community:gate`。该门依次验证稳定通道、验收来源、统一版本、完整前端/合同/关键 E2E 回归、Rust 后端测试和 Windows 正式构建；发布工作流还要求标签精确等于 `v<版本号>`、提交属于 `main`，并自动生成带源码提交、两份 EXE 哈希和未签名风险提示的发布清单。冻结合同见[社区稳定版发布策略](docs/release/COMMUNITY_STABLE_RELEASE_POLICY_V1.json)。
 
 社区稳定版可以在未购买商业证书时发布，但证书缺失不能用于放宽功能、数据兼容、离线边界、许可证归档、哈希或构建门。推送精确版本标签后，GitHub 工作流只会发布与该稳定版本和源码提交绑定的产物。
 

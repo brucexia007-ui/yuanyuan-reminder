@@ -39,6 +39,7 @@ export function validateCommunityStablePolicy(policy) {
       "audience",
       "product",
       "artifactPolicy",
+      "acceptanceContract",
       "blockingCommands",
       "blockingQualityGates",
       "advisoryOnly",
@@ -82,10 +83,25 @@ export function validateCommunityStablePolicy(policy) {
   ) {
     fail("community artifact policy must allow disclosed unsigned GitHub binaries");
   }
+  exactKeys(
+    policy.acceptanceContract,
+    ["file", "template", "codeSigningEvidenceRequired"],
+    "policy.acceptanceContract",
+  );
+  if (
+    policy.acceptanceContract.file !==
+      "docs/release/COMMUNITY_STABLE_ACCEPTANCE_V1.json" ||
+    policy.acceptanceContract.template !==
+      "docs/release/COMMUNITY_STABLE_ACCEPTANCE_V1.template.json" ||
+    policy.acceptanceContract.codeSigningEvidenceRequired !== false
+  ) {
+    fail("community acceptance contract must stay focused on product stability");
+  }
   exactStringArray(
     policy.blockingCommands,
     [
       "npm.cmd run release:community:authority",
+      "npm.cmd run release:community:acceptance",
       "npm.cmd run product:version:check",
       "npm.cmd run verify",
       "cargo test --manifest-path src-tauri/Cargo.toml --locked",
@@ -98,6 +114,10 @@ export function validateCommunityStablePolicy(policy) {
     [
       "clean-main-tag",
       "version-tag-match",
+      "current-candidate-24-hour-endurance-with-sleep-and-lock",
+      "current-installer-critical-e2e",
+      "authentic-legacy-data-upgrade-backup-and-rollback",
+      "integrated-learning-real-runtime",
       "system-stability-regressions",
       "critical-e2e",
       "database-migration-and-backup",
