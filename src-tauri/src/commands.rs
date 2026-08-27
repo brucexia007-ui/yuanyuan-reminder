@@ -59,6 +59,18 @@ fn learning_file_path(
     })
 }
 
+#[cfg(feature = "learning")]
+fn begin_learning_import_operation(app: &AppHandle) -> AppResult<u64> {
+    app.state::<AppState>().learning_import_cancellation.begin()
+}
+
+#[cfg(feature = "learning")]
+fn finish_learning_import_operation(app: &AppHandle, operation_id: u64) {
+    app.state::<AppState>()
+        .learning_import_cancellation
+        .finish(operation_id);
+}
+
 #[cfg(all(test, feature = "learning", windows))]
 mod learning_command_concurrency_tests {
     use super::*;
@@ -105,32 +117,40 @@ pub fn get_runtime_capabilities(state: State<'_, AppState>) -> crate::models::Ru
 pub async fn preview_learning_import(
     app: AppHandle,
 ) -> AppResult<crate::learning::LearningImportPreview> {
-    let mut picker = app
-        .dialog()
-        .file()
-        .set_title("选择交给圆圆复习的词表或原生学习数据")
-        .add_filter("圆圆学习数据", &["csv", "json"]);
-    if let Some(panel) = app.get_webview_window("panel").as_ref() {
-        picker = picker.set_parent(panel);
+    let operation_id = begin_learning_import_operation(&app)?;
+    let result = async {
+        let mut picker = app
+            .dialog()
+            .file()
+            .set_title("选择交给圆圆复习的词表或原生学习数据")
+            .add_filter("圆圆学习数据", &["csv", "json"]);
+        if let Some(panel) = app.get_webview_window("panel").as_ref() {
+            picker = picker.set_parent(panel);
+        }
+        let (selection_tx, selection_rx) = tokio::sync::oneshot::channel();
+        picker.pick_file(move |selected| {
+            let _ = selection_tx.send(selected);
+        });
+        let Some(selected) = receive_learning_file_selection(selection_rx, "import").await? else {
+            return Ok(crate::learning::LearningImportPreview::cancelled());
+        };
+        let path = learning_file_path(selected, "import")?;
+        let worker_app = app.clone();
+        run_learning_background("import preview", move || {
+            let state = worker_app.state::<AppState>();
+            let cancellation = &state.learning_import_cancellation;
+            let result = state.learning.lock().preview_import_file_with_cancellation(
+                &path,
+                Utc::now().timestamp_millis(),
+                &|| cancellation.is_cancelled(operation_id),
+            );
+            result
+        })
+        .await
     }
-    let (selection_tx, selection_rx) = tokio::sync::oneshot::channel();
-    picker.pick_file(move |selected| {
-        let _ = selection_tx.send(selected);
-    });
-    let Some(selected) = receive_learning_file_selection(selection_rx, "import").await? else {
-        return Ok(crate::learning::LearningImportPreview::cancelled());
-    };
-    let path = learning_file_path(selected, "import")?;
-    let worker_app = app.clone();
-    run_learning_background("import preview", move || {
-        let state = worker_app.state::<AppState>();
-        let result = state
-            .learning
-            .lock()
-            .preview_import_file(&path, Utc::now().timestamp_millis());
-        result
-    })
-    .await
+    .await;
+    finish_learning_import_operation(&app, operation_id);
+    result
 }
 
 #[cfg(all(feature = "learning", not(windows)))]
@@ -150,15 +170,27 @@ pub async fn confirm_learning_import(
     preview_token: String,
     app: AppHandle,
 ) -> AppResult<crate::learning::ImportCommitResult> {
-    run_learning_background("import confirmation", move || {
-        let state = app.state::<AppState>();
-        let result = state
-            .learning
-            .lock()
-            .confirm_import(&preview_token, Utc::now().timestamp_millis());
+    let operation_id = begin_learning_import_operation(&app)?;
+    let worker_app = app.clone();
+    let result = run_learning_background("import confirmation", move || {
+        let state = worker_app.state::<AppState>();
+        let cancellation = &state.learning_import_cancellation;
+        let result = state.learning.lock().confirm_import_with_cancellation(
+            &preview_token,
+            Utc::now().timestamp_millis(),
+            &|| cancellation.is_cancelled(operation_id),
+        );
         result
     })
-    .await
+    .await;
+    finish_learning_import_operation(&app, operation_id);
+    result
+}
+
+#[cfg(feature = "learning")]
+#[tauri::command]
+pub fn cancel_learning_import(state: State<'_, AppState>) -> bool {
+    state.learning_import_cancellation.cancel_active()
 }
 
 #[cfg(feature = "learning")]

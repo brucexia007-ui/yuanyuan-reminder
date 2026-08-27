@@ -10,7 +10,7 @@ use std::{
     fs::OpenOptions,
     io::Write,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
     thread,
@@ -53,6 +53,22 @@ const LEARNING_COMMIT_CRASH_ENTERED_STAGE: &str = "learning-answer-commit-hook-e
 const LEARNING_COMMIT_CRASH_ERROR_STAGE: &str = "learning-answer-commit-hook-error";
 #[cfg(feature = "learning")]
 const LEARNING_COMMIT_CRASH_WAIT_STEPS: usize = 2_400;
+#[cfg(feature = "learning")]
+const RUN_LEARNING_SCALE_TRIGGER: &str = "run-learning-scale-acceptance";
+#[cfg(feature = "learning")]
+const LEARNING_SCALE_STARTED_STAGE: &str = "learning-scale-acceptance-started";
+#[cfg(feature = "learning")]
+const LEARNING_SCALE_REPORT_NAME: &str = "learning-scale-acceptance-report.json";
+#[cfg(feature = "learning")]
+const LEARNING_SCALE_ERROR_NAME: &str = "learning-scale-acceptance-error.txt";
+#[cfg(feature = "learning")]
+const LEARNING_SCALE_CARD_COUNT: u32 = 20_000;
+#[cfg(feature = "learning")]
+const LEARNING_SCALE_ANSWER_COUNT: u32 = 1_000;
+#[cfg(feature = "learning")]
+const LEARNING_SCALE_MAX_DATABASE_BYTES: u64 = 128 * 1024 * 1024;
+#[cfg(feature = "learning")]
+const LEARNING_SCALE_MAX_ANSWER_GROWTH_BYTES: u64 = 32 * 1024 * 1024;
 const PANEL_SIZE_TRIGGERS: [&str; 3] = [
     SET_PANEL_360X560_TRIGGER,
     SET_PANEL_390X620_TRIGGER,
@@ -197,14 +213,17 @@ pub fn record_stage(stage: &'static str) -> AppResult<()> {
 }
 
 fn consume_empty_control_trigger(root: &Path, name: &str) -> AppResult<bool> {
-    if !matches!(
+    let allowed = matches!(
         name,
         SHOW_PET_CONTEXT_MENU_TRIGGER
             | INVOKE_PET_SLEEP_MENU_TRIGGER
             | SET_PANEL_360X560_TRIGGER
             | SET_PANEL_390X620_TRIGGER
             | SET_PANEL_480X760_TRIGGER
-    ) {
+    );
+    #[cfg(feature = "learning")]
+    let allowed = allowed || name == RUN_LEARNING_SCALE_TRIGGER;
+    if !allowed {
         return Err(AppError::Validation(
             "runtime QA control trigger is invalid".into(),
         ));
@@ -341,6 +360,8 @@ pub fn schedule_control_channel(app: &AppHandle) -> AppResult<()> {
     tauri::async_runtime::spawn(async move {
         let mut request_number = 0_u32;
         let mut sleep_request_number = 0_u32;
+        #[cfg(feature = "learning")]
+        let mut learning_scale_started = false;
         loop {
             tokio::time::sleep(Duration::from_millis(50)).await;
             match consume_empty_control_trigger(&root, SHOW_PET_CONTEXT_MENU_TRIGGER) {
@@ -480,6 +501,73 @@ pub fn schedule_control_channel(app: &AppHandle) -> AppResult<()> {
                     }
                 }
             }
+            #[cfg(feature = "learning")]
+            match consume_empty_control_trigger(&root, RUN_LEARNING_SCALE_TRIGGER) {
+                Ok(false) => {}
+                Ok(true) if learning_scale_started => {
+                    tracing::warn!("runtime QA learning scale acceptance was already started");
+                }
+                Ok(true) => {
+                    learning_scale_started = true;
+                    let status_directory = root.join("status");
+                    if let Err(error) = write_runtime_qa_status_file(
+                        &status_directory.join(LEARNING_SCALE_STARTED_STAGE),
+                        b"started\n",
+                    ) {
+                        tracing::warn!(error = %error, "runtime QA learning scale start status failed");
+                    }
+                    let app_for_scale = app.clone();
+                    let result = tauri::async_runtime::spawn_blocking(move || {
+                        run_learning_scale_acceptance(&app_for_scale)
+                    })
+                    .await;
+                    let (exit_code, write_result) = match result {
+                        Ok(Ok(report)) => (
+                            0,
+                            serde_json::to_vec_pretty(&report)
+                                .map_err(AppError::from)
+                                .and_then(|bytes| {
+                                    write_runtime_qa_status_file(
+                                        &status_directory.join(LEARNING_SCALE_REPORT_NAME),
+                                        &bytes,
+                                    )
+                                }),
+                        ),
+                        Ok(Err(error)) => (
+                            1,
+                            write_runtime_qa_status_file(
+                                &status_directory.join(LEARNING_SCALE_ERROR_NAME),
+                                error.to_string().as_bytes(),
+                            ),
+                        ),
+                        Err(error) => (
+                            1,
+                            write_runtime_qa_status_file(
+                                &status_directory.join(LEARNING_SCALE_ERROR_NAME),
+                                format!("learning scale worker stopped unexpectedly: {error}")
+                                    .as_bytes(),
+                            ),
+                        ),
+                    };
+                    if let Err(error) = write_result {
+                        tracing::warn!(error = %error, "runtime QA learning scale result could not be written");
+                    }
+                    if exit_code == 0 {
+                        crate::commands::quit_inner(&app);
+                    } else {
+                        app.state::<crate::state::AppState>().set_quitting();
+                        app.exit(exit_code);
+                    }
+                }
+                Err(error) => {
+                    tracing::warn!(error = %error, "runtime QA learning scale trigger was rejected");
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                }
+            }
+            #[cfg(feature = "learning")]
+            if learning_scale_started {
+                break;
+            }
         }
     });
     Ok(())
@@ -550,6 +638,421 @@ pub struct LearningPerformancePlan {
     pub database_sha256: String,
     pub database_bytes: u64,
     pub reminder_pause_until_utc: String,
+}
+
+#[cfg(feature = "learning")]
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LearningScaleAcceptanceReport {
+    pub schema_version: u32,
+    pub status: &'static str,
+    pub product_version: &'static str,
+    pub runtime_identifier: &'static str,
+    pub tauri_process_id: u32,
+    pub synthetic_data_only: bool,
+    pub tauri_import_passed: bool,
+    pub cancellation_passed: bool,
+    pub imported_cards: u32,
+    pub pagination_passed: bool,
+    pub answers_applied: u32,
+    pub database_growth_within_limit: bool,
+    pub backup_restore_passed: bool,
+    pub source_csv_sha256: String,
+    pub cancellation_check_count: u64,
+    pub database_bytes_after_import: u64,
+    pub database_bytes_after_answers: u64,
+    pub answer_growth_bytes: u64,
+    pub maximum_database_bytes: u64,
+    pub maximum_answer_growth_bytes: u64,
+    pub restored_card_count: u32,
+    pub restored_review_count: u32,
+    pub integrity_check: String,
+    pub foreign_key_violation_count: u32,
+    pub elapsed_milliseconds: u64,
+    pub privacy: &'static str,
+}
+
+#[cfg(feature = "learning")]
+fn write_runtime_qa_status_file(path: &Path, content: &[u8]) -> AppResult<()> {
+    let status_directory = root_from_env()?.join("status");
+    if path.parent() != Some(status_directory.as_path())
+        || !path
+            .file_name()
+            .and_then(OsStr::to_str)
+            .is_some_and(|name| {
+                matches!(
+                    name,
+                    LEARNING_SCALE_STARTED_STAGE
+                        | LEARNING_SCALE_REPORT_NAME
+                        | LEARNING_SCALE_ERROR_NAME
+                )
+            })
+    {
+        return Err(AppError::Validation(
+            "runtime QA learning status path is invalid".into(),
+        ));
+    }
+    fs::create_dir_all(&status_directory)?;
+    let mut file = OpenOptions::new().write(true).create_new(true).open(path)?;
+    file.write_all(content)?;
+    file.sync_all()?;
+    Ok(())
+}
+
+#[cfg(feature = "learning")]
+fn learning_database_storage_bytes(path: &Path) -> AppResult<u64> {
+    let mut total = 0_u64;
+    for suffix in ["", "-wal", "-shm"] {
+        let candidate = if suffix.is_empty() {
+            path.to_path_buf()
+        } else {
+            let mut value = path.as_os_str().to_os_string();
+            value.push(suffix);
+            PathBuf::from(value)
+        };
+        match fs::symlink_metadata(&candidate) {
+            Ok(metadata) => {
+                if !metadata.file_type().is_file() || metadata_is_reparse_point(&metadata) {
+                    return Err(AppError::Validation(
+                        "runtime QA learning database storage is invalid".into(),
+                    ));
+                }
+                total = total.checked_add(metadata.len()).ok_or_else(|| {
+                    AppError::Validation(
+                        "runtime QA learning database storage size overflowed".into(),
+                    )
+                })?;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(total)
+}
+
+#[cfg(feature = "learning")]
+fn apply_correct_learning_answers(
+    state: &crate::state::AppState,
+    target: u32,
+    now_unix_ms: &mut i64,
+) -> AppResult<u32> {
+    let mut applied = 0_u32;
+    while applied < target {
+        let remaining = target.saturating_sub(applied);
+        let requested_count = if remaining >= 10 {
+            10
+        } else if remaining >= 5 {
+            5
+        } else if remaining >= 3 {
+            3
+        } else {
+            1
+        };
+        *now_unix_ms = now_unix_ms.saturating_add(1);
+        let created = state.learning.lock().start_manual_session(
+            requested_count,
+            crate::learning::LearningSessionKind::Daily,
+            None,
+            *now_unix_ms,
+        )?;
+        *now_unix_ms = now_unix_ms.saturating_add(1);
+        let active = state.learning.lock().present_session(
+            &created.session_id,
+            created.state_revision,
+            *now_unix_ms,
+        )?;
+        if active.status != "active" {
+            return Err(AppError::Validation(
+                "runtime QA learning session did not become active".into(),
+            ));
+        }
+        loop {
+            let card = state.learning.lock().current_card(&active.session_id)?;
+            let question = state.learning.lock().current_question(&active.session_id)?;
+            let selected_option_id = question
+                .options
+                .iter()
+                .find(|option| {
+                    card.meanings_zh
+                        .iter()
+                        .any(|meaning| meaning == &option.meaning_zh)
+                })
+                .map(|option| option.option_id.clone())
+                .ok_or_else(|| {
+                    AppError::Validation(
+                        "runtime QA learning question has no deterministic correct option".into(),
+                    )
+                })?;
+            *now_unix_ms = now_unix_ms.saturating_add(1);
+            let answer = state.learning.lock().answer_question(
+                &active.session_id,
+                &question.question_id,
+                &selected_option_id,
+                &uuid::Uuid::new_v4().to_string(),
+                Some(250),
+                *now_unix_ms,
+            )?;
+            if !answer.correct || answer.replayed || answer.is_remediation {
+                return Err(AppError::Validation(
+                    "runtime QA learning answer was not applied as a fresh correct answer".into(),
+                ));
+            }
+            applied = applied.saturating_add(1);
+            if answer.session.status == "completed" {
+                break;
+            }
+            if answer.session.status != "active" || applied >= target {
+                return Err(AppError::Validation(
+                    "runtime QA learning answer session state is inconsistent".into(),
+                ));
+            }
+        }
+    }
+    Ok(applied)
+}
+
+#[cfg(feature = "learning")]
+fn learning_database_health(path: &Path) -> AppResult<(String, u32)> {
+    let connection = rusqlite::Connection::open(path)?;
+    connection.busy_timeout(Duration::from_secs(10))?;
+    let integrity_check = connection.query_row("PRAGMA quick_check", [], |row| row.get(0))?;
+    let foreign_key_violation_count =
+        connection.query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+            row.get(0)
+        })?;
+    Ok((integrity_check, foreign_key_violation_count))
+}
+
+#[cfg(feature = "learning")]
+fn run_learning_scale_acceptance(app: &AppHandle) -> AppResult<LearningScaleAcceptanceReport> {
+    let started = std::time::Instant::now();
+    let root = root_from_env()?;
+    let database = app_data_directory(QA_IDENTIFIER)?
+        .join("learning-data")
+        .join("yuanyuan-learning.sqlite3");
+    let state = app.state::<crate::state::AppState>();
+    let initial = state.learning.lock().data_summary()?;
+    if initial.card_count != 0 || initial.review_count != 0 {
+        return Err(AppError::Validation(
+            "runtime QA learning scale root is not empty".into(),
+        ));
+    }
+
+    let csv = build_synthetic_learning_csv(LEARNING_SCALE_CARD_COUNT);
+    let source_csv_sha256 = sha256_hex(csv.as_bytes());
+    let preview_operation = state.learning_import_cancellation.begin()?;
+    let preview_result = state.learning.lock().preview_csv_import_with_cancellation(
+        csv.as_bytes(),
+        Utc::now().timestamp_millis(),
+        &|| {
+            state
+                .learning_import_cancellation
+                .is_cancelled(preview_operation)
+        },
+    );
+    state.learning_import_cancellation.finish(preview_operation);
+    let preview = preview_result?;
+    if preview.card_count != LEARNING_SCALE_CARD_COUNT {
+        return Err(AppError::Validation(
+            "runtime QA learning cancellation preview count changed".into(),
+        ));
+    }
+
+    let cancellation_checks = AtomicU64::new(0);
+    let cancellation_requested = AtomicBool::new(false);
+    let cancel_operation = state.learning_import_cancellation.begin()?;
+    let cancel_result = state.learning.lock().confirm_import_with_cancellation(
+        preview.preview_token.as_deref().ok_or_else(|| {
+            AppError::Validation("runtime QA learning cancellation token is missing".into())
+        })?,
+        Utc::now().timestamp_millis(),
+        &|| {
+            let check = cancellation_checks.fetch_add(1, Ordering::SeqCst) + 1;
+            if check == 1_024 {
+                cancellation_requested.store(
+                    state.learning_import_cancellation.cancel_active(),
+                    Ordering::SeqCst,
+                );
+            }
+            state
+                .learning_import_cancellation
+                .is_cancelled(cancel_operation)
+        },
+    );
+    state.learning_import_cancellation.finish(cancel_operation);
+    let cancellation_passed = cancellation_requested.load(Ordering::SeqCst)
+        && cancel_result
+            .as_ref()
+            .is_err_and(|error| error.to_string().contains("learning import was cancelled"));
+    let after_cancel = state.learning.lock().data_summary()?;
+    if !cancellation_passed
+        || after_cancel.card_count != 0
+        || after_cancel.review_count != 0
+        || !after_cancel.sources.is_empty()
+        || !after_cancel.packs.is_empty()
+    {
+        return Err(AppError::Validation(
+            "runtime QA learning import cancellation did not roll back cleanly".into(),
+        ));
+    }
+
+    let import_started = std::time::Instant::now();
+    let full_preview_operation = state.learning_import_cancellation.begin()?;
+    let full_preview_result = state.learning.lock().preview_csv_import_with_cancellation(
+        csv.as_bytes(),
+        Utc::now().timestamp_millis(),
+        &|| {
+            state
+                .learning_import_cancellation
+                .is_cancelled(full_preview_operation)
+        },
+    );
+    state
+        .learning_import_cancellation
+        .finish(full_preview_operation);
+    let full_preview = full_preview_result?;
+    let full_commit_operation = state.learning_import_cancellation.begin()?;
+    let full_commit_result = state.learning.lock().confirm_import_with_cancellation(
+        full_preview.preview_token.as_deref().ok_or_else(|| {
+            AppError::Validation("runtime QA learning import token is missing".into())
+        })?,
+        Utc::now().timestamp_millis(),
+        &|| {
+            state
+                .learning_import_cancellation
+                .is_cancelled(full_commit_operation)
+        },
+    );
+    state
+        .learning_import_cancellation
+        .finish(full_commit_operation);
+    let imported = full_commit_result?;
+    let imported_summary = state.learning.lock().data_summary()?;
+    let tauri_import_passed = imported.imported_count == LEARNING_SCALE_CARD_COUNT
+        && imported_summary.card_count == LEARNING_SCALE_CARD_COUNT
+        && import_started.elapsed() < Duration::from_secs(120);
+    if !tauri_import_passed {
+        return Err(AppError::Validation(
+            "runtime QA learning 20000-card import did not pass".into(),
+        ));
+    }
+    let database_bytes_after_import = learning_database_storage_bytes(&database)?;
+
+    let pagination_passed = {
+        let mut learning = state.learning.lock();
+        let first = learning.list_records(crate::learning::LearningRecordFilter::All, "", 0, 50)?;
+        let middle =
+            learning.list_records(crate::learning::LearningRecordFilter::All, "", 200, 50)?;
+        let last =
+            learning.list_records(crate::learning::LearningRecordFilter::All, "", 399, 50)?;
+        let beyond =
+            learning.list_records(crate::learning::LearningRecordFilter::All, "", 400, 50)?;
+        [first.total, middle.total, last.total, beyond.total]
+            .into_iter()
+            .all(|total| total == LEARNING_SCALE_CARD_COUNT)
+            && first.items.len() == 50
+            && middle.items.len() == 50
+            && last.items.len() == 50
+            && beyond.items.is_empty()
+            && first.items[0].card_id != middle.items[0].card_id
+            && middle.items[0].card_id != last.items[0].card_id
+    };
+    if !pagination_passed {
+        return Err(AppError::Validation(
+            "runtime QA learning pagination did not pass".into(),
+        ));
+    }
+
+    let mut now_unix_ms = Utc::now().timestamp_millis();
+    let answers_applied =
+        apply_correct_learning_answers(&state, LEARNING_SCALE_ANSWER_COUNT, &mut now_unix_ms)?;
+    let answered_summary = state.learning.lock().data_summary()?;
+    if answers_applied != LEARNING_SCALE_ANSWER_COUNT
+        || answered_summary.review_count != LEARNING_SCALE_ANSWER_COUNT
+    {
+        return Err(AppError::Validation(
+            "runtime QA learning answer count did not pass".into(),
+        ));
+    }
+    let database_bytes_after_answers = learning_database_storage_bytes(&database)?;
+    let answer_growth_bytes =
+        database_bytes_after_answers.saturating_sub(database_bytes_after_import);
+    let database_growth_within_limit = database_bytes_after_answers
+        <= LEARNING_SCALE_MAX_DATABASE_BYTES
+        && answer_growth_bytes <= LEARNING_SCALE_MAX_ANSWER_GROWTH_BYTES;
+    if !database_growth_within_limit {
+        return Err(AppError::Validation(
+            "runtime QA learning database growth exceeded its stable limit".into(),
+        ));
+    }
+
+    let backup_directory = root.join("app-data").join(QA_IDENTIFIER).join("backups");
+    let backup = {
+        let repository = state.repository.lock();
+        let learning = state.learning.lock();
+        crate::backups::create_unified_manual_backup(&repository, &learning, &backup_directory)?
+    };
+    let extra_answers = apply_correct_learning_answers(&state, 1, &mut now_unix_ms)?;
+    let mutated_summary = state.learning.lock().data_summary()?;
+    if extra_answers != 1 || mutated_summary.review_count != LEARNING_SCALE_ANSWER_COUNT + 1 {
+        return Err(AppError::Validation(
+            "runtime QA learning backup mutation did not apply".into(),
+        ));
+    }
+    {
+        let mut repository = state.repository.lock();
+        let mut learning = state.learning.lock();
+        crate::backups::restore_unified_backup(
+            &mut repository,
+            &mut learning,
+            &backup_directory,
+            &backup.file_name,
+        )?;
+    }
+    let restored = state.learning.lock().data_summary()?;
+    let backup_restore_passed = backup.learning_included
+        && restored.card_count == LEARNING_SCALE_CARD_COUNT
+        && restored.review_count == LEARNING_SCALE_ANSWER_COUNT;
+    if !backup_restore_passed {
+        return Err(AppError::Validation(
+            "runtime QA learning unified backup restore did not pass".into(),
+        ));
+    }
+    let (integrity_check, foreign_key_violation_count) = learning_database_health(&database)?;
+    if integrity_check != "ok" || foreign_key_violation_count != 0 {
+        return Err(AppError::Validation(
+            "runtime QA learning database health did not pass".into(),
+        ));
+    }
+
+    Ok(LearningScaleAcceptanceReport {
+        schema_version: 1,
+        status: "passed",
+        product_version: env!("CARGO_PKG_VERSION"),
+        runtime_identifier: QA_IDENTIFIER,
+        tauri_process_id: std::process::id(),
+        synthetic_data_only: true,
+        tauri_import_passed,
+        cancellation_passed,
+        imported_cards: imported.imported_count,
+        pagination_passed,
+        answers_applied,
+        database_growth_within_limit,
+        backup_restore_passed,
+        source_csv_sha256,
+        cancellation_check_count: cancellation_checks.load(Ordering::SeqCst),
+        database_bytes_after_import,
+        database_bytes_after_answers,
+        answer_growth_bytes,
+        maximum_database_bytes: LEARNING_SCALE_MAX_DATABASE_BYTES,
+        maximum_answer_growth_bytes: LEARNING_SCALE_MAX_ANSWER_GROWTH_BYTES,
+        restored_card_count: restored.card_count,
+        restored_review_count: restored.review_count,
+        integrity_check,
+        foreign_key_violation_count,
+        elapsed_milliseconds: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        privacy: "Contains only deterministic synthetic counts, timing, sizes, hashes and fixed health results; no user content or user paths.",
+    })
 }
 
 #[cfg(feature = "learning")]

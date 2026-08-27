@@ -330,7 +330,9 @@
   top: 0;
   z-index: 3;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
   border-radius: 14px;
@@ -338,6 +340,22 @@
   color: #5b4b40;
   font-size: .82rem;
   line-height: 1.5;
+}
+
+.learning-operation-status button {
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: var(--surface);
+  color: #6d4438;
+  font: inherit;
+  cursor: pointer;
+}
+
+.learning-operation-status button:disabled {
+  cursor: wait;
+  opacity: .65;
 }
 
 .learning-error button,

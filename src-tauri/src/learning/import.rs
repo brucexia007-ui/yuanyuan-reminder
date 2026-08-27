@@ -14,8 +14,9 @@ use crate::error::{AppError, AppResult};
 
 use super::models::{ImportProgressHint, ImportedCard, ParsedUserImport};
 
-const MAX_IMPORT_BYTES: usize = 2 * 1024 * 1024;
-const MAX_IMPORT_ROWS: usize = 10_000;
+pub(super) const MAX_IMPORT_BYTES: usize = 25 * 1024 * 1024;
+pub(super) const MAX_IMPORT_ROWS: usize = 20_000;
+const IMPORT_READ_CHUNK_BYTES: usize = 64 * 1024;
 const USER_PACK_NAMESPACE: &str = "user.local";
 const REQUIRED_HEADER: &str = "headword";
 const ALLOWED_HEADERS: [&str; 7] = [
@@ -28,7 +29,19 @@ const ALLOWED_HEADERS: [&str; 7] = [
     "source_label",
 ];
 
+#[allow(dead_code)]
 pub fn parse_user_csv(bytes: &[u8]) -> AppResult<ParsedUserImport> {
+    parse_user_csv_with_cancellation(bytes, &|| false)
+}
+
+pub(super) fn parse_user_csv_with_cancellation<F>(
+    bytes: &[u8],
+    is_cancelled: &F,
+) -> AppResult<ParsedUserImport>
+where
+    F: Fn() -> bool,
+{
+    ensure_import_not_cancelled(is_cancelled)?;
     if bytes.is_empty() || bytes.len() > MAX_IMPORT_BYTES {
         return Err(AppError::Validation(
             "learning import size is outside the allowed range".into(),
@@ -50,6 +63,7 @@ pub fn parse_user_csv(bytes: &[u8]) -> AppResult<ParsedUserImport> {
     let mut normalized_seen = BTreeSet::new();
     let mut source_label: Option<String> = None;
     for (index, record) in reader.records().enumerate() {
+        ensure_import_not_cancelled(is_cancelled)?;
         if index >= MAX_IMPORT_ROWS {
             return Err(AppError::Validation(
                 "learning import row count exceeds the limit".into(),
@@ -82,6 +96,7 @@ pub fn parse_user_csv(bytes: &[u8]) -> AppResult<ParsedUserImport> {
             "learning import must contain at least one card".into(),
         ));
     }
+    ensure_import_not_cancelled(is_cancelled)?;
     let suffix = file_sha256[..16].to_owned();
     Ok(ParsedUserImport {
         file_sha256,
@@ -92,7 +107,19 @@ pub fn parse_user_csv(bytes: &[u8]) -> AppResult<ParsedUserImport> {
     })
 }
 
+#[allow(dead_code)]
 pub fn read_bounded_import_file(path: &Path) -> AppResult<Vec<u8>> {
+    read_bounded_import_file_with_cancellation(path, &|| false)
+}
+
+pub(super) fn read_bounded_import_file_with_cancellation<F>(
+    path: &Path,
+    is_cancelled: &F,
+) -> AppResult<Vec<u8>>
+where
+    F: Fn() -> bool,
+{
+    ensure_import_not_cancelled(is_cancelled)?;
     if !path
         .extension()
         .and_then(|value| value.to_str())
@@ -110,15 +137,32 @@ pub fn read_bounded_import_file(path: &Path) -> AppResult<Vec<u8>> {
         ));
     }
     let mut bytes = Vec::with_capacity(metadata.len() as usize);
-    file.by_ref()
-        .take(MAX_IMPORT_BYTES as u64 + 1)
-        .read_to_end(&mut bytes)?;
-    if bytes.len() > MAX_IMPORT_BYTES {
-        return Err(AppError::Validation(
-            "learning import size is outside the allowed range".into(),
-        ));
+    let mut chunk = [0_u8; IMPORT_READ_CHUNK_BYTES];
+    loop {
+        ensure_import_not_cancelled(is_cancelled)?;
+        let read = file.read(&mut chunk)?;
+        if read == 0 {
+            break;
+        }
+        if bytes.len().saturating_add(read) > MAX_IMPORT_BYTES {
+            return Err(AppError::Validation(
+                "learning import size is outside the allowed range".into(),
+            ));
+        }
+        bytes.extend_from_slice(&chunk[..read]);
     }
+    ensure_import_not_cancelled(is_cancelled)?;
     Ok(bytes)
+}
+
+pub(super) fn ensure_import_not_cancelled<F>(is_cancelled: &F) -> AppResult<()>
+where
+    F: Fn() -> bool,
+{
+    if is_cancelled() {
+        return Err(AppError::Validation("learning import was cancelled".into()));
+    }
+    Ok(())
 }
 
 pub fn normalize_headword(value: &str) -> AppResult<String> {
@@ -386,11 +430,11 @@ mod tests {
     }
 
     #[test]
-    fn non_utf8_empty_and_too_many_rows_fail_closed() {
+    fn non_utf8_empty_and_row_limit_fail_closed() {
         assert!(parse_user_csv(&[0xff, 0xfe]).is_err());
         assert!(parse_user_csv(b"headword,meanings_zh\n").is_err());
         let mut bytes = b"headword,meanings_zh\n".to_vec();
-        for index in 0..=MAX_IMPORT_ROWS {
+        for index in 0..MAX_IMPORT_ROWS {
             let mut value = index;
             let mut suffix = String::new();
             loop {
@@ -402,7 +446,37 @@ mod tests {
             }
             bytes.extend_from_slice(format!("word{suffix},meaning\n").as_bytes());
         }
+        assert_eq!(parse_user_csv(&bytes).unwrap().cards.len(), MAX_IMPORT_ROWS);
+        bytes.extend_from_slice(b"wordoverflow,meaning\n");
         assert!(parse_user_csv(&bytes).is_err());
+    }
+
+    #[test]
+    fn csv_parsing_can_be_cancelled_cooperatively() {
+        use std::cell::Cell;
+
+        let mut bytes = b"headword,meanings_zh\n".to_vec();
+        for index in 0..1_000 {
+            let mut value = index;
+            let mut suffix = String::new();
+            loop {
+                suffix.push((b'a' + (value % 26) as u8) as char);
+                value /= 26;
+                if value == 0 {
+                    break;
+                }
+            }
+            bytes.extend_from_slice(format!("word{suffix},meaning\n").as_bytes());
+        }
+        let checks = Cell::new(0_u32);
+        let error = parse_user_csv_with_cancellation(&bytes, &|| {
+            checks.set(checks.get() + 1);
+            checks.get() >= 100
+        })
+        .unwrap_err();
+
+        assert!(error.to_string().contains("learning import was cancelled"));
+        assert_eq!(checks.get(), 100);
     }
 
     #[test]

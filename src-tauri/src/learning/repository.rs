@@ -110,11 +110,25 @@ impl LearningRepository {
         Ok(matched)
     }
 
+    #[allow(dead_code)]
     pub fn commit_user_import(
         &mut self,
         import: &ParsedUserImport,
         now_unix_ms: i64,
     ) -> AppResult<ImportCommitResult> {
+        self.commit_user_import_with_cancellation(import, now_unix_ms, &|| false)
+    }
+
+    pub fn commit_user_import_with_cancellation<F>(
+        &mut self,
+        import: &ParsedUserImport,
+        now_unix_ms: i64,
+        is_cancelled: &F,
+    ) -> AppResult<ImportCommitResult>
+    where
+        F: Fn() -> bool,
+    {
+        super::import::ensure_import_not_cancelled(is_cancelled)?;
         if now_unix_ms < 0 || import.cards.is_empty() {
             return Err(AppError::Validation(
                 "learning import commit input is invalid".into(),
@@ -170,6 +184,7 @@ impl LearningRepository {
         .to_string();
         let mut preserved_schedule_count = 0_u32;
         for card in &import.cards {
+            super::import::ensure_import_not_cancelled(is_cancelled)?;
             let existing_schedule = transaction
                 .query_row(
                     "SELECT 1 FROM card_schedule WHERE card_id = ?1",
@@ -237,6 +252,7 @@ impl LearningRepository {
                 )?;
             }
         }
+        super::import::ensure_import_not_cancelled(is_cancelled)?;
         transaction.commit()?;
         Ok(ImportCommitResult {
             schema_version: 1,
@@ -3420,6 +3436,66 @@ mod tests {
         assert!(pack_statuses
             .iter()
             .any(|(pack_id, status)| pack_id == &first.pack_id && status == "disabled"));
+    }
+
+    #[test]
+    fn cancelled_import_rolls_back_source_pack_cards_and_old_pack_status() {
+        use std::cell::Cell;
+
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("learning.sqlite3");
+        let mut repository = LearningRepository::open(&path).unwrap();
+        let first =
+            parse_user_csv("headword,meanings_zh,source_label\nbase,原内容,原词表\n".as_bytes())
+                .unwrap();
+        repository.commit_user_import(&first, 1_000).unwrap();
+        let second = parse_user_csv(
+            "headword,meanings_zh,source_label\nalpha,甲,新词表\nbeta,乙,新词表\ngamma,丙,新词表\n"
+                .as_bytes(),
+        )
+        .unwrap();
+        let checks = Cell::new(0_u32);
+        let error = repository
+            .commit_user_import_with_cancellation(&second, 2_000, &|| {
+                checks.set(checks.get() + 1);
+                checks.get() >= 4
+            })
+            .unwrap_err();
+        assert!(error.to_string().contains("learning import was cancelled"));
+
+        let old_pack_status: String = repository
+            .connection()
+            .query_row(
+                "SELECT status FROM content_packs WHERE pack_id = ?1",
+                [&first.pack_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let new_pack_count: u32 = repository
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM content_packs WHERE pack_id = ?1",
+                [&second.pack_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let new_source_count: u32 = repository
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM content_sources WHERE source_id = ?1",
+                [&second.source_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let card_count: u32 = repository
+            .connection()
+            .query_row("SELECT COUNT(*) FROM learning_cards", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(old_pack_status, "ready");
+        assert_eq!(new_pack_count, 0);
+        assert_eq!(new_source_count, 0);
+        assert_eq!(card_count, 1);
+        assert_learning_database_healthy(repository.connection());
     }
 
     #[test]

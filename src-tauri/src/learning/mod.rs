@@ -223,11 +223,25 @@ impl LearningRuntime {
         }
     }
 
+    #[allow(dead_code)]
     pub fn preview_csv_import(
         &mut self,
         bytes: &[u8],
         now_unix_ms: i64,
     ) -> AppResult<LearningImportPreview> {
+        self.preview_csv_import_with_cancellation(bytes, now_unix_ms, &|| false)
+    }
+
+    pub fn preview_csv_import_with_cancellation<F>(
+        &mut self,
+        bytes: &[u8],
+        now_unix_ms: i64,
+        is_cancelled: &F,
+    ) -> AppResult<LearningImportPreview>
+    where
+        F: Fn() -> bool,
+    {
+        import::ensure_import_not_cancelled(is_cancelled)?;
         if now_unix_ms < 0 {
             return Err(AppError::Validation(
                 "learning import is unavailable".into(),
@@ -241,7 +255,7 @@ impl LearningRuntime {
                 "too many learning import previews are pending".into(),
             ));
         }
-        let import = import::parse_user_csv(bytes)?;
+        let import = import::parse_user_csv_with_cancellation(bytes, is_cancelled)?;
         let expires_at_unix_ms = now_unix_ms
             .checked_add(IMPORT_PREVIEW_TTL_MILLIS)
             .ok_or_else(|| AppError::Validation("learning preview time overflowed".into()))?;
@@ -276,20 +290,38 @@ impl LearningRuntime {
             selected_path_returned: false,
         };
         self.pending_imports.insert(
-            token,
+            token.clone(),
             PendingImportPreview {
                 expires_at_unix_ms,
                 import: PendingLearningImport::Csv(import),
             },
         );
+        if let Err(error) = import::ensure_import_not_cancelled(is_cancelled) {
+            self.pending_imports.remove(&token);
+            return Err(error);
+        }
         Ok(preview)
     }
 
+    #[allow(dead_code)]
     pub fn preview_import_file(
         &mut self,
         path: &Path,
         now_unix_ms: i64,
     ) -> AppResult<LearningImportPreview> {
+        self.preview_import_file_with_cancellation(path, now_unix_ms, &|| false)
+    }
+
+    pub fn preview_import_file_with_cancellation<F>(
+        &mut self,
+        path: &Path,
+        now_unix_ms: i64,
+        is_cancelled: &F,
+    ) -> AppResult<LearningImportPreview>
+    where
+        F: Fn() -> bool,
+    {
+        import::ensure_import_not_cancelled(is_cancelled)?;
         match path
             .extension()
             .and_then(|value| value.to_str())
@@ -297,12 +329,20 @@ impl LearningRuntime {
             .as_deref()
         {
             Some("csv") => {
-                let bytes = import::read_bounded_import_file(path)?;
-                self.preview_csv_import(&bytes, now_unix_ms)
+                let bytes = import::read_bounded_import_file_with_cancellation(path, is_cancelled)?;
+                self.preview_csv_import_with_cancellation(&bytes, now_unix_ms, is_cancelled)
             }
             Some("json") => {
                 let bytes = repository::portability::read_native_import_file(path)?;
-                self.preview_native_json_import(&bytes, now_unix_ms)
+                import::ensure_import_not_cancelled(is_cancelled)?;
+                let preview = self.preview_native_json_import(&bytes, now_unix_ms)?;
+                if let Err(error) = import::ensure_import_not_cancelled(is_cancelled) {
+                    if let Some(token) = preview.preview_token.as_deref() {
+                        self.pending_imports.remove(token);
+                    }
+                    return Err(error);
+                }
+                Ok(preview)
             }
             _ => Err(AppError::Validation(
                 "learning import file type is unsupported".into(),
@@ -358,11 +398,25 @@ impl LearningRuntime {
         Ok(preview)
     }
 
+    #[allow(dead_code)]
     pub fn confirm_import(
         &mut self,
         preview_token: &str,
         now_unix_ms: i64,
     ) -> AppResult<ImportCommitResult> {
+        self.confirm_import_with_cancellation(preview_token, now_unix_ms, &|| false)
+    }
+
+    pub fn confirm_import_with_cancellation<F>(
+        &mut self,
+        preview_token: &str,
+        now_unix_ms: i64,
+        is_cancelled: &F,
+    ) -> AppResult<ImportCommitResult>
+    where
+        F: Fn() -> bool,
+    {
+        import::ensure_import_not_cancelled(is_cancelled)?;
         if uuid::Uuid::parse_str(preview_token).is_err() || now_unix_ms < 0 {
             return Err(AppError::Validation(
                 "learning import preview is invalid or expired".into(),
@@ -373,14 +427,14 @@ impl LearningRuntime {
         let pending = self.pending_imports.remove(preview_token).ok_or_else(|| {
             AppError::Validation("learning import preview is invalid or expired".into())
         })?;
+        import::ensure_import_not_cancelled(is_cancelled)?;
         let repository = self.ensure_repository()?;
         match pending.import {
             PendingLearningImport::Csv(import) => {
-                repository.commit_user_import(&import, now_unix_ms)
+                repository.commit_user_import_with_cancellation(&import, now_unix_ms, is_cancelled)
             }
-            PendingLearningImport::NativeJson(import) => {
-                repository.restore_native_export(&import, now_unix_ms)
-            }
+            PendingLearningImport::NativeJson(import) => repository
+                .restore_native_export_with_cancellation(&import, now_unix_ms, is_cancelled),
         }
     }
 
@@ -969,6 +1023,97 @@ mod tests {
             .confirm_import(preview.preview_token.as_deref().unwrap(), 5_000)
             .unwrap();
         assert!(target.capabilities().content_pack_ready);
+    }
+
+    #[test]
+    fn cancelled_native_restore_rolls_back_the_existing_learning_database() {
+        use std::cell::Cell;
+
+        let directory = tempdir().unwrap();
+        let mut source = LearningRuntime::initialize(&directory.path().join("source.sqlite3"));
+        let preview = source
+            .preview_csv_import(
+                "headword,meanings_zh\nalpha,甲\nbeta,乙\ngamma,丙\n".as_bytes(),
+                1_000,
+            )
+            .unwrap();
+        source
+            .confirm_import(preview.preview_token.as_deref().unwrap(), 2_000)
+            .unwrap();
+        let payload = source
+            .export_payload(LearningExportFormat::NativeJson, 3_000)
+            .unwrap();
+
+        let mut target = LearningRuntime::initialize(&directory.path().join("target.sqlite3"));
+        let baseline = target
+            .preview_csv_import("headword,meanings_zh\nbaseline,原内容\n".as_bytes(), 4_000)
+            .unwrap();
+        target
+            .confirm_import(baseline.preview_token.as_deref().unwrap(), 5_000)
+            .unwrap();
+        let restore = target
+            .preview_native_json_import(&payload.bytes, 6_000)
+            .unwrap();
+        let checks = Cell::new(0_u32);
+        let error = target
+            .confirm_import_with_cancellation(
+                restore.preview_token.as_deref().unwrap(),
+                7_000,
+                &|| {
+                    checks.set(checks.get() + 1);
+                    checks.get() >= 8
+                },
+            )
+            .unwrap_err();
+
+        assert!(error.to_string().contains("learning import was cancelled"));
+        let summary = target.data_summary().unwrap();
+        assert_eq!(summary.card_count, 1);
+        assert_eq!(summary.packs.len(), 1);
+        assert_eq!(summary.packs[0].title, "用户导入");
+    }
+
+    #[test]
+    fn cancelled_preview_does_not_leave_an_unreachable_pending_token() {
+        use std::cell::Cell;
+
+        let directory = tempdir().unwrap();
+        let mut runtime = LearningRuntime::initialize(&directory.path().join("learning.sqlite3"));
+        let csv_checks = Cell::new(0_u32);
+        let error = runtime
+            .preview_csv_import_with_cancellation(
+                "headword,meanings_zh\nword,含义\n".as_bytes(),
+                1_000,
+                &|| {
+                    csv_checks.set(csv_checks.get() + 1);
+                    csv_checks.get() >= 5
+                },
+            )
+            .unwrap_err();
+        assert!(error.to_string().contains("learning import was cancelled"));
+        assert!(runtime.pending_imports.is_empty());
+
+        let mut source = LearningRuntime::initialize(&directory.path().join("source.sqlite3"));
+        let source_preview = source
+            .preview_csv_import("headword,meanings_zh\nsource,原生含义\n".as_bytes(), 2_000)
+            .unwrap();
+        source
+            .confirm_import(source_preview.preview_token.as_deref().unwrap(), 3_000)
+            .unwrap();
+        let payload = source
+            .export_payload(LearningExportFormat::NativeJson, 4_000)
+            .unwrap();
+        let native_path = directory.path().join("learning.json");
+        std::fs::write(&native_path, payload.bytes).unwrap();
+        let native_checks = Cell::new(0_u32);
+        let error = runtime
+            .preview_import_file_with_cancellation(&native_path, 5_000, &|| {
+                native_checks.set(native_checks.get() + 1);
+                native_checks.get() >= 3
+            })
+            .unwrap_err();
+        assert!(error.to_string().contains("learning import was cancelled"));
+        assert!(runtime.pending_imports.is_empty());
     }
 
     #[test]

@@ -20,6 +20,75 @@ use crate::companion_core::CompanionExpressionDirector;
 pub const ACTIVITY_IDLE_PAUSE_SECONDS: u64 = 5 * 60;
 pub const ACTIVITY_BREAK_RESET_SECONDS: u64 = 10 * 60;
 
+#[cfg(feature = "learning")]
+pub struct LearningImportCancellation {
+    next_operation_id: AtomicU64,
+    active_operation_id: AtomicU64,
+    cancelled_operation_id: AtomicU64,
+}
+
+#[cfg(feature = "learning")]
+impl Default for LearningImportCancellation {
+    fn default() -> Self {
+        Self {
+            next_operation_id: AtomicU64::new(1),
+            active_operation_id: AtomicU64::new(0),
+            cancelled_operation_id: AtomicU64::new(0),
+        }
+    }
+}
+
+#[cfg(feature = "learning")]
+impl LearningImportCancellation {
+    pub fn begin(&self) -> crate::error::AppResult<u64> {
+        let operation_id = self.next_operation_id.fetch_add(1, Ordering::SeqCst);
+        if operation_id == 0 {
+            return Err(crate::error::AppError::Validation(
+                "learning import operation identifier is unavailable".into(),
+            ));
+        }
+        self.active_operation_id
+            .compare_exchange(0, operation_id, Ordering::SeqCst, Ordering::SeqCst)
+            .map_err(|_| {
+                crate::error::AppError::Validation(
+                    "another learning import is already in progress".into(),
+                )
+            })?;
+        Ok(operation_id)
+    }
+
+    pub fn cancel_active(&self) -> bool {
+        let operation_id = self.active_operation_id.load(Ordering::SeqCst);
+        if operation_id == 0 {
+            return false;
+        }
+        self.cancelled_operation_id
+            .store(operation_id, Ordering::SeqCst);
+        true
+    }
+
+    pub fn is_cancelled(&self, operation_id: u64) -> bool {
+        operation_id != 0
+            && self.active_operation_id.load(Ordering::SeqCst) == operation_id
+            && self.cancelled_operation_id.load(Ordering::SeqCst) == operation_id
+    }
+
+    pub fn finish(&self, operation_id: u64) {
+        let _ = self.active_operation_id.compare_exchange(
+            operation_id,
+            0,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        );
+        let _ = self.cancelled_operation_id.compare_exchange(
+            operation_id,
+            0,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        );
+    }
+}
+
 pub struct ActivityTracker {
     active_seconds: u64,
     last_persisted_seconds: u64,
@@ -120,6 +189,8 @@ pub struct AppState {
     #[cfg(feature = "learning")]
     pub learning: Mutex<LearningRuntime>,
     #[cfg(feature = "learning")]
+    pub learning_import_cancellation: LearningImportCancellation,
+    #[cfg(feature = "learning")]
     pub learning_invitation_gate: Mutex<()>,
     #[cfg(windows)]
     pub companion_expression: Mutex<CompanionExpressionDirector>,
@@ -150,6 +221,8 @@ impl AppState {
             presentation_arbiter: Mutex::new(PresentationArbiter::default()),
             #[cfg(feature = "learning")]
             learning: Mutex::new(LearningRuntime::default()),
+            #[cfg(feature = "learning")]
+            learning_import_cancellation: LearningImportCancellation::default(),
             #[cfg(feature = "learning")]
             learning_invitation_gate: Mutex::new(()),
             #[cfg(windows)]
@@ -241,5 +314,23 @@ mod tests {
         assert_eq!(tracker.take_persistence_update(), Some(180));
         assert!(!tracker.advance(1, Some(ACTIVITY_BREAK_RESET_SECONDS), true, true, 60,));
         assert_eq!(tracker.take_persistence_update(), Some(0));
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn learning_import_cancellation_is_scoped_to_one_active_operation() {
+        let cancellation = LearningImportCancellation::default();
+        let first = cancellation.begin().unwrap();
+        assert!(cancellation.begin().is_err());
+        assert!(!cancellation.is_cancelled(first));
+        assert!(cancellation.cancel_active());
+        assert!(cancellation.is_cancelled(first));
+
+        cancellation.finish(first);
+        assert!(!cancellation.cancel_active());
+        let second = cancellation.begin().unwrap();
+        assert_ne!(first, second);
+        assert!(!cancellation.is_cancelled(second));
+        cancellation.finish(second);
     }
 }

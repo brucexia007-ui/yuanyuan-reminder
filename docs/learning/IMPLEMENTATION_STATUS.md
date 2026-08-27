@@ -1,10 +1,10 @@
-# Learning Preview 实施状态
+# 学习模块实施状态
 
-日期：2026-08-25<br>
-基线：圆圆提醒 v1.4.0<br>
-状态：阶段 0 的 REL-001/002 工程、全呈现方后端合同与当前哈希绑定 QA 二进制的强提醒、已提交答案异常终止恢复、SQLite commit callback 内终止的未提交选择回滚、原生菜单睡眠/唤醒、当前 150% DPI 窗口/辅助显示及真实标准系统模式/Narrator 并发核心 Windows 状态链已完成；Rust 原生签名并发类别的进程级缓解已通过默认 20 轮 + learning 10 轮正式稳定性门，但精确 Windows 故障模块仍未知；GEN-000 仍是未冻结草案，PACK-001 未开始；学习能力继续默认关闭
+日期：2026-08-27<br>
+基线：圆圆提醒统一产品 v1.5.4 候选<br>
+状态：学习能力已进入统一产品，自动学习邀请仍默认关闭，稳定版不捆绑个人学习内容。阶段 0 的 REL-001/002 工程、全呈现方后端合同、强提醒、崩溃/事务回滚、原生菜单睡眠/唤醒、当前 150% DPI 窗口/辅助显示及真实标准系统模式/Narrator 并发核心 Windows 状态链已完成。20,000 卡真实 Tauri CSV 导入、事务中途取消、分页、1,000 次答案、数据库增长和统一备份恢复已在 v1.5.4 开发态候选通过；正式发布只接受由同一严格门在最新干净提交上生成的 `sourceDirty=false` 证据。GEN-000/PACK-001 的通用内容包研究未冻结，不属于“不捆绑内容、由用户自行导入”的本轮稳定版范围。
 
-本文件第 1—7 节记录现有英语 Learning Preview 的实现清单；阶段 0/1 的最新任务判定、证据与 No-Go 以 `STAGE_0_1_COMPLETION_AUDIT.md` 为准。个人构建可内置本地词库，但不得作为稳定版或通用内容包发布结论。
+本文件第 1—7 节记录统一产品内英语学习模块的实现清单；`STAGE_0_1_COMPLETION_AUDIT.md` 保留早期 Preview 阶段的历史判定。个人构建可内置本地词库，但不得作为稳定版或通用内容包发布结论。
 
 ## 1. 已落地的用户闭环
 
@@ -27,20 +27,20 @@
 
 | 层 | 主要位置 | 当前职责 |
 | --- | --- | --- |
-| 构建边界 | `src-tauri/Cargo.toml`、`vite.config.ts` | Cargo `learning` feature 与前端构建门，均默认关闭 |
+| 构建边界 | `src-tauri/Cargo.toml`、`vite.config.ts` | 统一产品默认启用 Cargo `learning` feature 和学习前端；`--no-default-features` 仅保留兼容/隔离验证 |
 | 学习后端 | `src-tauri/src/learning/` | 独立数据库、导入、FSRS 调度、资格引擎、Windows 适宜性、运行时协调 |
 | IPC | `src-tauri/src/commands.rs`、`src/lib/backend.ts`、`src/types.ts` | 版本化 DTO、会话命令、邀请命令、导入导出和删除命令 |
 | 学习界面 | `src/learning/` | 首页、小黑板选择题、错题/已学列表、设置、导入确认、数据管理和浏览器内存演示 |
 | 宠物表达 | `src/pet/`、`src-tauri/src/companion_core.rs` | 合上学习卡、打开/忽略/今日暂停、非语言递卡与抢占清理 |
 | 注意力预算 | `src-tauri/migrations/012_learning_invitation_attention.sql`、`repository.rs` | 主库只保存无内容 claim；学习事件保存在独立学习库 |
-| 边界验证 | `scripts/verify_learning_disabled_boundary.mjs`、`verify_learning_enabled_bundle.mjs` | 验证默认包无学习代码，开启包独立分包且命令存在 |
+| 边界验证 | `verify_learning_enabled_bundle.mjs`、`verify_unified_product_boundary.mjs`、fragment/pack-spike verifier | 验证统一包包含学习命令和独立前端分包，同时不混入研究材料、解析 spike 或个人内容 |
 
 ## 3. 数据合同
 
-- 数据库：`yuanyuan-learning.sqlite3`，当前内部 schema v6 会话部分；不进入提醒备份。该未发布迁移必须在 GEN-000 冻结后与最终通用项/调度定义合并，不能单独发布。
+- 数据库：`yuanyuan-learning.sqlite3`，当前内部 schema v6 会话部分；与提醒主库保持物理隔离，但会作为同一可见备份项的配套文件进入统一备份和恢复。旧的提醒单库备份恢复时保留当前学习数据。
 - SQLite：`foreign_keys=ON`、WAL、`synchronous=NORMAL`、`busy_timeout=2000ms`、打开时 `quick_check`。
 - 内容来源：当前仅用户导入；没有生产内置词包。
-- CSV：UTF-8、普通文件、受限大小/行数/字段/文本长度；稳定卡 ID 来自 `user.local + 规范化 headword` 的 SHA-256。
+- CSV：UTF-8、普通文件，最大 25 MiB/20,000 行，并限制字段和文本长度；读取、解析和确认写入支持协作取消，确认阶段取消会回滚整个事务；稳定卡 ID 来自 `user.local + 规范化 headword` 的 SHA-256。
 - 原生 JSON：格式标识 `yuanyuan.learning.export`、schema v1；可以完整恢复内容、调度、会话、复习日志、客观题记录和错题回看队列，并兼容旧导出。
 - 导出：完整 JSON、卡片 CSV、复习记录 CSV；新文件原子写入、不覆盖现有文件、CSV 公式前缀转义。
 - 删除：清空进度会保留内容与设置；彻底删除会移除学习库及 WAL/SHM 后创建空库，均不触碰提醒主库。
@@ -58,7 +58,7 @@
 ## 5. 已实现命令面
 
 - 能力与设置：`get_runtime_capabilities`、`get_learning_home`、`update_learning_settings`
-- 导入：`preview_learning_import`、`confirm_learning_import`
+- 导入：`preview_learning_import`、`confirm_learning_import`、`cancel_learning_import`
 - 手动会话：`start_manual_learning_session`、`get_current_learning_question`、`answer_learning_question`、`pause_learning_session`、`resume_learning_session`、`abandon_learning_session`、`get_resumable_learning_session`，以及兼容降级用的 `get_current_learning_card`/`rate_learning_card`、`finish_learning_session`
 - 自动邀请：`get_pending_learning_invitation`、`accept_learning_invitation`、`dismiss_learning_invitation`、`pause_learning_invites_today`
 - 数据管理：`list_learning_records`、`get_learning_data_summary`、`export_learning_data`、`delete_learning_data`
@@ -80,16 +80,20 @@
 # 完整学习开发质量门
 npm.cmd run learning:verify
 
-# 学习前端独立构建与分包验证
-npm.cmd run learning:ui:build
+# 统一产品前端构建与分包验证
+npm.cmd run unified:ui:build
 
-# 后端学习 feature 测试
+# 统一产品后端测试
 cd src-tauri
-cargo test -p yuanyuan-reminder --lib --features learning
+cargo test --locked -p yuanyuan-reminder --lib
 
-# 默认关闭边界
+# 无学习 feature 的兼容/隔离回归
+cargo test --locked -p yuanyuan-reminder --lib --no-default-features
+
+# 干净提交上的真实 Tauri 规模门
 cd ..
-npm.cmd run learning-off:verify
+npm.cmd run runtime:qa:learning:build
+npm.cmd run release:community:learning:gate
 ```
 
-任何学习开启构建都只是内部测试产物。正式发布仍需 `QA_MATRIX.md`、内容权利、许可证/SBOM 和产品 Go/No-Go 全部关闭。
+统一产品可以发布用户自行导入内容的学习功能，但不得捆绑个人词库。正式发布仍需 `QA_MATRIX.md` 中的干净证据、全量回归、安装态 E2E、24 小时稳定运行和人工 Go/No-Go 全部关闭。

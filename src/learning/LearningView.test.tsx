@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const backend = vi.hoisted(() => ({
   abandonLearningSession: vi.fn(),
   answerLearningQuestion: vi.fn(),
+  cancelLearningImport: vi.fn(),
   confirmLearningImport: vi.fn(),
   confirmLegacyLearningMigration: vi.fn(),
   deleteLearningData: vi.fn(),
@@ -668,6 +669,54 @@ describe("learning micro-session", () => {
     await act(async () => button("确认导入").click());
     await flush();
     expect(backend.confirmLearningImport).toHaveBeenCalledWith("preview-1");
+  });
+
+  it("can stop an active import and reports a safe rollback", async () => {
+    runtime.tauriAvailable.mockReturnValue(true);
+    backend.getLearningHome.mockResolvedValue({
+      ...structuredClone(home),
+      capabilities: { ...home.capabilities, contentPackReady: false },
+    });
+    backend.previewLearningImport.mockResolvedValue({
+      schemaVersion: 1,
+      status: "confirmation_required",
+      previewToken: "preview-cancel",
+      expiresAtUnixMs: Date.now() + 60_000,
+      format: "csv",
+      sourceLabel: "大词表",
+      cardCount: 20_000,
+      newCount: 20_000,
+      learningCount: 0,
+      reviewKnownCount: 0,
+      sampleHeadwords: ["worda"],
+      selectedPathReturned: false,
+    });
+    let rejectImport!: (reason: Error) => void;
+    backend.confirmLearningImport.mockImplementation(
+      () => new Promise((_resolve, reject) => { rejectImport = reject; }),
+    );
+    backend.cancelLearningImport.mockResolvedValue(true);
+
+    await act(async () => root.render(<LearningView />));
+    await flush();
+    await act(async () => button("选择 CSV 或原生 JSON").click());
+    await flush();
+    await act(async () => button("确认导入").click());
+    await flush();
+    expect(container.textContent).toContain("正在把所选内容写入本机学习库");
+
+    await act(async () => button("停止导入").click());
+    await flush();
+    expect(backend.cancelLearningImport).toHaveBeenCalledTimes(1);
+    expect(container.textContent).toContain("当前数据库事务会先安全回滚");
+
+    await act(async () => rejectImport(
+      new Error("validation error: learning import was cancelled"),
+    ));
+    await flush();
+    expect(container.textContent).toContain("导入已安全停止，没有写入不完整数据");
+    expect(container.textContent).not.toContain("词表没有导入");
+    expect(container.textContent).not.toContain("确认导入这份词表");
   });
 
   it("opens source controls and recovers after the native export dialog is cancelled", async () => {

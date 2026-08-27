@@ -415,12 +415,25 @@ impl LearningRepository {
         })
     }
 
+    #[allow(dead_code)]
     pub fn restore_native_export(
         &mut self,
         value: &NativeLearningExport,
         now_unix_ms: i64,
     ) -> AppResult<super::ImportCommitResult> {
-        self.restore_native_export_inner(value, now_unix_ms, None)
+        self.restore_native_export_inner(value, now_unix_ms, None, &|| false)
+    }
+
+    pub fn restore_native_export_with_cancellation<F>(
+        &mut self,
+        value: &NativeLearningExport,
+        now_unix_ms: i64,
+        is_cancelled: &F,
+    ) -> AppResult<super::ImportCommitResult>
+    where
+        F: Fn() -> bool,
+    {
+        self.restore_native_export_inner(value, now_unix_ms, None, is_cancelled)
     }
 
     pub fn restore_native_export_with_legacy_receipt(
@@ -445,17 +458,24 @@ impl LearningRepository {
             value,
             now_unix_ms,
             Some((source_edition, source_fingerprint, review_count)),
+            &|| false,
         )
     }
 
-    fn restore_native_export_inner(
+    fn restore_native_export_inner<F>(
         &mut self,
         value: &NativeLearningExport,
         now_unix_ms: i64,
         legacy_receipt: Option<(&str, &str, u32)>,
-    ) -> AppResult<super::ImportCommitResult> {
+        is_cancelled: &F,
+    ) -> AppResult<super::ImportCommitResult>
+    where
+        F: Fn() -> bool,
+    {
+        super::super::import::ensure_import_not_cancelled(is_cancelled)?;
         validate_now(now_unix_ms)?;
         validate_native_export(value)?;
+        super::super::import::ensure_import_not_cancelled(is_cancelled)?;
         let transaction = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -471,7 +491,7 @@ impl LearningRepository {
              DELETE FROM learning_invitation_events;
              DELETE FROM legacy_learning_migrations;",
         )?;
-        insert_native_export(&transaction, value)?;
+        insert_native_export(&transaction, value, is_cancelled)?;
         if let Some((source_edition, source_fingerprint, review_count)) = legacy_receipt {
             transaction.execute(
                 "INSERT INTO legacy_learning_migrations(
@@ -491,6 +511,7 @@ impl LearningRepository {
             "UPDATE learning_schema_meta SET last_successful_export_at_unix_ms = NULL WHERE id = 1",
             [],
         )?;
+        super::super::import::ensure_import_not_cancelled(is_cancelled)?;
         transaction.commit()?;
         Ok(super::ImportCommitResult {
             schema_version: 1,
@@ -1224,7 +1245,15 @@ fn validate_native_export(value: &NativeLearningExport) -> AppResult<()> {
     Ok(())
 }
 
-fn insert_native_export(conn: &Connection, value: &NativeLearningExport) -> AppResult<()> {
+fn insert_native_export<F>(
+    conn: &Connection,
+    value: &NativeLearningExport,
+    is_cancelled: &F,
+) -> AppResult<()>
+where
+    F: Fn() -> bool,
+{
+    super::super::import::ensure_import_not_cancelled(is_cancelled)?;
     conn.execute(
         "UPDATE learning_settings SET mode = ?1, cards_per_session = ?2,
             daily_new_limit = ?3, daily_goal = ?4, focus_finished_enabled = ?5,
@@ -1252,6 +1281,7 @@ fn insert_native_export(conn: &Connection, value: &NativeLearningExport) -> AppR
         ],
     )?;
     for item in &value.sources {
+        super::super::import::ensure_import_not_cancelled(is_cancelled)?;
         conn.execute(
             "INSERT INTO content_sources(source_id, source_kind, version, source_url,
                 license_expression, notice_text, content_sha256, created_at_unix_ms)
@@ -1269,6 +1299,7 @@ fn insert_native_export(conn: &Connection, value: &NativeLearningExport) -> AppR
         )?;
     }
     for item in &value.packs {
+        super::super::import::ensure_import_not_cancelled(is_cancelled)?;
         conn.execute(
             "INSERT INTO content_packs(pack_id, stable_namespace, version, title, exam_scope,
                 status, manifest_sha256, created_at_unix_ms)
@@ -1286,6 +1317,7 @@ fn insert_native_export(conn: &Connection, value: &NativeLearningExport) -> AppR
         )?;
     }
     for item in &value.cards {
+        super::super::import::ensure_import_not_cancelled(is_cancelled)?;
         conn.execute(
             "INSERT INTO learning_cards(card_id, pack_id, headword, normalized_headword,
                 phonetic, part_of_speech_json, meanings_zh_json, word_family_json,
@@ -1310,6 +1342,7 @@ fn insert_native_export(conn: &Connection, value: &NativeLearningExport) -> AppR
         )?;
     }
     for item in &value.schedules {
+        super::super::import::ensure_import_not_cancelled(is_cancelled)?;
         conn.execute(
             "INSERT INTO card_schedule(card_id, stage, due_at_unix_ms, stability, difficulty,
                 reps, lapses, last_review_at_unix_ms) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -1326,6 +1359,7 @@ fn insert_native_export(conn: &Connection, value: &NativeLearningExport) -> AppR
         )?;
     }
     for item in &value.sessions {
+        super::super::import::ensure_import_not_cancelled(is_cancelled)?;
         let stored_status = match item.status.as_str() {
             "active" | "interrupted" => "paused",
             "exited" => "abandoned",
@@ -1394,6 +1428,7 @@ fn insert_native_export(conn: &Connection, value: &NativeLearningExport) -> AppR
         )?;
     }
     for item in &value.review_logs {
+        super::super::import::ensure_import_not_cancelled(is_cancelled)?;
         conn.execute(
             "INSERT INTO review_logs(review_id, card_id, session_id, rating,
                 reviewed_at_unix_ms, elapsed_days, scheduled_days, stability, difficulty)
@@ -1412,6 +1447,7 @@ fn insert_native_export(conn: &Connection, value: &NativeLearningExport) -> AppR
         )?;
     }
     for item in &value.remediation_queue {
+        super::super::import::ensure_import_not_cancelled(is_cancelled)?;
         conn.execute(
             "INSERT INTO learning_remediation_queue(
                 session_id, card_id, position, created_at_unix_ms, completed_at_unix_ms
@@ -1426,6 +1462,7 @@ fn insert_native_export(conn: &Connection, value: &NativeLearningExport) -> AppR
         )?;
     }
     for item in &value.session_targets {
+        super::super::import::ensure_import_not_cancelled(is_cancelled)?;
         conn.execute(
             "INSERT INTO learning_session_targets(session_id, card_id, position)
              VALUES(?1, ?2, ?3)",
@@ -1433,6 +1470,7 @@ fn insert_native_export(conn: &Connection, value: &NativeLearningExport) -> AppR
         )?;
     }
     for item in &value.question_attempts {
+        super::super::import::ensure_import_not_cancelled(is_cancelled)?;
         conn.execute(
             "INSERT INTO learning_question_attempts(
                 attempt_id, client_answer_id, question_id, session_id, card_id,
@@ -1455,6 +1493,7 @@ fn insert_native_export(conn: &Connection, value: &NativeLearningExport) -> AppR
             ],
         )?;
     }
+    super::super::import::ensure_import_not_cancelled(is_cancelled)?;
     Ok(())
 }
 

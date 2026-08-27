@@ -216,6 +216,11 @@ export async function confirmLearningImport(
   });
 }
 
+export async function cancelLearningImport(): Promise<boolean> {
+  if (!isTauri) return false;
+  return invoke<boolean>("cancel_learning_import");
+}
+
 export async function listLegacyLearningSources(): Promise<LegacyLearningSourceSummary[]> {
   return isTauri
     ? invoke<LegacyLearningSourceSummary[]>("list_legacy_learning_sources")

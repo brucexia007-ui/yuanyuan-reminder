@@ -24,6 +24,7 @@ import type {
   LegacyLearningSourceSummary,
 } from "../types";
 import {
+  cancelLearningImport,
   confirmLearningImport,
   confirmLegacyLearningMigration,
   abandonLearningSession,
@@ -87,6 +88,7 @@ export function LearningView() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [pendingOperation, setPendingOperation] =
     useState<LearningOperation | null>(null);
+  const [importCancellationBusy, setImportCancellationBusy] = useState(false);
   const [recordFilter, setRecordFilter] = useState<LearningRecordFilter>("mistakes");
   const [recordPage, setRecordPage] = useState<LearningRecordPage | null>(null);
   const [recordBusy, setRecordBusy] = useState(false);
@@ -450,7 +452,11 @@ export function LearningView() {
       const preview = await previewLearningImport();
       if (preview.status === "confirmation_required") setImportPreview(preview);
     } catch (reason) {
-      setError(`词表未能预览：${learningErrorMessage(reason)}`);
+      if (learningImportWasCancelled(reason)) {
+        setFeedback("导入已安全停止，没有写入不完整数据。");
+      } else {
+        setError(`词表未能预览：${learningErrorMessage(reason)}`);
+      }
     } finally {
       setPendingOperation(null);
       setBusy(false);
@@ -468,10 +474,31 @@ export function LearningView() {
       setImportPreview(null);
       await loadHome();
     } catch (reason) {
-      setError(`词表没有导入：${learningErrorMessage(reason)}`);
+      setImportPreview(null);
+      if (learningImportWasCancelled(reason)) {
+        setFeedback("导入已安全停止，没有写入不完整数据。");
+      } else {
+        setError(`词表没有导入：${learningErrorMessage(reason)}`);
+      }
     } finally {
       setPendingOperation(null);
       setBusy(false);
+    }
+  };
+
+  const requestImportCancellation = async () => {
+    if (!pendingOperation?.startsWith("import_")) return;
+    setImportCancellationBusy(true);
+    setError(null);
+    try {
+      const accepted = await cancelLearningImport();
+      setFeedback(accepted
+        ? "已请求停止；当前数据库事务会先安全回滚。"
+        : "导入操作已经结束，无需再次停止。");
+    } catch (reason) {
+      setError(`暂时无法停止导入：${learningErrorMessage(reason)}`);
+    } finally {
+      setImportCancellationBusy(false);
     }
   };
 
@@ -616,7 +643,16 @@ export function LearningView() {
     <div className="learning-view" aria-busy={busy}>
       {pendingOperation && (
         <div className="learning-operation-status" role="status" aria-live="polite">
-          {learningOperationMessage(pendingOperation)}
+          <span>{learningOperationMessage(pendingOperation)}</span>
+          {pendingOperation.startsWith("import_") && (
+            <button
+              type="button"
+              disabled={importCancellationBusy}
+              onClick={() => void requestImportCancellation()}
+            >
+              {importCancellationBusy ? "正在停止" : "停止导入"}
+            </button>
+          )}
         </div>
       )}
       {error && (
@@ -1901,4 +1937,14 @@ function learningErrorMessage(reason: unknown) {
   }
   if (message) return message;
   return "发生了未预期错误，请稍后重试";
+}
+
+function learningImportWasCancelled(reason: unknown) {
+  const message =
+    typeof reason === "string"
+      ? reason
+      : reason instanceof Error
+        ? reason.message
+        : "";
+  return message.includes("learning import was cancelled");
 }

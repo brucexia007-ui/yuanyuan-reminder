@@ -152,6 +152,8 @@ pub fn run() {
             #[cfg(feature = "learning")]
             commands::confirm_learning_import,
             #[cfg(feature = "learning")]
+            commands::cancel_learning_import,
+            #[cfg(feature = "learning")]
             commands::list_legacy_learning_sources,
             #[cfg(feature = "learning")]
             commands::preview_legacy_learning_migration,
