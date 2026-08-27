@@ -92,7 +92,7 @@ function makeReport() {
     schemaVersion: 1,
     generatedAt: "2026-08-21T12:30:00.000Z",
     profile: "learning-sleep-wake",
-    source: { branch: "feat/fragment-learning-stage-0-1", commit: "a".repeat(40), dirty: true },
+    source: { branch: "feat/unified-v1-5", commit: "a".repeat(40), dirty: false },
     bindings: {
       applicationSha256: APP,
       fixtureExecutableSha256: FIXTURE,
@@ -166,6 +166,26 @@ test("reconstructs the deterministic five-card fixture hash", () => {
 
 test("accepts complete native-menu sleep and wake evidence", () => {
   assert.deepEqual(validateLearningSleepWakeReport(makeReport(), expectedBindings, expectedCaptures), []);
+});
+
+test("accepts clean unified and main sources but rejects legacy or dirty sources", () => {
+  const mainReport = makeReport();
+  mainReport.source.branch = "main";
+  assert.deepEqual(validateLearningSleepWakeReport(mainReport, expectedBindings, expectedCaptures), []);
+
+  const legacyReport = makeReport();
+  legacyReport.source.branch = "feat/fragment-learning-stage-0-1";
+  assert.match(
+    validateLearningSleepWakeReport(legacyReport, expectedBindings, expectedCaptures).join("\n"),
+    /source state/,
+  );
+
+  const dirtyReport = makeReport();
+  dirtyReport.source.dirty = true;
+  assert.match(
+    validateLearningSleepWakeReport(dirtyReport, expectedBindings, expectedCaptures).join("\n"),
+    /source state/,
+  );
 });
 
 test("rejects unknown report fields", () => {

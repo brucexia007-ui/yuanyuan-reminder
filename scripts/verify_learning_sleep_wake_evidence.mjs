@@ -18,6 +18,7 @@ const SHA256 = /^[A-F0-9]{64}$/;
 const LOWER_SHA256 = /^[a-f0-9]{64}$/;
 const COMMIT = /^[a-f0-9]{40}$/;
 const HEADWORD = /^qa[a-z]+$/;
+const RELEASE_EVIDENCE_BRANCHES = new Set(["main", "feat/unified-v1-5"]);
 const MENU_ITEMS = [
   "打开今日任务",
   "记录一次喝水",
@@ -181,11 +182,11 @@ export function validateLearningSleepWakeReport(report, expectedBindings, expect
   }
   if (
     !exactKeys(report.source, ["branch", "commit", "dirty"]) ||
-    report.source?.branch !== "feat/fragment-learning-stage-0-1" ||
+    !RELEASE_EVIDENCE_BRANCHES.has(report.source?.branch) ||
     !COMMIT.test(report.source?.commit ?? "") ||
-    typeof report.source?.dirty !== "boolean"
+    report.source?.dirty !== false
   ) {
-    errors.push("source state is incomplete");
+    errors.push("source state is incomplete or not release-eligible");
   }
   if (
     !exactKeys(report.bindings, [
