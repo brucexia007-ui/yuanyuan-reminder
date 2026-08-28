@@ -97,6 +97,13 @@ import {
   treatFrameFromPointerHeight,
   wandDirectionFrame,
 } from "./interactionMotion";
+import {
+  COMPACT_PET_WINDOW_GUTTER,
+  TOOL_CARD_LANE_WIDTH,
+  interactionStagePosition,
+  interactionStageWidth,
+  interactionWindowWidth,
+} from "./interactionStage";
 import "./pet.css";
 
 const LazyLearningDesktopStage = learningBuildEnabled
@@ -148,7 +155,7 @@ interface WindowSnapshot {
   size: PhysicalSize;
 }
 
-type ExpandedWindowStage = "alert" | "learning";
+type ExpandedWindowStage = "alert" | "learning" | "tool";
 
 export interface PetSleepRequest {
   source?: "manual" | "automatic";
@@ -523,6 +530,11 @@ export function PetWindow() {
           ? visibleMonitorWorkArea(workArea, browserWorkArea)
           : browserWorkArea;
       }
+      const activeTool = stage === "tool" ? toolInteractionRef.current : null;
+      if (stage === "tool" && !activeTool) return;
+      const petHeight = Math.round(
+        (settingsRef.current.petWidth * 208) / 192,
+      );
       const target =
         stage === "alert"
           ? alertStagePosition(
@@ -531,16 +543,33 @@ export function PetWindow() {
               scaleFactor,
               workArea,
             )
-          : learningStagePosition(
-              snapshot.position,
-              snapshot.size,
-              scaleFactor,
-              workArea,
-            );
+          : stage === "learning"
+            ? learningStagePosition(
+                snapshot.position,
+                snapshot.size,
+                scaleFactor,
+                workArea,
+              )
+            : interactionStagePosition(
+                snapshot.position,
+                snapshot.size,
+                activeTool!.stageWidth,
+                petHeight,
+                scaleFactor,
+                workArea,
+              );
       const width =
-        stage === "alert" ? ALERT_STAGE_WIDTH : LEARNING_STAGE_WIDTH;
+        stage === "alert"
+          ? ALERT_STAGE_WIDTH
+          : stage === "learning"
+            ? LEARNING_STAGE_WIDTH
+            : interactionWindowWidth(activeTool!.stageWidth);
       const height =
-        stage === "alert" ? ALERT_STAGE_HEIGHT : LEARNING_STAGE_HEIGHT;
+        stage === "alert"
+          ? ALERT_STAGE_HEIGHT
+          : stage === "learning"
+            ? LEARNING_STAGE_HEIGHT
+            : petHeight + COMPACT_PET_WINDOW_GUTTER;
 
       await windowApi.setIgnoreCursorEvents(false).catch(() => undefined);
       await windowApi.setSize(new LogicalSize(width, height));
@@ -554,24 +583,13 @@ export function PetWindow() {
     [windowApi],
   );
 
-  const restorePetWindowSize = useCallback(() => {
-    if (!windowApi) return;
-    if (expandedWindowSnapshot.current) return;
-    const width = settingsRef.current.petWidth;
-    void windowApi.setSize(
-      new LogicalSize(width + 28, Math.round((width * 208) / 192) + 28),
-    );
-  }, [windowApi]);
-
   const endToolInteraction = useCallback(() => {
-    const current = toolInteractionRef.current;
     const next = transitionToolInteraction(toolInteractionRef.current, {
       type: "end",
     });
     toolInteractionRef.current = next;
     setToolInteraction(next);
-    if (current?.kind === "ball") restorePetWindowSize();
-  }, [restorePetWindowSize]);
+  }, []);
 
   const restoreFunctionalAnimation = useCallback(() => {
     const activity = petActivityRef.current?.activity;
@@ -1045,24 +1063,10 @@ export function PetWindow() {
           }
           clearBellyHold();
           setLookFrame(null);
-          if (
-            toolInteractionRef.current?.kind === "ball" &&
-            kind !== "ball"
-          ) {
-            restorePetWindowSize();
-          }
           const nextStageWidth =
             kind === "ball"
               ? ballStageWidth(settings.petWidth)
               : settings.petWidth;
-          if (kind === "ball") {
-            void windowApi?.setSize(
-              new LogicalSize(
-                nextStageWidth + 28,
-                Math.round((settings.petWidth * 208) / 192) + 28,
-              ),
-            );
-          }
           const next: ActiveToolInteraction = {
             id,
             kind: kind as ActiveToolInteraction["kind"],
@@ -1123,10 +1127,8 @@ export function PetWindow() {
     clearBellyHold,
     endToolInteraction,
     restoreFunctionalAnimation,
-    restorePetWindowSize,
     reconcileReminderState,
     settings.petWidth,
-    windowApi,
   ]);
 
   useEffect(() => {
@@ -1135,13 +1137,17 @@ export function PetWindow() {
       ? "alert"
       : petActivity?.activity === "learning" && desktopLearningSession
         ? "learning"
-        : null;
+        : toolInteraction?.id
+          ? "tool"
+          : null;
     void applyExpandedWindowStage(stage);
   }, [
     activeIntent,
     applyExpandedWindowStage,
     desktopLearningSession,
     petActivity?.activity,
+    toolInteraction?.id,
+    toolInteraction?.stageWidth,
   ]);
 
   useEffect(() => {
@@ -1872,8 +1878,8 @@ export function PetWindow() {
     ? strongAlertActive
       ? ALERT_STAGE_WIDTH
       : LEARNING_STAGE_WIDTH
-    : ballGameActive
-      ? toolInteraction.stageWidth
+    : toolInteraction
+      ? interactionStageWidth(toolInteraction.stageWidth)
       : settings.petWidth;
   const hitRegionStyle = {
     width: activeStageWidth,
@@ -1881,11 +1887,13 @@ export function PetWindow() {
       ? strongAlertActive
         ? ALERT_STAGE_HEIGHT
         : LEARNING_STAGE_HEIGHT
-      : ballGameActive
+      : toolInteraction
         ? petHeight
         : undefined,
     "--pet-width": `${settings.petWidth}px`,
     "--pet-height": `${petHeight}px`,
+    "--tool-card-lane-width": `${TOOL_CARD_LANE_WIDTH}px`,
+    "--interaction-playfield-width": `${toolInteraction?.stageWidth ?? settings.petWidth}px`,
     "--alert-pet-width": `${strongAlertPetWidth}px`,
     "--alert-pet-height": `${strongAlertPetHeight}px`,
     "--ball-charge": toolInteraction?.charge ?? 0.12,
@@ -1910,13 +1918,16 @@ export function PetWindow() {
       <div
         className={`pet-hit-region ${
           toolInteraction?.kind === "pet" ? "petting-active" : ""
-        } ${ballGameActive ? `ball-game-active ball-${toolInteraction.ballPhase}` : ""} ${
+        } ${toolInteraction ? "tool-interaction-stage" : ""} ${
+          ballGameActive ? `ball-game-active ball-${toolInteraction.ballPhase}` : ""
+        } ${
           strongAlertActive ? "alert-stage" : ""
          } ${desktopLearningActive ? "learning-stage" : ""
         } ${activeIntent?.kind === "activity" ? "activity-alert" : ""} ${
           petMotionReduced ? "pet-motion-reduced" : ""
         }`}
         data-companion-tier={companionExpression?.tier ?? "n0"}
+        data-interaction-layout={toolInteraction ? "separate-lane" : undefined}
         style={hitRegionStyle}
         onContextMenu={onContextMenu}
         onPointerDown={onPointerDown}
@@ -2016,13 +2027,9 @@ export function PetWindow() {
             className={`pet-system-card ${
               informationCard.surface === "tool" ? "tool-card" : ""
             } ${
-              toolInteraction?.kind === "ball"
-                ? "ball-card card-right"
-                : toolInteraction &&
-                    toolInteraction.kind !== "pet" &&
-                    toolInteraction.x >= settings.petWidth / 2
-                  ? "card-left"
-                  : "card-right"
+              toolInteraction
+                ? `${toolInteraction.kind === "ball" ? "ball-card " : ""}card-left`
+                : "card-right"
             }`}
             data-information-surface={informationCard.surface}
             type="button"
@@ -2082,92 +2089,94 @@ export function PetWindow() {
             }
           />
           )}
-        {!desktopLearningActive && (
-          <SpriteAnimator
-          animation={animation}
-          lookFrame={lookFrame}
-          frameOverride={
-            toolInteraction?.kind === "ball"
-              ? null
-              : (toolInteraction?.kind === "pet" ||
-              toolInteraction?.kind === "wand") &&
-            !toolInteraction.engaged
-              ? null
-              : toolInteraction?.frame ?? null
-          }
-          mirrored={
-            (toolInteraction?.kind === "pet" ||
-              toolInteraction?.kind === "wand") &&
-            !toolInteraction.engaged
-              ? false
-              : toolInteraction?.mirrored ?? false
-          }
-          offsetX={
-            (toolInteraction?.kind === "pet" ||
-              toolInteraction?.kind === "wand") &&
-            !toolInteraction.engaged
-              ? 0
-              : toolInteraction?.offsetX ??
-                (companionExpression?.pose === "give_space"
-                  ? Math.round(settings.petWidth * 0.14)
-                  : 0)
-          }
-          settings={settings}
-          onComplete={finishAnimation}
-          />
-        )}
-        {!desktopLearningActive && toolInteraction?.kind === "pet" && (
-          <button
-            key={toolInteraction.id}
-            className={`pet-head-zone ${
-              toolInteraction.engaged ? "is-engaged" : ""
-            }`}
-            type="button"
-            aria-label="轻轻摸摸圆圆的头"
-            onPointerEnter={updatePettingFromPointer}
-            onPointerMove={updatePettingFromPointer}
-            onPointerDown={updatePettingFromPointer}
-            onPointerLeave={(event) => {
-              event.stopPropagation();
-              setPettingEngaged(false);
-            }}
-          />
-        )}
-        {!desktopLearningActive &&
-          toolInteraction &&
-          toolInteraction.kind !== "pet" &&
-          (toolInteraction.kind !== "ball" || toolInteraction.ballVisible) && (
-          <button
-            key={toolInteraction.id}
-            className={`pet-tool pet-tool-${toolInteraction.kind} ${
-              toolInteraction.kind === "ball"
-                ? `ball-tool-${toolInteraction.ballPhase}`
-                : ""
-            }`}
-            type="button"
-            disabled={
-              toolInteraction.kind === "ball" &&
-              !["ready", "charging"].includes(toolInteraction.ballPhase ?? "")
-            }
-            aria-label={
-              toolInteraction.kind === "treat"
-                ? "拖动猫条"
-                : toolInteraction.kind === "wand"
-                  ? "拖动逗猫棒"
-                  : "按住球蓄力，松手扔出"
-            }
-            style={{
-              left: toolInteraction.x,
-              top: toolInteraction.y,
-            }}
-            onPointerDown={onToolPointerDown}
-            onPointerMove={onToolPointerMove}
-            onPointerUp={releaseToolPointer}
-            onPointerCancel={releaseToolPointer}
-          >
-            <span />
-          </button>
-        )}
+        <div className="pet-animation-stage" data-animation-stage="true">
+          {!desktopLearningActive && (
+            <SpriteAnimator
+              animation={animation}
+              lookFrame={lookFrame}
+              frameOverride={
+                toolInteraction?.kind === "ball"
+                  ? null
+                  : (toolInteraction?.kind === "pet" ||
+                        toolInteraction?.kind === "wand") &&
+                      !toolInteraction.engaged
+                    ? null
+                    : toolInteraction?.frame ?? null
+              }
+              mirrored={
+                (toolInteraction?.kind === "pet" ||
+                  toolInteraction?.kind === "wand") &&
+                !toolInteraction.engaged
+                  ? false
+                  : toolInteraction?.mirrored ?? false
+              }
+              offsetX={
+                (toolInteraction?.kind === "pet" ||
+                  toolInteraction?.kind === "wand") &&
+                !toolInteraction.engaged
+                  ? 0
+                  : toolInteraction?.offsetX ??
+                    (companionExpression?.pose === "give_space"
+                      ? Math.round(settings.petWidth * 0.14)
+                      : 0)
+              }
+              settings={settings}
+              onComplete={finishAnimation}
+            />
+          )}
+          {!desktopLearningActive && toolInteraction?.kind === "pet" && (
+            <button
+              key={toolInteraction.id}
+              className={`pet-head-zone ${
+                toolInteraction.engaged ? "is-engaged" : ""
+              }`}
+              type="button"
+              aria-label="轻轻摸摸圆圆的头"
+              onPointerEnter={updatePettingFromPointer}
+              onPointerMove={updatePettingFromPointer}
+              onPointerDown={updatePettingFromPointer}
+              onPointerLeave={(event) => {
+                event.stopPropagation();
+                setPettingEngaged(false);
+              }}
+            />
+          )}
+          {!desktopLearningActive &&
+            toolInteraction &&
+            toolInteraction.kind !== "pet" &&
+            (toolInteraction.kind !== "ball" || toolInteraction.ballVisible) && (
+              <button
+                key={toolInteraction.id}
+                className={`pet-tool pet-tool-${toolInteraction.kind} ${
+                  toolInteraction.kind === "ball"
+                    ? `ball-tool-${toolInteraction.ballPhase}`
+                    : ""
+                }`}
+                type="button"
+                disabled={
+                  toolInteraction.kind === "ball" &&
+                  !["ready", "charging"].includes(toolInteraction.ballPhase ?? "")
+                }
+                aria-label={
+                  toolInteraction.kind === "treat"
+                    ? "拖动猫条"
+                    : toolInteraction.kind === "wand"
+                      ? "拖动逗猫棒"
+                      : "按住球蓄力，松手扔出"
+                }
+                style={{
+                  left: toolInteraction.x,
+                  top: toolInteraction.y,
+                }}
+                onPointerDown={onToolPointerDown}
+                onPointerMove={onToolPointerMove}
+                onPointerUp={releaseToolPointer}
+                onPointerCancel={releaseToolPointer}
+              >
+                <span />
+              </button>
+            )}
+        </div>
         {learningBuildEnabled &&
           settings.learningQuickStartVisible &&
           !desktopLearningActive &&
@@ -2195,7 +2204,7 @@ export function PetWindow() {
             </button>
           )}
         <button
-          className={`resize-handle ${strongAlertActive || desktopLearningActive ? "is-hidden" : ""}`}
+          className={`resize-handle ${strongAlertActive || desktopLearningActive || toolInteraction ? "is-hidden" : ""}`}
           type="button"
           aria-label="调整圆圆大小"
           onPointerDown={onResizePointerDown}

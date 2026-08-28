@@ -8,25 +8,27 @@ function rule(selector: string) {
   return petCss.match(new RegExp(`${escaped}\\s*\\{([^}]+)\\}`, "u"))?.[1] ?? "";
 }
 
-describe("interaction bubble face-safe geometry", () => {
-  it("docks normal tools below the face and lifts ball hints above the control", () => {
+describe("interaction bubble animation-safe geometry", () => {
+  it("puts every tool hint in a lane outside the animation playfield", () => {
+    const hitRegionRule = rule(".pet-hit-region.tool-interaction-stage");
+    const animationRule = rule(
+      ".tool-interaction-stage .pet-animation-stage",
+    );
     const toolRule = rule(".pet-system-card.tool-card");
-    const ballRule = rule(".pet-system-card.tool-card.ball-card");
+    const laneCardRule = rule(
+      ".tool-interaction-stage .pet-system-card.tool-card",
+    );
+
+    expect(hitRegionRule).toContain("aspect-ratio: auto");
+    expect(animationRule).toContain("left: var(--tool-card-lane-width)");
+    expect(animationRule).toContain("width: var(--interaction-playfield-width)");
     expect(toolRule).toContain("top: auto");
     expect(toolRule).toContain("bottom: 6px");
-    expect(ballRule).toContain("bottom: 63px");
-
-    const stageHeight = 208;
-    const cardHeight = 42;
-    const faceBottom = stageHeight * 0.46;
-    const ballControlTop = stageHeight - 25 - 24;
-    for (const scale of [1, 1.25, 1.5]) {
-      const normalCardTop = (stageHeight - 6 - cardHeight) * scale;
-      const ballCardTop = (stageHeight - 63 - cardHeight) * scale;
-      const ballCardBottom = (stageHeight - 63) * scale;
-      expect(normalCardTop).toBeGreaterThan(faceBottom * scale);
-      expect(ballCardTop).toBeGreaterThan(faceBottom * scale);
-      expect(ballCardBottom).toBeLessThan(ballControlTop * scale);
-    }
+    expect(laneCardRule).toContain(
+      "width: 156px",
+    );
+    expect(laneCardRule).toContain(
+      "max-width: 156px",
+    );
   });
 });

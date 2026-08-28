@@ -20,6 +20,25 @@
   cursor: default;
 }
 
+.pet-hit-region.tool-interaction-stage {
+  aspect-ratio: auto;
+  cursor: default;
+}
+
+.pet-animation-stage {
+  position: absolute;
+  inset: 0;
+}
+
+.tool-interaction-stage .pet-animation-stage {
+  top: 0;
+  right: auto;
+  bottom: auto;
+  left: var(--tool-card-lane-width);
+  width: var(--interaction-playfield-width);
+  height: var(--pet-height);
+}
+
 .pet-hit-region.alert-stage {
   aspect-ratio: auto;
   cursor: pointer;
@@ -231,8 +250,9 @@
   bottom: 6px;
 }
 
-.pet-system-card.tool-card.ball-card {
-  bottom: 63px;
+.tool-interaction-stage .pet-system-card.tool-card {
+  width: 156px;
+  max-width: 156px;
 }
 
 .pet-system-card.alert-banner,

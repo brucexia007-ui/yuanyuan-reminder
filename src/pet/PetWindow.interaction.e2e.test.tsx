@@ -191,11 +191,20 @@ describe("PetWindow interaction bubble E2E", () => {
     expect(quickStart()).not.toBeNull();
   });
 
-  it("keeps every interaction hint in its face-safe dock while replacing controls", async () => {
+  it("keeps every interaction hint outside the animation stage while replacing controls", async () => {
     let card = await startInteraction("treat-1", "treat");
+    let hitRegion = container.querySelector<HTMLElement>(".pet-hit-region");
+    let animationStage = container.querySelector<HTMLElement>(
+      "[data-animation-stage='true']",
+    );
     expect(card?.classList.contains("tool-card")).toBe(true);
     expect(card?.classList.contains("card-left")).toBe(true);
-    expect(container.querySelector(".pet-tool-treat")).not.toBeNull();
+    expect(hitRegion?.dataset.interactionLayout).toBe("separate-lane");
+    expect(hitRegion?.style.width).toBe("372px");
+    expect(card?.parentElement).toBe(hitRegion);
+    expect(animationStage?.parentElement).toBe(hitRegion);
+    expect(animationStage?.contains(card ?? null)).toBe(false);
+    expect(animationStage?.querySelector(".pet-tool-treat")).not.toBeNull();
 
     card = await startInteraction("wand-1", "wand");
     expect(card?.classList.contains("tool-card")).toBe(true);
@@ -203,15 +212,20 @@ describe("PetWindow interaction bubble E2E", () => {
     expect(container.querySelector(".pet-tool-wand")).not.toBeNull();
 
     card = await startInteraction("pet-1", "pet");
-    expect(card?.classList.contains("card-right")).toBe(true);
+    expect(card?.classList.contains("card-left")).toBe(true);
     expect(container.querySelector(".pet-tool")).toBeNull();
     expect(container.querySelector(".pet-head-zone")).not.toBeNull();
 
     card = await startInteraction("ball-1", "ball");
+    hitRegion = container.querySelector<HTMLElement>(".pet-hit-region");
+    animationStage = container.querySelector<HTMLElement>(
+      "[data-animation-stage='true']",
+    );
     expect(card?.classList.contains("tool-card")).toBe(true);
     expect(card?.classList.contains("ball-card")).toBe(true);
-    expect(card?.classList.contains("card-right")).toBe(true);
+    expect(card?.classList.contains("card-left")).toBe(true);
+    expect(hitRegion?.style.width).toBe("500px");
     expect(container.querySelector(".pet-head-zone")).toBeNull();
-    expect(container.querySelector(".pet-tool-ball")).not.toBeNull();
+    expect(animationStage?.querySelector(".pet-tool-ball")).not.toBeNull();
   });
 });
