@@ -39,6 +39,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "stable release tag must belong to main" }
           if (git status --porcelain=v1) { throw "release source must remain clean" }
           "COMMUNITY_SOURCE_COMMIT=$sourceCommit" >> $env:GITHUB_ENV
+          "COMMUNITY_PRODUCT_NAME=$($authority.productName)" >> $env:GITHUB_ENV
       - name: Verify completed community stable acceptance
         shell: pwsh
         run: npm.cmd run release:community:acceptance -- --release-commit "$env:COMMUNITY_SOURCE_COMMIT"
@@ -52,6 +53,8 @@ jobs:
         shell: pwsh
         run: |
           if (git status --porcelain=v1) { throw "release build changed tracked source" }
+      - name: Verify rebuilt installer is the accepted E2E artifact
+        run: npm.cmd run release:community:artifact-binding
       - name: Prepare source-bound community release files
         shell: pwsh
         run: npm.cmd run release:community:prepare -- --tag "${{ github.ref_name }}" --commit "$env:COMMUNITY_SOURCE_COMMIT" --output-dir release-assets
@@ -59,4 +62,4 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" release-assets/* --verify-tag --notes-file release-assets/RELEASE_NOTES.md --title "圆圆提醒 ${{ github.ref_name }}"
+        run: gh release create "${{ github.ref_name }}" release-assets/* --verify-tag --notes-file release-assets/RELEASE_NOTES.md --title "$env:COMMUNITY_PRODUCT_NAME ${{ github.ref_name }}"

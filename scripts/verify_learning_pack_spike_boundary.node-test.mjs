@@ -32,7 +32,7 @@ function cleanMetadata() {
       {
         name: "yuanyuan-reminder",
         id: "application",
-        dependencies: [],
+        dependencies: [{ name: "yuanyuan-learning-pack-spike", kind: null }],
       },
       {
         name: "yuanyuan-learning-pack-spike",
@@ -51,17 +51,17 @@ function cleanMetadata() {
   };
 }
 
-test("accepts an isolated non-default standalone parser package", () => {
+test("accepts the pure parser linked only through the application adapter", () => {
   assert.deepEqual(inspectWorkspaceMetadata(cleanMetadata()), []);
 });
 
-test("rejects default membership and an application dependency on the spike", () => {
+test("rejects default membership and a missing application parser dependency", () => {
   const metadata = cleanMetadata();
   metadata.workspace_default_members.push("spike");
-  metadata.packages[0].dependencies.push({ name: "yuanyuan-learning-pack-spike", kind: null });
+  metadata.packages[0].dependencies = [];
   assert.deepEqual(
     inspectWorkspaceMetadata(metadata).map(({ rule }) => rule),
-    ["spike-is-default-member", "workspace-package-depends-on-spike"],
+    ["spike-is-default-member", "application-parser-dependency-missing"],
   );
 });
 
@@ -96,7 +96,8 @@ test("rejects capability feature expansion on an otherwise allowed dependency", 
   );
 });
 
-test("rejects runtime linkage and artifact leakage", () => {
+test("allows the reviewed adapter but rejects other runtime linkage and stale artifact markers", () => {
+  assert.deepEqual(findRuntimeReferences("src-tauri/src/learning/pack.rs", "yuanyuan_learning_pack_spike"), []);
   assert.deepEqual(findRuntimeReferences("src-tauri/src/lib.rs", "yuanyuan_learning_pack_spike"), [
     {
       path: "src-tauri/src/lib.rs",

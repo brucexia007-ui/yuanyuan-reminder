@@ -1,0 +1,3 @@
+cardId,exerciseKind,prompt,answer,choices,explanation,tags,sourceRefs,scheduleEpoch
+example-001,recall,这里填写问题,这里填写答案,,可选解释,标签一|标签二,source-001,1
+example-002,choice,这里填写选择题,正确答案,错误选项一|正确答案|错误选项二,可选解释,标签一,source-001,1

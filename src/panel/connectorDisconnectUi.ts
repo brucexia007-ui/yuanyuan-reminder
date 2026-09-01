@@ -77,13 +77,13 @@ export const disconnectModeCopy: Record<
   { title: string; detail: string; acknowledgement: string }
 > = {
   remove_configuration_and_revoke_trust: {
-    title: "移除圆圆 Hook，并撤销认证权限",
-    detail: "先精确移除仍由圆圆所有的 Hook；只有配置阶段成功，才会撤销该实例的认证权限。",
-    acknowledgement: "我已确认：这会移除上方列出的圆圆 Hook，并撤销该实例的认证权限。",
+    title: petText("移除圆圆 Hook，并撤销认证权限"),
+    detail: petText("先精确移除仍由圆圆所有的 Hook；只有配置阶段成功，才会撤销该实例的认证权限。"),
+    acknowledgement: petText("我已确认：这会移除上方列出的圆圆 Hook，并撤销该实例的认证权限。"),
   },
   revoke_trust_only: {
     title: "仅撤销认证权限",
-    detail: "不会读取或修改 Hook 配置。残留 Hook 可能仍被来源工具调用，但无法取得有效密钥或向圆圆提交可信事件。",
+    detail: petText("不会读取或修改 Hook 配置。残留 Hook 可能仍被来源工具调用，但无法取得有效密钥或向圆圆提交可信事件。"),
     acknowledgement: "我已确认：立即撤销该实例的认证权限，并保留现有 Hook 配置不变。",
   },
 };
@@ -97,7 +97,7 @@ export function presentDisconnectResult(
         tone: "success",
         title: "已安全断开",
         detail: result.configurationWritePerformed
-          ? `已移除 ${result.removedHandlers} 项圆圆 Hook${result.configurationBackupCreated ? "，并已创建配置备份" : ""}。`
+          ? petText(`已移除 ${result.removedHandlers} 项圆圆 Hook${result.configurationBackupCreated ? "，并已创建配置备份" : ""}。`)
           : "未修改 Hook 配置。",
         authorityCopy: "认证权限已经复核为撤销状态。",
         recoveryLabel: null,
@@ -106,7 +106,7 @@ export function presentDisconnectResult(
       return {
         tone: "warning",
         title: "权限已撤销，凭据清理待完成",
-        detail: "该实例已经不能提交可信事件；一个或多个仅属于圆圆的旧凭据仍需重试清理。",
+        detail: petText("该实例已经不能提交可信事件；一个或多个仅属于圆圆的旧凭据仍需重试清理。"),
         authorityCopy: "安全边界已关闭；认证权限已复核为撤销状态。",
         recoveryLabel: "重试凭据清理",
       };
@@ -139,14 +139,14 @@ export function presentDisconnectResult(
         tone: "danger",
         title: "配置已处理，但认证权限仍有效",
         detail: "不要重复删除配置；下一步只重试撤销认证权限。",
-        authorityCopy: "在复核为撤销前，圆圆持续显示此警告。",
+        authorityCopy: petText("在复核为撤销前，圆圆持续显示此警告。"),
         recoveryLabel: "仅重试撤销权限",
       };
     case "trust_revocation_unverified":
       return {
         tone: "danger",
         title: "无法确认认证权限状态",
-        detail: "信任库暂时不可读，圆圆不会把未知状态显示为成功。",
+        detail: petText("信任库暂时不可读，圆圆不会把未知状态显示为成功。"),
         authorityCopy: "请先重新检查权限状态；不要根据 Hook 是否存在推断权限。",
         recoveryLabel: "重新检查权限状态",
       };
@@ -162,3 +162,4 @@ export function presentDisconnectResult(
       };
   }
 }
+import { petText } from "../brand";

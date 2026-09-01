@@ -4,6 +4,7 @@ use tauri::{
 };
 
 use crate::{
+    brand,
     error::{AppError, AppResult},
     models::AppSettings,
     state::AppState,
@@ -11,7 +12,9 @@ use crate::{
 
 pub const PET_LEARNING_QUICK_START_LABEL: &str = "显示课程快捷按键";
 
-const PET_SLEEP_TOGGLE_LABEL: &str = "立即睡觉/叫醒圆圆";
+fn pet_sleep_toggle_label() -> String {
+    format!("立即睡觉/叫醒{}", brand::pet_display_name())
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct DisplayBounds {
@@ -230,8 +233,14 @@ pub fn show_pet_context_menu(app: &AppHandle) -> AppResult<()> {
         .map_err(|error| AppError::Window(error.to_string()))?;
     let pause = MenuItem::with_id(app, "pet-pause", "暂停提醒 30 分钟", true, None::<&str>)
         .map_err(|error| AppError::Window(error.to_string()))?;
-    let sleep = MenuItem::with_id(app, "pet-sleep", PET_SLEEP_TOGGLE_LABEL, true, None::<&str>)
-        .map_err(|error| AppError::Window(error.to_string()))?;
+    let sleep = MenuItem::with_id(
+        app,
+        "pet-sleep",
+        pet_sleep_toggle_label(),
+        true,
+        None::<&str>,
+    )
+    .map_err(|error| AppError::Window(error.to_string()))?;
     let always = CheckMenuItem::with_id(
         app,
         "pet-always-on-top",
@@ -261,10 +270,22 @@ pub fn show_pet_context_menu(app: &AppHandle) -> AppResult<()> {
     .map_err(|error| AppError::Window(error.to_string()))?;
     let settings_item = MenuItem::with_id(app, "pet-settings", "设置", true, None::<&str>)
         .map_err(|error| AppError::Window(error.to_string()))?;
-    let hide = MenuItem::with_id(app, "pet-hide", "隐藏圆圆", true, None::<&str>)
-        .map_err(|error| AppError::Window(error.to_string()))?;
-    let quit = MenuItem::with_id(app, "pet-quit", "退出圆圆提醒工具", true, None::<&str>)
-        .map_err(|error| AppError::Window(error.to_string()))?;
+    let hide = MenuItem::with_id(
+        app,
+        "pet-hide",
+        format!("隐藏{}", brand::pet_display_name()),
+        true,
+        None::<&str>,
+    )
+    .map_err(|error| AppError::Window(error.to_string()))?;
+    let quit = MenuItem::with_id(
+        app,
+        "pet-quit",
+        format!("退出{}", brand::application_display_name()),
+        true,
+        None::<&str>,
+    )
+    .map_err(|error| AppError::Window(error.to_string()))?;
     let separator =
         PredefinedMenuItem::separator(app).map_err(|error| AppError::Window(error.to_string()))?;
 
@@ -292,9 +313,11 @@ pub fn show_pet_context_menu(app: &AppHandle) -> AppResult<()> {
 
 #[cfg(test)]
 mod tests {
+    use crate::brand;
+
     use super::{
-        logical_size_in_physical, visible_position, DisplayBounds, PET_LEARNING_QUICK_START_LABEL,
-        PET_SLEEP_TOGGLE_LABEL,
+        logical_size_in_physical, pet_sleep_toggle_label, visible_position, DisplayBounds,
+        PET_LEARNING_QUICK_START_LABEL,
     };
 
     #[test]
@@ -304,7 +327,10 @@ mod tests {
 
     #[test]
     fn sleep_toggle_menu_uses_one_unambiguous_label() {
-        assert_eq!(PET_SLEEP_TOGGLE_LABEL, "立即睡觉/叫醒圆圆");
+        assert_eq!(
+            pet_sleep_toggle_label(),
+            format!("立即睡觉/叫醒{}", brand::pet_display_name())
+        );
     }
 
     #[test]

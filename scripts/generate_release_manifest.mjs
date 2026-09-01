@@ -14,6 +14,16 @@ const packageJson = JSON.parse(
 const tauriConfig = JSON.parse(
   await readFile(path.join(projectRoot, "src-tauri", "tauri.conf.json"), "utf8"),
 );
+const productBrand = JSON.parse(
+  await readFile(path.join(projectRoot, "product-brand.json"), "utf8"),
+);
+
+if (
+  productBrand.application?.displayName !== tauriConfig.productName
+  || productBrand.artifacts?.installerBaseName !== tauriConfig.productName
+) {
+  throw new Error("release manifest requires synchronized product brand and Tauri names");
+}
 
 const artifactDefinitions = [
   {
@@ -41,7 +51,7 @@ const artifactDefinitions = [
     relativePath: path.join(
       "bundle",
       "nsis",
-      `圆圆提醒_${packageJson.version}_x64-setup.exe`,
+      `${productBrand.artifacts.installerBaseName}_${packageJson.version}_x64-setup.exe`,
     ),
     bundleDisposition: "distribution_installer",
   },

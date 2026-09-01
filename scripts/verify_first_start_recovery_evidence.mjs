@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { inspectFirstStartDatabase } from "./capture_first_start_recovery_database.mjs";
+import { productBrand } from "./product_brand_contract.mjs";
 
 export const FIRST_START_RECOVERY_LIMITATIONS = [
   "This uses a byte-identical staged copy of the current NSIS-installed core and an empty synthetic formal data directory in an explicitly acknowledged disposable Windows account.",
@@ -98,7 +99,7 @@ function captureReportMatches(capture, fixtureFileName, fixtureBytes, fixtureSha
     capture.ready === true &&
     capture.attestation === "synthetic_fresh_first_start" &&
     hasExactKeys(capture.source, ["fileName", "bytesBeforeCheckpoint", "healthBeforeCheckpoint"]) &&
-    capture.source.fileName === "yuanyuan-reminder.sqlite3" &&
+    capture.source.fileName === productBrand.storage.mainDatabaseFile &&
     Number.isInteger(capture.source.bytesBeforeCheckpoint) &&
     capture.source.bytesBeforeCheckpoint > 0 &&
     healthMatchesShape(capture.source.healthBeforeCheckpoint) &&

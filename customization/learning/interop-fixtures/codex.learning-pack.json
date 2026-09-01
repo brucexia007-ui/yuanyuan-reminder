@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "packId": "interop.codex",
+  "version": "1.0.0",
+  "title": "Codex 互操作样例",
+  "description": "完整字段与选择题",
+  "rights": {
+    "basis": "self_authored",
+    "statement": "合成测试内容",
+    "redistributable": true
+  },
+  "sources": [
+    {
+      "sourceRef": "notes",
+      "label": "合成笔记"
+    }
+  ],
+  "contentSha256": "dc80bc858b42986aab308d0c2ccf007f87921ef52346f7a6d924ad07c15a69ce",
+  "cards": [
+    {
+      "cardId": "choice-1",
+      "exerciseKind": "choice",
+      "prompt": "2 + 2 等于多少？",
+      "answer": "4",
+      "choices": ["3", "4", "5"],
+      "explanation": "基础算术",
+      "tags": ["math", "synthetic"],
+      "sourceRefs": ["notes"],
+      "scheduleEpoch": 1
+    }
+  ]
+}

@@ -45,7 +45,23 @@ import type {
   LearningSessionSnapshot,
   LearningSessionSummary,
 } from "../types";
-import { LearningView } from "./LearningView";
+import {
+  LEARNING_PACK_AGENT_PROMPT,
+  LEARNING_PACK_TEMPLATE_FILENAME,
+  LearningView,
+} from "./LearningView";
+
+it("downloads the learning-pack template with an importable file suffix", () => {
+  expect(LEARNING_PACK_TEMPLATE_FILENAME.endsWith(".learning-pack.json")).toBe(true);
+});
+
+it("copies a branded agent prompt with exact repository-local input paths", () => {
+  expect(LEARNING_PACK_AGENT_PROMPT).toContain("饺饺提醒 learning-pack v1 JSON");
+  expect(LEARNING_PACK_AGENT_PROMPT).toContain(
+    "customization/learning/LEARNING_IMPORT_PROMPT.zh-CN.md",
+  );
+  expect(LEARNING_PACK_AGENT_PROMPT).not.toContain("圆圆提醒");
+});
 
 const session: LearningSessionSnapshot = {
   schemaVersion: 1,
@@ -662,7 +678,7 @@ describe("learning micro-session", () => {
     });
     await act(async () => root.render(<LearningView />));
     await flush();
-    await act(async () => button("选择 CSV 或原生 JSON").click());
+    await act(async () => button("导入本地知识").click());
     await flush();
     expect(backend.confirmLearningImport).not.toHaveBeenCalled();
     expect(container.textContent).toContain("确认导入这份词表");
@@ -699,7 +715,7 @@ describe("learning micro-session", () => {
 
     await act(async () => root.render(<LearningView />));
     await flush();
-    await act(async () => button("选择 CSV 或原生 JSON").click());
+    await act(async () => button("导入本地知识").click());
     await flush();
     await act(async () => button("确认导入").click());
     await flush();

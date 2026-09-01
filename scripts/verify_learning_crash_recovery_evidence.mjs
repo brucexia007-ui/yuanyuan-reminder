@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { brandPetText } from "./product_brand_contract.mjs";
+
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const runtimeRoot = path.join(
   projectRoot,
@@ -439,7 +441,7 @@ export function validateLearningCrashRecoveryReport(report, expectedBindings) {
     }
     for (const requiredName of [
       "学习页面",
-      "圆圆桌面英语复习",
+      brandPetText("圆圆桌面英语复习"),
       "继续上一轮",
       sample.answeredHeadword,
       sample.originalHeadword,

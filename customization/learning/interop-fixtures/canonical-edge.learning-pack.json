@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "packId": "interop.canonical-edge",
+  "version": "1.0.0",
+  "title": "跨语言规范化边界",
+  "description": "Unicode 码点键排序与安全整数边界",
+  "rights": {
+    "basis": "self_authored",
+    "statement": "合成测试内容",
+    "redistributable": true
+  },
+  "sources": [
+    {
+      "sourceRef": "synthetic",
+      "label": "合成边界夹具"
+    }
+  ],
+  "contentSha256": "9c9e409ba8cd85fa6d4ccfff92e62dc9dd6da46cbab7909ecca80570ba02df15",
+  "cards": [
+    {
+      "cardId": "edge-1",
+      "exerciseKind": "recall",
+      "prompt": "规范化是否跨工具一致？",
+      "answer": "一致",
+      "sourceRefs": ["synthetic"],
+      "scheduleEpoch": 1,
+      "extensions": {
+        "canonicalEdge": {
+          "version": 4294967295,
+          "payload": {
+            "\uE000": -9007199254740991,
+            "𐀀": 9007199254740991,
+            "nested": [true, null, "合法 Unicode 😀"]
+          }
+        }
+      }
+    }
+  ]
+}

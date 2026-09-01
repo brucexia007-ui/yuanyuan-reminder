@@ -7,7 +7,9 @@ import { fileURLToPath } from "node:url";
 import {
   createStoreSubmissionInputsDraft,
   inspectPng,
+  RUN_FULL_TRUST_JUSTIFICATION,
   StoreSubmissionInputsVerificationError,
+  STORE_LISTING,
   STORE_SCREENSHOTS,
   validateStoreSubmissionInputs,
 } from "./verify_msix_store_submission_inputs.mjs";
@@ -97,6 +99,19 @@ test("accepts exact human-confirmed Store listing and submission inputs", () => 
   assert.equal(validateStoreSubmissionInputs(value.document, value), value.document);
 });
 
+test("derives every current Store-facing pet name from the 饺饺 brand source", () => {
+  const serializedTemplate = JSON.stringify(template);
+  assert.equal(template.product.name, "饺饺提醒");
+  assert.match(STORE_LISTING.description, /^饺饺提醒/u);
+  assert.match(STORE_LISTING.description, /专注期间饺饺保持安静/u);
+  assert.match(STORE_LISTING.copyright, /饺饺提醒 contributors。饺饺素材/u);
+  assert.match(STORE_LISTING.appLicenseTerms, /饺饺照片.*饺饺素材许可/u);
+  assert.match(STORE_SCREENSHOTS[0].caption, /桌面上的饺饺/u);
+  assert.match(RUN_FULL_TRUST_JUSTIFICATION, /^饺饺提醒 is/u);
+  assert.doesNotMatch(serializedTemplate, /圆圆/u);
+  assert.doesNotMatch(JSON.stringify({ STORE_LISTING, STORE_SCREENSHOTS, RUN_FULL_TRUST_JUSTIFICATION }), /圆圆/u);
+});
+
 test("prepares only machine-derived fields while all human approvals remain pending", () => {
   const value = fixture();
   const draft = createStoreSubmissionInputsDraft(structuredClone(template), value);
@@ -123,6 +138,9 @@ test("rejects the pending template and automated confirmations", () => {
 });
 
 test("rejects Store copy, version, category, and feature drift", () => {
+  rejects((value) => {
+    value.document.product.name = "圆圆提醒";
+  }, /identity, language, version, or category/);
   rejects((value) => {
     value.document.listing.description += " Includes cloud sync.";
   }, /listing copy/);

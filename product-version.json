@@ -1,8 +1,9 @@
 {
   "schemaVersion": 1,
-  "productName": "圆圆提醒",
-  "identifier": "com.yuanyuan.reminder",
-  "version": "1.5.5",
+  "productName": "饺饺提醒",
+  "identifier": "com.brucexia.jiaojiao.reminder",
+  "brandConfig": "product-brand.json",
+  "version": "1.5.7",
   "releaseTrain": "unified-product",
   "channel": "development",
   "capabilities": {

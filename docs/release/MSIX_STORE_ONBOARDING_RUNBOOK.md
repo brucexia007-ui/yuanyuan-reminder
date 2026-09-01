@@ -24,7 +24,7 @@
 
 ```powershell
 npm.cmd run msix:store:identity:prepare -- `
-  --reserved-product-name "圆圆提醒" `
+  --reserved-product-name "饺饺提醒" `
   --store-id "Partner Center Store ID" `
   --identity-name "Package Identity Name" `
   --publisher "Package Publisher DN" `
@@ -140,7 +140,7 @@ npm.cmd run msix:store:data:test
 2. 创建生产备份、写入可观察的合成变更、恢复备份，确认恢复后逻辑哈希/计数回到基线且 `quick_check=ok`；
 3. 以同一 Package Family Name、同一 Publisher 的更高四段版本测试签名 MSIX 做原位更新；目标版本必须高于当前版本且第四段仍为 `0`，更新后数据不变并删除测试更新包；
 4. 卸载包但保留外部数据根，重新安装后打开原数据库并复核逻辑哈希；
-5. 在“设置 → 删除全部本地数据”中逐字输入“删除圆圆全部本地数据”、勾选不可恢复确认并通过最后一次系统确认；应用会关闭开机启动、完全退出，再由受限清理模式仅删除固定的 `LOCALAPPDATA/com.yuanyuan.reminder` 数据根。随后卸载 MSIX，确认数据库、备份、学习数据、日志和整个项目数据根都不存在。普通 MSIX 卸载不能冒充该显式删除路径。
+5. 在“设置 → 删除全部本地数据”中逐字输入“删除饺饺全部本地数据”、勾选不可恢复确认并通过最后一次系统确认；应用会关闭开机启动、完全退出，再由受限清理模式仅删除固定的 `LOCALAPPDATA/com.brucexia.jiaojiao.reminder` 数据根。随后卸载 MSIX，确认数据库、备份、学习数据、日志和整个项目数据根都不存在。普通 MSIX 卸载不能冒充该显式删除路径。
 
 五个场景复用预提交矩阵中对应的固定脱敏 PNG，并记录 schema、逻辑状态 SHA-256 和按表聚合计数；禁止读取真实用户数据，也禁止把原始正文写入报告。完成后执行：
 

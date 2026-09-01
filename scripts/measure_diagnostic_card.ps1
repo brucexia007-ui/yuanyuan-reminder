@@ -12,6 +12,13 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $workspaceRoot = Split-Path -Parent $projectRoot
+$brandConfig = Get-Content -Raw -Encoding UTF8 -LiteralPath (
+    Join-Path $projectRoot "product-brand.json"
+) | ConvertFrom-Json
+if ([string]::IsNullOrWhiteSpace([string]$brandConfig.storage.directoryName) -or
+    [string]::IsNullOrWhiteSpace([string]$brandConfig.application.displayName)) {
+    throw "product brand storage directory and application display name are required"
+}
 $runtimeTarget = Join-Path $projectRoot "src-tauri\target\runtime-qa\release"
 $appPath = Join-Path $runtimeTarget "yuanyuan-reminder.exe"
 $fixturePath = Join-Path $runtimeTarget "yuanyuan-runtime-qa-fixture.exe"
@@ -29,10 +36,8 @@ $exportEvidencePath = Join-Path $evidenceRoot "diagnostic-card-$runId-export.jso
 $selectedExportRoot = Join-Path $qaRoot "selected-export"
 $backdropReady = Join-Path $qaRoot ".neutral-capture-backdrop-ready"
 $backdropStop = Join-Path $qaRoot ".neutral-capture-backdrop-stop"
-$formalDataRoot = Join-Path $env:LOCALAPPDATA "com.yuanyuan.reminder"
-$panelTitle = [Text.Encoding]::UTF8.GetString(
-    [Convert]::FromBase64String("5ZyG5ZyG5o+Q6YaS")
-)
+$formalDataRoot = Join-Path $env:LOCALAPPDATA ([string]$brandConfig.storage.directoryName)
+$panelTitle = [string]$brandConfig.application.displayName
 $diagnosticTitle = [Text.Encoding]::UTF8.GetString(
     [Convert]::FromBase64String("5pm66IO96Zmq5Ly05a6e6aqM57uE5Lu2")
 )

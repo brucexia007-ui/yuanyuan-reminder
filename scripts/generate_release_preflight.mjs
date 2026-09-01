@@ -35,6 +35,8 @@ import {
 import { upgradeCompletionAttestationMatches } from "./verify_release_upgrade_completion.mjs";
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
+const productBrand = JSON.parse(await readFile(path.join(projectRoot, "product-brand.json"), "utf8"));
+const assetLicenseSource = `../${productBrand.assets.licenseFile}`;
 const releaseRoot = path.join(projectRoot, "src-tauri", "target", "release");
 const manifestPath = path.join(releaseRoot, "release-manifest.json");
 const reportPath = path.join(releaseRoot, "release-preflight.json");
@@ -213,7 +215,7 @@ const LICENSE_RESOURCES = {
   "../LICENSE": "licenses/LICENSE.txt",
   "../THIRD_PARTY_NOTICES.md": "licenses/THIRD_PARTY_NOTICES.md",
   "../THIRD_PARTY_LICENSES.txt": "licenses/THIRD_PARTY_LICENSES.txt",
-  "../ASSETS_LICENSE.md": "licenses/ASSETS_LICENSE.md",
+  [assetLicenseSource]: "licenses/ASSETS_LICENSE.md",
 };
 
 const EXPECTED_ARTIFACTS = new Map([
@@ -363,6 +365,7 @@ export function nsisPayloadEvidenceMatches(
   manifestArtifacts,
   inspectionScriptSha256,
   productVersion,
+  licenseSourceSha256,
 ) {
   const artifacts = new Map(manifestArtifacts.map((artifact) => [artifact.id, artifact.sha256]));
   if (
@@ -432,6 +435,7 @@ export function nsisPayloadEvidenceMatches(
       "licenseFiles",
       "licenseFilesExact",
       "licenseHashesMatch",
+      "licenseBindings",
     ]) ||
     report.installation.installExitCode !== 0 ||
     report.installation.customTemporaryInstallRoot !== true ||
@@ -442,6 +446,26 @@ export function nsisPayloadEvidenceMatches(
       JSON.stringify(NSIS_PAYLOAD_LICENSE_FILES) ||
     report.installation.licenseFilesExact !== true ||
     report.installation.licenseHashesMatch !== true ||
+    !hasExactKeys(licenseSourceSha256, NSIS_PAYLOAD_LICENSE_FILES) ||
+    !Array.isArray(report.installation.licenseBindings) ||
+    report.installation.licenseBindings.length !== NSIS_PAYLOAD_LICENSE_FILES.length ||
+    report.installation.licenseBindings.some((binding, index) => {
+      const fileName = NSIS_PAYLOAD_LICENSE_FILES[index];
+      return (
+        !hasExactKeys(binding, [
+          "fileName",
+          "sourceSha256",
+          "installedSha256",
+          "matches",
+        ]) ||
+        binding.fileName !== fileName ||
+        !/^[A-F0-9]{64}$/u.test(binding.sourceSha256) ||
+        !/^[A-F0-9]{64}$/u.test(binding.installedSha256) ||
+        binding.sourceSha256 !== licenseSourceSha256[fileName] ||
+        binding.installedSha256 !== binding.sourceSha256 ||
+        binding.matches !== true
+      );
+    }) ||
     !hasExactKeys(report.environment, [
       "currentUserAuthenticated",
       "profileRegistryQueryAvailable",
@@ -1776,6 +1800,18 @@ async function buildReport() {
   const manifestSha256 = await hashFile(manifestPath);
   const releaseColdStartScriptSha256 = await hashFile(releaseColdStartScriptPath);
   const nsisPayloadScriptSha256 = await hashFile(nsisPayloadScriptPath);
+  const nsisPayloadLicenseSourceSha256 = {
+    "ASSETS_LICENSE.md": await hashFile(
+      path.join(projectRoot, productBrand.assets.licenseFile),
+    ),
+    "LICENSE.txt": await hashFile(path.join(projectRoot, "LICENSE")),
+    "THIRD_PARTY_LICENSES.txt": await hashFile(
+      path.join(projectRoot, "THIRD_PARTY_LICENSES.txt"),
+    ),
+    "THIRD_PARTY_NOTICES.md": await hashFile(
+      path.join(projectRoot, "THIRD_PARTY_NOTICES.md"),
+    ),
+  };
   const upgradeRollbackProbeScriptSha256 = await hashFile(upgradeRollbackProbeScriptPath);
   const installFailureRecoveryProbeScriptSha256 = await hashFile(
     installFailureRecoveryProbeScriptPath,
@@ -2035,6 +2071,7 @@ async function buildReport() {
         manifest.artifacts,
         nsisPayloadScriptSha256,
         packageJson.version,
+        nsisPayloadLicenseSourceSha256,
       ),
       "NSIS实际安装主程序已提取、绑定候选并验证包类型、许可材料和卸载清理",
       true,

@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yuanyuan.local/schemas/product-brand-v1.json",
+  "title": "Yuanyuan product brand configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "pet", "application", "storage", "artifacts", "assets"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "pet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["displayName", "sex", "breed", "personality"],
+      "properties": {
+        "displayName": { "$ref": "#/$defs/displayText" },
+        "sex": { "type": "string", "enum": ["female", "male", "unknown"] },
+        "breed": { "$ref": "#/$defs/displayText" },
+        "personality": { "$ref": "#/$defs/displayText" }
+      }
+    },
+    "application": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["displayName", "identifier", "packageName", "windowTitles", "notificationSender"],
+      "properties": {
+        "displayName": { "$ref": "#/$defs/displayText" },
+        "identifier": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:\\.[a-z0-9][a-z0-9-]*){2,}$", "maxLength": 160 },
+        "packageName": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$", "maxLength": 96 },
+        "windowTitles": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pet", "panel", "tray"],
+          "properties": {
+            "pet": { "$ref": "#/$defs/displayText" },
+            "panel": { "$ref": "#/$defs/displayText" },
+            "tray": { "$ref": "#/$defs/displayText" }
+          }
+        },
+        "notificationSender": { "$ref": "#/$defs/displayText" }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["directoryName", "mainDatabaseFile", "learningDatabaseFile", "logFile"],
+      "properties": {
+        "directoryName": { "type": "string", "minLength": 3, "maxLength": 160 },
+        "mainDatabaseFile": { "$ref": "#/$defs/fileName" },
+        "learningDatabaseFile": { "$ref": "#/$defs/fileName" },
+        "logFile": { "$ref": "#/$defs/fileName" }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["installerBaseName", "portableBaseName"],
+      "properties": {
+        "installerBaseName": { "$ref": "#/$defs/fileBase", "description": "Must equal application.displayName; Tauri derives the NSIS file name from productName." },
+        "portableBaseName": { "$ref": "#/$defs/fileBase" }
+      }
+    },
+    "assets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["petDirectory", "iconDirectory", "licenseFile"],
+      "properties": {
+        "petDirectory": { "const": "public/assets/pet" },
+        "iconDirectory": { "const": "src-tauri/icons" },
+        "licenseFile": { "type": "string", "pattern": "^[^/\\\\]+\\.md$" }
+      }
+    }
+  },
+  "$defs": {
+    "displayText": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "^[^\\u0000-\\u001f\\u007f]+$" },
+    "fileName": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^/\\\\:*?\"<>|]+$" },
+    "fileBase": { "type": "string", "minLength": 1, "maxLength": 80, "pattern": "^[^/\\\\:*?\"<>|\\u0000-\\u001f\\u007f]+$" }
+  }
+}

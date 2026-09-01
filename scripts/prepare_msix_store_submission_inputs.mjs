@@ -74,7 +74,10 @@ async function main() {
     storeManifestTemplateSha256: await hashFile(
       path.join(projectRoot, "src-tauri", "msix", "AppxManifest.store.xml"),
     ),
-    assetLicenseSha256: await hashFile(path.join(projectRoot, "ASSETS_LICENSE.md")),
+    assetLicenseSha256: await hashFile(path.join(
+      projectRoot,
+      JSON.parse(await readFile(path.join(projectRoot, "product-brand.json"), "utf8")).assets.licenseFile,
+    )),
     verifierSha256: await hashFile(submissionVerifierPath),
   };
   const draft = createStoreSubmissionInputsDraft(template, {

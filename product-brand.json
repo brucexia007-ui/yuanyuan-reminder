@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "pet": {
+    "displayName": "饺饺",
+    "sex": "female",
+    "breed": "英短金点",
+    "personality": "乖巧高冷"
+  },
+  "application": {
+    "displayName": "饺饺提醒",
+    "identifier": "com.brucexia.jiaojiao.reminder",
+    "packageName": "jiaojiao-reminder",
+    "windowTitles": {
+      "pet": "饺饺",
+      "panel": "饺饺提醒",
+      "tray": "饺饺提醒"
+    },
+    "notificationSender": "饺饺提醒"
+  },
+  "storage": {
+    "directoryName": "com.brucexia.jiaojiao.reminder",
+    "mainDatabaseFile": "jiaojiao-reminder.sqlite3",
+    "learningDatabaseFile": "jiaojiao-learning.sqlite3",
+    "logFile": "jiaojiao-reminder.log"
+  },
+  "artifacts": {
+    "installerBaseName": "饺饺提醒",
+    "portableBaseName": "饺饺提醒"
+  },
+  "assets": {
+    "petDirectory": "public/assets/pet",
+    "iconDirectory": "src-tauri/icons",
+    "licenseFile": "JIAOJIAO_ASSETS_LICENSE.md"
+  }
+}

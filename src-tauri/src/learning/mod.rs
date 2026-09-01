@@ -2,6 +2,7 @@ mod import;
 mod invitation;
 mod legacy_migration;
 mod models;
+mod pack;
 mod quiz;
 mod repository;
 mod scheduler_adapter;
@@ -53,6 +54,10 @@ struct PendingImportPreview {
 enum PendingLearningImport {
     Csv(ParsedUserImport),
     NativeJson(NativeLearningExport),
+    GenericPack {
+        import: pack::GenericPackImport,
+        source_path: PathBuf,
+    },
 }
 
 struct PendingLearningInvitation {
@@ -287,6 +292,11 @@ impl LearningRuntime {
                 .take(3)
                 .map(|card| card.headword.clone())
                 .collect(),
+            added_count: import.cards.len() as u32,
+            changed_count: 0,
+            disabled_count: 0,
+            reset_count: 0,
+            rights_basis: None,
             selected_path_returned: false,
         };
         self.pending_imports.insert(
@@ -321,7 +331,40 @@ impl LearningRuntime {
     where
         F: Fn() -> bool,
     {
+        self.preview_import_file_with_progress_and_cancellation(
+            path,
+            now_unix_ms,
+            is_cancelled,
+            &mut |_| {},
+        )
+    }
+
+    pub fn preview_import_file_with_progress_and_cancellation<F, P>(
+        &mut self,
+        path: &Path,
+        now_unix_ms: i64,
+        is_cancelled: &F,
+        on_progress: &mut P,
+    ) -> AppResult<LearningImportPreview>
+    where
+        F: Fn() -> bool,
+        P: FnMut(pack::ParseProgress),
+    {
         import::ensure_import_not_cancelled(is_cancelled)?;
+        let file_name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default();
+        if file_name.ends_with(".yuanyuan-learning.json")
+            || file_name.ends_with(".learning-pack.json")
+        {
+            return self.preview_generic_pack_file_with_cancellation(
+                path,
+                now_unix_ms,
+                is_cancelled,
+                on_progress,
+            );
+        }
         match path
             .extension()
             .and_then(|value| value.to_str())
@@ -348,6 +391,80 @@ impl LearningRuntime {
                 "learning import file type is unsupported".into(),
             )),
         }
+    }
+
+    pub fn preview_generic_pack_file_with_cancellation<F, P>(
+        &mut self,
+        path: &Path,
+        now_unix_ms: i64,
+        is_cancelled: &F,
+        on_progress: &mut P,
+    ) -> AppResult<LearningImportPreview>
+    where
+        F: Fn() -> bool,
+        P: FnMut(pack::ParseProgress),
+    {
+        import::ensure_import_not_cancelled(is_cancelled)?;
+        if now_unix_ms < 0 {
+            return Err(AppError::Validation(
+                "learning import is unavailable".into(),
+            ));
+        }
+        self.ensure_repository()?;
+        self.pending_imports
+            .retain(|_, pending| pending.expires_at_unix_ms > now_unix_ms);
+        if self.pending_imports.len() >= MAX_PENDING_IMPORT_PREVIEWS {
+            return Err(AppError::Validation(
+                "too many learning import previews are pending".into(),
+            ));
+        }
+        let parsed =
+            pack::parse_file_with_progress_and_cancellation(path, is_cancelled, on_progress)?;
+        let (added_count, changed_count, disabled_count, reset_count) =
+            self.ensure_repository()?.generic_pack_diff(&parsed)?;
+        let expires_at_unix_ms = now_unix_ms
+            .checked_add(IMPORT_PREVIEW_TTL_MILLIS)
+            .ok_or_else(|| AppError::Validation("learning preview time overflowed".into()))?;
+        let token = uuid::Uuid::new_v4().to_string();
+        let preview = LearningImportPreview {
+            schema_version: 1,
+            status: "confirmation_required",
+            preview_token: Some(token.clone()),
+            expires_at_unix_ms: Some(expires_at_unix_ms),
+            format: Some("learning_pack"),
+            source_label: Some(parsed.title.clone()),
+            card_count: parsed.cards.len() as u32,
+            new_count: added_count,
+            learning_count: 0,
+            review_known_count: parsed.cards.len() as u32 - added_count,
+            sample_headwords: parsed
+                .cards
+                .iter()
+                .take(3)
+                .map(|card| card.prompt.clone())
+                .collect(),
+            added_count,
+            changed_count,
+            disabled_count,
+            reset_count,
+            rights_basis: Some(parsed.rights_basis.clone()),
+            selected_path_returned: false,
+        };
+        self.pending_imports.insert(
+            token.clone(),
+            PendingImportPreview {
+                expires_at_unix_ms,
+                import: PendingLearningImport::GenericPack {
+                    import: parsed,
+                    source_path: path.to_path_buf(),
+                },
+            },
+        );
+        if let Err(error) = import::ensure_import_not_cancelled(is_cancelled) {
+            self.pending_imports.remove(&token);
+            return Err(error);
+        }
+        Ok(preview)
     }
 
     pub fn preview_native_json_import(
@@ -380,12 +497,17 @@ impl LearningRuntime {
             preview_token: Some(token.clone()),
             expires_at_unix_ms: Some(expires_at_unix_ms),
             format: Some("json"),
-            source_label: Some("圆圆原生学习数据".into()),
+            source_label: Some(format!("{}原生学习数据", crate::brand::pet_display_name())),
             card_count: data.card_count,
             new_count: data.new_count,
             learning_count: data.learning_count,
             review_known_count: data.review_known_count,
             sample_headwords: data.sample_headwords,
+            added_count: 0,
+            changed_count: 0,
+            disabled_count: 0,
+            reset_count: 0,
+            rights_basis: None,
             selected_path_returned: false,
         };
         self.pending_imports.insert(
@@ -416,6 +538,25 @@ impl LearningRuntime {
     where
         F: Fn() -> bool,
     {
+        self.confirm_import_with_progress_and_cancellation(
+            preview_token,
+            now_unix_ms,
+            is_cancelled,
+            &mut |_| {},
+        )
+    }
+
+    pub fn confirm_import_with_progress_and_cancellation<F, P>(
+        &mut self,
+        preview_token: &str,
+        now_unix_ms: i64,
+        is_cancelled: &F,
+        on_progress: &mut P,
+    ) -> AppResult<ImportCommitResult>
+    where
+        F: Fn() -> bool,
+        P: FnMut(pack::ParseProgress),
+    {
         import::ensure_import_not_cancelled(is_cancelled)?;
         if uuid::Uuid::parse_str(preview_token).is_err() || now_unix_ms < 0 {
             return Err(AppError::Validation(
@@ -435,6 +576,18 @@ impl LearningRuntime {
             }
             PendingLearningImport::NativeJson(import) => repository
                 .restore_native_export_with_cancellation(&import, now_unix_ms, is_cancelled),
+            PendingLearningImport::GenericPack {
+                import,
+                source_path,
+            } => {
+                pack::verify_file_identity_with_progress_and_cancellation(
+                    &source_path,
+                    &import.file_sha256,
+                    is_cancelled,
+                    on_progress,
+                )?;
+                repository.commit_generic_pack_with_cancellation(&import, now_unix_ms, is_cancelled)
+            }
         }
     }
 
@@ -1194,5 +1347,299 @@ mod tests {
             .accept_invitation(&expired_id, expired.expires_at_unix_ms)
             .is_err());
         assert!(runtime.pending_invitation().is_none());
+    }
+
+    fn write_generic_pack(path: &Path, version: &str, cards: serde_json::Value) {
+        use sha2::{Digest, Sha256};
+
+        let mut value = serde_json::json!({
+            "schemaVersion": 1,
+            "packId": "test.generic",
+            "version": version,
+            "title": "Generic test",
+            "description": "Synthetic",
+            "rights": {
+                "basis": "self_authored",
+                "statement": "Synthetic test content",
+                "redistributable": true
+            },
+            "sources": [{ "sourceRef": "notes", "label": "Synthetic notes" }],
+            "contentSha256": "",
+            "cards": cards
+        });
+        let mut canonical = value.clone();
+        canonical.as_object_mut().unwrap().remove("contentSha256");
+        let digest = format!(
+            "{:x}",
+            Sha256::digest(pack::canonical_json(&canonical).as_bytes())
+        );
+        value["contentSha256"] = serde_json::Value::String(digest);
+        std::fs::write(path, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn generic_pack_preview_update_and_disable_are_atomic_and_diffed() {
+        let directory = tempdir().unwrap();
+        let database = directory.path().join("learning.sqlite3");
+        let pack_path = directory.path().join("test.learning-pack.json");
+        let mut runtime = LearningRuntime::initialize(&database);
+
+        write_generic_pack(
+            &pack_path,
+            "1.0.0",
+            serde_json::json!([{
+                "cardId": "c1",
+                "exerciseKind": "choice",
+                "prompt": "Question one",
+                "answer": "Answer one",
+                "choices": ["Answer one", "Other"],
+                "sourceRefs": ["notes"],
+                "scheduleEpoch": 1
+            }]),
+        );
+        let preview = runtime.preview_import_file(&pack_path, 1_000).unwrap();
+        assert_eq!(preview.format, Some("learning_pack"));
+        assert_eq!(
+            (
+                preview.added_count,
+                preview.changed_count,
+                preview.disabled_count,
+                preview.reset_count
+            ),
+            (1, 0, 0, 0)
+        );
+        runtime
+            .confirm_import(preview.preview_token.as_deref().unwrap(), 2_000)
+            .unwrap();
+
+        write_generic_pack(
+            &pack_path,
+            "1.1.0",
+            serde_json::json!([
+                {
+                    "cardId": "c1",
+                    "exerciseKind": "recall",
+                    "prompt": "Question one updated",
+                    "answer": "Answer one changed",
+                    "sourceRefs": ["notes"],
+                    "scheduleEpoch": 1
+                },
+                {
+                    "cardId": "c2",
+                    "exerciseKind": "recall",
+                    "prompt": "Question two",
+                    "answer": "Answer two",
+                    "sourceRefs": ["notes"],
+                    "scheduleEpoch": 1
+                }
+            ]),
+        );
+        let preview = runtime.preview_import_file(&pack_path, 3_000).unwrap();
+        assert_eq!(
+            (
+                preview.added_count,
+                preview.changed_count,
+                preview.disabled_count,
+                preview.reset_count
+            ),
+            (1, 1, 0, 1)
+        );
+        runtime
+            .confirm_import(preview.preview_token.as_deref().unwrap(), 4_000)
+            .unwrap();
+
+        write_generic_pack(
+            &pack_path,
+            "1.2.0",
+            serde_json::json!([{
+                "cardId": "c2",
+                "exerciseKind": "recall",
+                "prompt": "Question two",
+                "answer": "Answer two",
+                "sourceRefs": ["notes"],
+                "scheduleEpoch": 1
+            }]),
+        );
+        let preview = runtime.preview_import_file(&pack_path, 5_000).unwrap();
+        assert_eq!(
+            (
+                preview.added_count,
+                preview.changed_count,
+                preview.disabled_count,
+                preview.reset_count
+            ),
+            (0, 0, 1, 0)
+        );
+        runtime
+            .confirm_import(preview.preview_token.as_deref().unwrap(), 6_000)
+            .unwrap();
+        assert_eq!(runtime.data_summary().unwrap().card_count, 2);
+    }
+
+    #[test]
+    fn generic_pack_confirmation_rejects_file_replacement_without_live_writes() {
+        let directory = tempdir().unwrap();
+        let database = directory.path().join("learning.sqlite3");
+        let pack_path = directory.path().join("test.learning-pack.json");
+        let mut runtime = LearningRuntime::initialize(&database);
+
+        write_generic_pack(
+            &pack_path,
+            "1.0.0",
+            serde_json::json!([{
+                "cardId": "c1",
+                "exerciseKind": "recall",
+                "prompt": "Original question",
+                "answer": "Original answer",
+                "sourceRefs": ["notes"],
+                "scheduleEpoch": 1
+            }]),
+        );
+        let preview = runtime.preview_import_file(&pack_path, 1_000).unwrap();
+        let token = preview.preview_token.unwrap();
+
+        write_generic_pack(
+            &pack_path,
+            "1.0.1",
+            serde_json::json!([{
+                "cardId": "c1",
+                "exerciseKind": "recall",
+                "prompt": "Replacement question",
+                "answer": "Replacement answer",
+                "sourceRefs": ["notes"],
+                "scheduleEpoch": 1
+            }]),
+        );
+
+        let error = runtime.confirm_import(&token, 2_000).unwrap_err();
+        assert!(error.to_string().contains("file changed after preview"));
+        assert_eq!(runtime.data_summary().unwrap().card_count, 0);
+        assert!(runtime.confirm_import(&token, 3_000).is_err());
+    }
+
+    #[test]
+    fn generic_pack_schedule_epoch_resets_only_the_requested_card() {
+        let directory = tempdir().unwrap();
+        let database = directory.path().join("learning.sqlite3");
+        let pack_path = directory.path().join("test.learning-pack.json");
+        let mut runtime = LearningRuntime::initialize(&database);
+
+        let cards = serde_json::json!([
+            {
+                "cardId": "c1",
+                "exerciseKind": "recall",
+                "prompt": "Question one",
+                "answer": "Answer one",
+                "sourceRefs": ["notes"],
+                "scheduleEpoch": 1
+            },
+            {
+                "cardId": "c2",
+                "exerciseKind": "recall",
+                "prompt": "Question two",
+                "answer": "Answer two",
+                "sourceRefs": ["notes"],
+                "scheduleEpoch": 1
+            }
+        ]);
+        write_generic_pack(&pack_path, "1.0.0", cards.clone());
+        let preview = runtime.preview_import_file(&pack_path, 1_000).unwrap();
+        runtime
+            .confirm_import(preview.preview_token.as_deref().unwrap(), 2_000)
+            .unwrap();
+        runtime
+            .repository
+            .as_ref()
+            .unwrap()
+            .connection()
+            .execute(
+                "UPDATE card_schedule
+                 SET stage = 'stable', due_at_unix_ms = 90000, stability = 3.5,
+                     difficulty = 5.2, reps = 3, lapses = 0,
+                     last_review_at_unix_ms = 80000",
+                [],
+            )
+            .unwrap();
+
+        let mut updated_cards = cards.as_array().unwrap().clone();
+        updated_cards[1]["scheduleEpoch"] = serde_json::json!(2);
+        write_generic_pack(&pack_path, "1.1.0", serde_json::Value::Array(updated_cards));
+        let preview = runtime.preview_import_file(&pack_path, 3_000).unwrap();
+        assert_eq!(
+            (
+                preview.added_count,
+                preview.changed_count,
+                preview.disabled_count,
+                preview.reset_count
+            ),
+            (0, 1, 0, 1)
+        );
+        let committed = runtime
+            .confirm_import(preview.preview_token.as_deref().unwrap(), 4_000)
+            .unwrap();
+        assert_eq!(committed.preserved_schedule_count, 1);
+
+        let schedules = runtime
+            .repository
+            .as_ref()
+            .unwrap()
+            .connection()
+            .prepare(
+                "SELECT c.external_card_id, s.stage, s.due_at_unix_ms, s.reps
+                 FROM learning_cards c JOIN card_schedule s USING(card_id)
+                 WHERE c.pack_id = 'test.generic'
+                 ORDER BY c.external_card_id",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(
+            schedules,
+            vec![
+                ("c1".into(), "stable".into(), 90_000, 3),
+                ("c2".into(), "new".into(), 4_000, 0),
+            ]
+        );
+
+        let regressed_cards = cards.as_array().unwrap().clone();
+        write_generic_pack(
+            &pack_path,
+            "1.2.0",
+            serde_json::Value::Array(regressed_cards),
+        );
+        let error = runtime.preview_import_file(&pack_path, 5_000).unwrap_err();
+        assert!(error.to_string().contains("scheduleEpoch cannot decrease"));
+        let regressed_import =
+            pack::parse_file_with_progress_and_cancellation(&pack_path, &|| false, &mut |_| {})
+                .unwrap();
+        let error = runtime
+            .repository
+            .as_mut()
+            .unwrap()
+            .commit_generic_pack_with_cancellation(&regressed_import, 6_000, &|| false)
+            .unwrap_err();
+        assert!(error.to_string().contains("scheduleEpoch cannot decrease"));
+        let stored_epoch: u32 = runtime
+            .repository
+            .as_ref()
+            .unwrap()
+            .connection()
+            .query_row(
+                "SELECT schedule_epoch FROM learning_cards
+                 WHERE pack_id = 'test.generic' AND external_card_id = 'c2'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored_epoch, 2);
     }
 }

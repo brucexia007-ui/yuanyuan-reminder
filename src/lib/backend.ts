@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { petDisplayName } from "../brand";
 import type {
   AppSettings,
   BackupInfo,
@@ -665,7 +666,7 @@ export async function restoreBackup(fileName: string): Promise<void> {
   }
 }
 
-export const DELETE_ALL_LOCAL_DATA_CONFIRMATION = "删除圆圆全部本地数据";
+export const DELETE_ALL_LOCAL_DATA_CONFIRMATION = `删除${petDisplayName}全部本地数据`;
 
 export async function deleteAllLocalDataAndExit(
   confirmation: string,

@@ -5,8 +5,8 @@ resolver = "2"
 
 [package]
 name = "yuanyuan-reminder"
-version = "1.5.5"
-description = "独立运行的圆圆桌面提醒工具"
+version = "1.5.7"
+description = "独立运行的饺饺提醒桌面提醒工具"
 authors = ["Yuanyuan"]
 edition = "2021"
 license = "MIT"
@@ -18,7 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
 default = ["learning"]
-learning = ["dep:csv", "dep:fsrs", "dep:unicode-normalization"]
+learning = ["dep:csv", "dep:fsrs", "dep:unicode-normalization", "dep:yuanyuan-learning-pack-spike"]
 runtime-qa = ["rusqlite/hooks"]
 migration-qa = []
 store-data-lifecycle-qa = []
@@ -77,6 +77,7 @@ tracing = "0.1"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 unicode-normalization = { version = "0.1", optional = true }
+yuanyuan-learning-pack-spike = { path = "crates/learning-pack-spike", optional = true }
 tokio = { version = "1", features = ["sync", "time"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 zeroize = "1"

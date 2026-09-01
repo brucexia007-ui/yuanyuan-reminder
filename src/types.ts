@@ -218,13 +218,18 @@ export interface LearningImportPreview {
   status: "cancelled" | "confirmation_required";
   previewToken: string | null;
   expiresAtUnixMs: number | null;
-  format: "csv" | "json" | null;
+  format: "csv" | "json" | "learning_pack" | null;
   sourceLabel: string | null;
   cardCount: number;
   newCount: number;
   learningCount: number;
   reviewKnownCount: number;
   sampleHeadwords: string[];
+  addedCount?: number;
+  changedCount?: number;
+  disabledCount?: number;
+  resetCount?: number;
+  rightsBasis?: string | null;
   selectedPathReturned: false;
 }
 
@@ -263,6 +268,8 @@ export interface LearningPackSummary {
   title: string;
   examScope: string;
   status: "preview" | "ready" | "disabled";
+  rightsBasis?: string;
+  redistributable?: boolean;
 }
 
 export interface LearningDataSummary {

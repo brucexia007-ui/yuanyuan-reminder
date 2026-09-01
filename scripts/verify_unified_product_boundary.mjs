@@ -25,6 +25,7 @@ export function validateUnifiedCargoFeatures(cargoToml) {
 
 export function validateUnifiedSourceContract({
   manifest,
+  brand,
   packageJson,
   cargoToml,
   libRs,
@@ -35,7 +36,7 @@ export function validateUnifiedSourceContract({
   initialLearningMigration,
   legacyPreviewConfigExists,
 }) {
-  validateProductManifest(manifest);
+  validateProductManifest(manifest, brand);
   validateUnifiedCargoFeatures(cargoToml);
   if (
     tauriConfig.productName !== manifest.productName ||
@@ -121,6 +122,7 @@ async function filesUnder(directory) {
 async function main() {
   const [
     manifest,
+    brand,
     packageJson,
     cargoToml,
     libRs,
@@ -131,6 +133,11 @@ async function main() {
     initialLearningMigration,
   ] = await Promise.all([
     readFile(path.join(projectRoot, "product-version.json"), "utf8").then(JSON.parse),
+    readFile(path.join(projectRoot, "product-version.json"), "utf8")
+      .then(JSON.parse)
+      .then((value) => value.brandConfig
+        ? readFile(path.join(projectRoot, value.brandConfig), "utf8").then(JSON.parse)
+        : null),
     readFile(path.join(projectRoot, "package.json"), "utf8").then(JSON.parse),
     readFile(path.join(projectRoot, "src-tauri", "Cargo.toml"), "utf8"),
     readFile(path.join(projectRoot, "src-tauri", "src", "lib.rs"), "utf8"),
@@ -145,6 +152,7 @@ async function main() {
   ]);
   validateUnifiedSourceContract({
     manifest,
+    brand,
     packageJson,
     cargoToml,
     libRs,

@@ -11,6 +11,7 @@ import {
   FIRST_START_RECOVERY_LIMITATIONS,
   firstStartRecoveryEvidenceMatches,
 } from "./verify_first_start_recovery_evidence.mjs";
+import { productBrand } from "./product_brand_contract.mjs";
 
 const tables = [
   "activity_tracking_state",
@@ -31,7 +32,7 @@ function hash(bytes) {
 
 async function makeFixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), "yuanyuan-first-start-verify-"));
-  const sourcePath = path.join(root, "yuanyuan-reminder.sqlite3");
+  const sourcePath = path.join(root, productBrand.storage.mainDatabaseFile);
   const fixturePath = path.join(root, "release-first-start-recovery.sqlite3");
   const capturePath = path.join(root, "release-first-start-recovery-database.json");
   const database = new DatabaseSync(sourcePath);

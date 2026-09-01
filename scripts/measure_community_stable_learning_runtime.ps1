@@ -2,11 +2,17 @@ param(
     [ValidateRange(120, 1800)]
     [int]$TimeoutSeconds = 900,
 
-    [switch]$AllowDirty
+    [switch]$AllowDirty,
+
+    [string]$SourceBindingPath
 )
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
+. (Join-Path $PSScriptRoot "assert_runtime_qa_exclusive.ps1")
+Assert-YuanyuanRuntimeQaExclusive -Activity "Community stable 20,000-card learning runtime E2E"
+$utilityModulePath = Join-Path $PSHOME "Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1"
+Import-Module -Name $utilityModulePath -ErrorAction Stop
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $workspaceRoot = Split-Path -Parent $projectRoot
@@ -18,7 +24,16 @@ $runId = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssfffZ")
 $leaf = "yuanyuan-runtime-qa-community-learning-$runId"
 $qaRoot = Join-Path $workspaceRoot $leaf
 $markerPath = Join-Path $qaRoot ".yuanyuan-runtime-qa-v1"
-$formalDataRoot = Join-Path $env:LOCALAPPDATA "com.yuanyuan.reminder"
+$brandConfigPath = Join-Path $projectRoot "product-brand.json"
+$brandConfig = Get-Content -Raw -Encoding UTF8 -LiteralPath $brandConfigPath | ConvertFrom-Json
+if ([string]::IsNullOrWhiteSpace([string]$brandConfig.storage.directoryName) -or
+    [string]::IsNullOrWhiteSpace([string]$brandConfig.storage.mainDatabaseFile) -or
+    [string]::IsNullOrWhiteSpace([string]$brandConfig.storage.learningDatabaseFile)) {
+    throw "product brand storage directory and database file names are required"
+}
+$mainDatabaseFile = [string]$brandConfig.storage.mainDatabaseFile
+$learningDatabaseFile = [string]$brandConfig.storage.learningDatabaseFile
+$formalDataRoot = Join-Path $env:LOCALAPPDATA ([string]$brandConfig.storage.directoryName)
 $runtimeReportName = "learning-scale-runtime-$runId.json"
 $runtimeReportPath = Join-Path $evidenceRoot $runtimeReportName
 $evidenceName = "community-stable-learning-$runId.json"
@@ -193,12 +208,12 @@ function Get-FormalLockingProcessIds([string]$Root) {
     if (-not (Test-Path -LiteralPath $Root -PathType Container)) { return @() }
     $files = [string[]]@(
         @(
-            "yuanyuan-reminder.sqlite3",
-            "yuanyuan-reminder.sqlite3-wal",
-            "yuanyuan-reminder.sqlite3-shm",
-            "learning-data\yuanyuan-learning.sqlite3",
-            "learning-data\yuanyuan-learning.sqlite3-wal",
-            "learning-data\yuanyuan-learning.sqlite3-shm",
+            $mainDatabaseFile,
+            "$mainDatabaseFile-wal",
+            "$mainDatabaseFile-shm",
+            "learning-data\$learningDatabaseFile",
+            "learning-data\$learningDatabaseFile-wal",
+            "learning-data\$learningDatabaseFile-shm",
             "EBWebView\lockfile"
         ) |
             ForEach-Object { Join-Path $Root $_ } |
@@ -254,6 +269,26 @@ if ($LASTEXITCODE -ne 0) { throw "source worktree state could not be resolved" }
 $sourceDirty = $dirtyLines.Count -gt 0
 if ($sourceDirty -and -not $AllowDirty) {
     throw "community stable learning evidence requires a clean worktree"
+}
+if ($AllowDirty -and -not [string]::IsNullOrWhiteSpace($SourceBindingPath)) {
+    throw "development learning evidence cannot claim a formal source binding"
+}
+if (-not $AllowDirty -and [string]::IsNullOrWhiteSpace($SourceBindingPath)) {
+    throw "formal learning evidence requires -SourceBindingPath from the controlled learning-on candidate build"
+}
+$sourceBindingSha256 = $null
+if (-not $AllowDirty) {
+    $sourceBindingPath = [IO.Path]::GetFullPath($SourceBindingPath)
+    $bindingObservedAt = [DateTimeOffset]::UtcNow.ToString("o")
+    & node `
+        (Join-Path $projectRoot "scripts\verify_community_stable_runtime_source_binding.mjs") `
+        --binding $sourceBindingPath `
+        --tested-commit $sourceCommit `
+        --observed-at $bindingObservedAt
+    if ($LASTEXITCODE -ne 0) {
+        throw "formal learning candidate source binding verification failed"
+    }
+    $sourceBindingSha256 = Get-FileSha256 $sourceBindingPath
 }
 $authority = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $projectRoot "product-version.json") | ConvertFrom-Json
 $formalBefore = Get-MetadataSnapshot $formalDataRoot
@@ -350,6 +385,7 @@ try {
         buildVariant = "runtime-qa-learning"
         sourceCommit = $sourceCommit
         sourceDirty = $sourceDirty
+        sourceBindingSha256 = $sourceBindingSha256
         applicationSha256 = Get-FileSha256 $appPath
         runtimeReportFile = $runtimeReportName
         runtimeReportSha256 = Get-FileSha256 $runtimeReportPath
@@ -370,6 +406,7 @@ try {
         $evidencePath
     )
     if ($AllowDirty) { $verifyArguments += "--allow-dirty" }
+    else { $verifyArguments += @("--binding", $sourceBindingPath) }
     & node @verifyArguments
     if ($LASTEXITCODE -ne 0) { throw "learning runtime QA evidence verification failed" }
     Write-Output $evidencePath

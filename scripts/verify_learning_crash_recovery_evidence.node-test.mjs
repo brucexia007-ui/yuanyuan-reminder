@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { brandPetText } from "./product_brand_contract.mjs";
+
 import {
   syntheticRecoveryFixtureSha256,
   validateLearningCrashRecoveryReport,
@@ -118,7 +120,7 @@ function makeReport(count = 5, gate = true, scenario = "committed") {
     maxAccessibleNodes: 50,
     observedAccessibleNames: [
       "学习页面",
-      "圆圆桌面英语复习",
+      brandPetText("圆圆桌面英语复习"),
       "继续上一轮",
       "qaa",
       committed ? "qab" : "qaa",

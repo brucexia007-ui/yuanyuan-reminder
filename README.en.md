@@ -1,12 +1,12 @@
-# Yuanyuan Reminder
+# 饺饺提醒 (Jiaojiao Reminder)
 
 An offline Windows desktop pet that helps with hydration, tasks, focus sessions, breaks, and healthy movement — while still acting like a playful cat.
 
 [Download the latest release](../../releases/latest) · [Customize your pet](docs/CUSTOMIZE_YOUR_PET.md) · [中文](README.md)
 
-![Yuanyuan showing a prominent reminder](docs/images/yuanyuan-alert.jpg)
+![Jiaojiao](public/assets/pet/fallback.png)
 
-## What Yuanyuan does
+## What Jiaojiao does
 
 - Shows prominent task, water, and movement reminders without covering her face.
 - Stays calmly seated or lying down during focus sessions.
@@ -34,4 +34,4 @@ npm.cmd run tauri build
 
 Prepare 3–8 photos that you have the right to use, then follow [CUSTOMIZE_YOUR_PET.md](docs/CUSTOMIZE_YOUR_PET.md). The repository also includes a reusable [AI coding prompt](AI_CUSTOMIZATION_PROMPT.md) and the complete [pet pack specification](docs/PET_PACK_SPEC.md).
 
-The application code is [MIT licensed](LICENSE). Yuanyuan's photographs and derived visual assets have a separate [personal, non-commercial asset license](ASSETS_LICENSE.md). Forks are encouraged to replace them with their own pet imagery.
+The application code is [MIT licensed](LICENSE). Jiaojiao's photographs and derived visual assets have a separate [asset license](JIAOJIAO_ASSETS_LICENSE.md). Forks are encouraged to replace them with their own pet imagery and license terms.

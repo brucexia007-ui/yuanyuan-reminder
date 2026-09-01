@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "interfaces": [
+    "globalPointer",
+    "systemIdle",
+    "lockAndWake",
+    "loginStart",
+    "notifications",
+    "trayOrMenuBar",
+    "transparentWindow",
+    "alwaysOnTop",
+    "clickThrough",
+    "packaging",
+    "signing",
+    "notarization"
+  ],
+  "targets": {
+    "windows-x64": {
+      "status": "implemented",
+      "interfaces": {
+        "globalPointer": "implemented",
+        "systemIdle": "implemented",
+        "lockAndWake": "implemented",
+        "loginStart": "implemented",
+        "notifications": "implemented",
+        "trayOrMenuBar": "implemented",
+        "transparentWindow": "implemented",
+        "alwaysOnTop": "implemented",
+        "clickThrough": "implemented",
+        "packaging": "implemented",
+        "signing": "external_protocol",
+        "notarization": "not_applicable"
+      }
+    },
+    "macos-arm64": {
+      "status": "not_implemented",
+      "errorCode": "PLATFORM_NOT_IMPLEMENTED",
+      "interfaces": {
+        "globalPointer": "reserved",
+        "systemIdle": "reserved",
+        "lockAndWake": "reserved",
+        "loginStart": "reserved",
+        "notifications": "reserved",
+        "trayOrMenuBar": "reserved",
+        "transparentWindow": "reserved",
+        "alwaysOnTop": "reserved",
+        "clickThrough": "reserved",
+        "packaging": "reserved",
+        "signing": "reserved",
+        "notarization": "reserved"
+      }
+    },
+    "macos-x64": {
+      "status": "not_implemented",
+      "errorCode": "PLATFORM_NOT_IMPLEMENTED",
+      "interfaces": {
+        "globalPointer": "reserved",
+        "systemIdle": "reserved",
+        "lockAndWake": "reserved",
+        "loginStart": "reserved",
+        "notifications": "reserved",
+        "trayOrMenuBar": "reserved",
+        "transparentWindow": "reserved",
+        "alwaysOnTop": "reserved",
+        "clickThrough": "reserved",
+        "packaging": "reserved",
+        "signing": "reserved",
+        "notarization": "reserved"
+      }
+    }
+  }
+}

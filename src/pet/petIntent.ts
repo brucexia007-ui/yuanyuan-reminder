@@ -1,4 +1,5 @@
 import type { AppSettings, PetIntent } from "../types";
+import { petDisplayName } from "../brand";
 
 const outcomeKinds = new Set(["success", "snoozed", "skipped"]);
 const quietSuppressedKinds = new Set([
@@ -23,14 +24,14 @@ export function intentTextSurface(intent: PetIntent): IntentTextSurface {
 export function motionOnlyAccessibleLabel(intent: PetIntent): string | null {
   switch (intent.kind) {
     case "success":
-      return "记录完成；圆圆高兴地跳了一下";
+      return `记录完成；${petDisplayName}高兴地跳了一下`;
     case "snoozed":
-      return "提醒已延后；圆圆安静等候";
+      return `提醒已延后；${petDisplayName}安静等候`;
     case "skipped":
-      return "提醒已跳过；圆圆把任务牌收起";
+      return `提醒已跳过；${petDisplayName}把任务牌收起`;
     case "care":
-      if (intent.animation === "eating-food") return "圆圆正在吃猫粮";
-      if (intent.animation === "drinking-water") return "圆圆正在喝水";
+      if (intent.animation === "eating-food") return `${petDisplayName}正在吃猫粮`;
+      if (intent.animation === "drinking-water") return `${petDisplayName}正在喝水`;
       return null;
     default:
       return null;

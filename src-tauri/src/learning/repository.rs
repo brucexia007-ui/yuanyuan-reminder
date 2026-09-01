@@ -1,14 +1,21 @@
-use std::{fs, path::Path, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::Path,
+    time::Duration,
+};
 
 use chrono::{Days, Local, NaiveDate, TimeZone, Utc};
 use rusqlite::{
     backup::Progress, params, Connection, OpenFlags, OptionalExtension, Transaction,
     TransactionBehavior, MAIN_DB,
 };
+use sha2::{Digest, Sha256};
 
 use crate::error::{AppError, AppResult};
 
 use super::invitation::{LearningSuppressionReason, LearningTriggerSource};
+use super::pack::GenericPackImport;
 use super::{
     models::{
         ImportCommitResult, ImportProgressHint, LearningAnswerResult, LearningCardDto,
@@ -25,7 +32,7 @@ use super::{
 
 pub(super) mod portability;
 
-pub(super) const CURRENT_SCHEMA_VERSION: u32 = 7;
+pub(super) const CURRENT_SCHEMA_VERSION: u32 = 8;
 const BUSY_TIMEOUT_MILLIS: u64 = 2_000;
 const LEARNING_SESSION_TTL_MILLIS: i64 = 24 * 60 * 60 * 1_000;
 const INITIAL_MIGRATION: &str = include_str!("migrations/001_initial.sql");
@@ -36,6 +43,8 @@ const LEARNING_ROUNDS_MIGRATION: &str = include_str!("migrations/005_learning_ro
 const RESUMABLE_SESSIONS_MIGRATION: &str = include_str!("migrations/006_resumable_sessions.sql");
 const LEGACY_MIGRATION_RECEIPTS_MIGRATION: &str =
     include_str!("migrations/007_legacy_migration_receipts.sql");
+const GENERIC_LEARNING_PACKS_MIGRATION: &str =
+    include_str!("migrations/008_generic_learning_packs.sql");
 
 pub struct LearningRepository {
     conn: Connection,
@@ -253,6 +262,320 @@ impl LearningRepository {
             }
         }
         super::import::ensure_import_not_cancelled(is_cancelled)?;
+        transaction.commit()?;
+        Ok(ImportCommitResult {
+            schema_version: 1,
+            pack_id: import.pack_id.clone(),
+            imported_count: import.cards.len() as u32,
+            preserved_schedule_count,
+        })
+    }
+
+    pub fn generic_pack_diff(&self, import: &GenericPackImport) -> AppResult<(u32, u32, u32, u32)> {
+        let existing_rows = self
+            .conn
+            .prepare(
+                "SELECT card_id, content_sha256, answer_sha256, schedule_epoch
+                 FROM learning_cards WHERE pack_id = ?1",
+            )?
+            .query_map([&import.pack_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, u32>(3)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut existing = existing_rows
+            .into_iter()
+            .map(|(card_id, content_sha256, answer_sha256, schedule_epoch)| {
+                (card_id, (content_sha256, answer_sha256, schedule_epoch))
+            })
+            .collect::<BTreeMap<_, _>>();
+        let mut added = 0_u32;
+        let mut changed = 0_u32;
+        let mut reset = 0_u32;
+        for card in &import.cards {
+            match existing.remove(&card.card_id) {
+                None => added += 1,
+                Some((content_sha256, answer_sha256, schedule_epoch)) => {
+                    if card.schedule_epoch < schedule_epoch {
+                        return Err(AppError::Validation(
+                            "generic learning pack scheduleEpoch cannot decrease".into(),
+                        ));
+                    }
+                    if content_sha256 != card.content_sha256 {
+                        changed += 1;
+                    }
+                    if answer_sha256.as_deref() != Some(card.answer_sha256.as_str())
+                        || card.schedule_epoch > schedule_epoch
+                    {
+                        reset += 1;
+                    }
+                }
+            }
+        }
+        Ok((added, changed, existing.len() as u32, reset))
+    }
+
+    pub fn commit_generic_pack_with_cancellation<F>(
+        &mut self,
+        import: &GenericPackImport,
+        now_unix_ms: i64,
+        is_cancelled: &F,
+    ) -> AppResult<ImportCommitResult>
+    where
+        F: Fn() -> bool,
+    {
+        super::import::ensure_import_not_cancelled(is_cancelled)?;
+        if now_unix_ms < 0 || import.cards.is_empty() {
+            return Err(AppError::Validation(
+                "generic learning pack commit input is invalid".into(),
+            ));
+        }
+        stage_generic_pack_in_memory(import, is_cancelled)?;
+        let transaction = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+
+        let source_kind = match import.rights_basis.as_str() {
+            "authorized" => "authorized",
+            "public_domain" | "open_license" => "open_data",
+            _ => "user_import",
+        };
+        let mut source_ids = BTreeMap::new();
+        for source in &import.sources {
+            super::import::ensure_import_not_cancelled(is_cancelled)?;
+            let source_id = learning_pack_source_id(&import.pack_id, &source.source_ref);
+            transaction.execute(
+                "INSERT INTO content_sources(
+                    source_id, source_kind, version, source_url, license_expression,
+                    notice_text, content_sha256, created_at_unix_ms
+                 ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                 ON CONFLICT(source_id) DO UPDATE SET
+                    source_kind = excluded.source_kind,
+                    version = excluded.version,
+                    source_url = excluded.source_url,
+                    license_expression = excluded.license_expression,
+                    notice_text = excluded.notice_text,
+                    content_sha256 = excluded.content_sha256",
+                params![
+                    source_id,
+                    source_kind,
+                    import.version,
+                    source.url,
+                    source.license,
+                    format!("{}: {}", source.label, import.rights_statement),
+                    import.content_sha256,
+                    now_unix_ms,
+                ],
+            )?;
+            source_ids.insert(source.source_ref.clone(), source_id);
+        }
+
+        transaction.execute(
+            "INSERT INTO content_packs(
+                pack_id, stable_namespace, version, title, exam_scope, status,
+                manifest_sha256, created_at_unix_ms, description, rights_basis,
+                rights_statement, redistributable, content_sha256
+             ) VALUES(?1, ?1, ?2, ?3, '本地通用知识', 'ready', ?4, ?5, ?6, ?7, ?8, ?9, ?4)
+             ON CONFLICT(pack_id) DO UPDATE SET
+                version = excluded.version,
+                title = excluded.title,
+                status = 'ready',
+                manifest_sha256 = excluded.manifest_sha256,
+                description = excluded.description,
+                rights_basis = excluded.rights_basis,
+                rights_statement = excluded.rights_statement,
+                redistributable = excluded.redistributable,
+                content_sha256 = excluded.content_sha256",
+            params![
+                import.pack_id,
+                import.version,
+                import.title,
+                import.content_sha256,
+                now_unix_ms,
+                import.description,
+                import.rights_basis,
+                import.rights_statement,
+                import.redistributable,
+            ],
+        )?;
+
+        let incoming_ids = import
+            .cards
+            .iter()
+            .map(|card| card.card_id.clone())
+            .collect::<BTreeSet<_>>();
+        let existing_ids = transaction
+            .prepare("SELECT card_id FROM learning_cards WHERE pack_id = ?1")?
+            .query_map([&import.pack_id], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        let removed = existing_ids
+            .into_iter()
+            .filter(|card_id| !incoming_ids.contains(card_id))
+            .collect::<Vec<_>>();
+        if !removed.is_empty() {
+            let archive_pack_id =
+                format!("archive:{}", &learning_pack_digest(&import.pack_id)[..32]);
+            transaction.execute(
+                "INSERT INTO content_packs(
+                    pack_id, stable_namespace, version, title, exam_scope, status,
+                    manifest_sha256, created_at_unix_ms, description, rights_basis,
+                    rights_statement, redistributable, content_sha256
+                 ) VALUES(?1, ?1, ?2, ?3, '已停用的本地知识', 'disabled', ?4, ?5, '', ?6, ?7, 0, ?4)
+                 ON CONFLICT(pack_id) DO UPDATE SET status = 'disabled'",
+                params![
+                    archive_pack_id,
+                    import.version,
+                    format!("{}（已停用卡片）", import.title),
+                    import.content_sha256,
+                    now_unix_ms,
+                    import.rights_basis,
+                    import.rights_statement,
+                ],
+            )?;
+            for card_id in removed {
+                transaction.execute(
+                    "UPDATE learning_cards SET pack_id = ?1 WHERE card_id = ?2",
+                    params![archive_pack_id, card_id],
+                )?;
+            }
+        }
+
+        let mut preserved_schedule_count = 0_u32;
+        for card in &import.cards {
+            super::import::ensure_import_not_cancelled(is_cancelled)?;
+            let existing: Option<(Option<String>, u32, bool)> = transaction
+                .query_row(
+                    "SELECT c.answer_sha256, c.schedule_epoch,
+                            EXISTS(SELECT 1 FROM card_schedule s WHERE s.card_id = c.card_id)
+                     FROM learning_cards c WHERE c.card_id = ?1",
+                    [&card.card_id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .optional()?;
+            if existing
+                .as_ref()
+                .is_some_and(|(_, schedule_epoch, _)| card.schedule_epoch < *schedule_epoch)
+            {
+                return Err(AppError::Validation(
+                    "generic learning pack scheduleEpoch cannot decrease".into(),
+                ));
+            }
+            let should_reset =
+                existing
+                    .as_ref()
+                    .is_some_and(|(answer_sha256, schedule_epoch, _)| {
+                        answer_sha256.as_deref() != Some(card.answer_sha256.as_str())
+                            || card.schedule_epoch > *schedule_epoch
+                    });
+            if should_reset {
+                transaction.execute(
+                    "DELETE FROM card_schedule WHERE card_id = ?1",
+                    [&card.card_id],
+                )?;
+            } else if existing
+                .as_ref()
+                .is_some_and(|(_, _, has_schedule)| *has_schedule)
+            {
+                preserved_schedule_count += 1;
+            }
+            let source_ids_json = serde_json::to_string(
+                &card
+                    .source_refs
+                    .iter()
+                    .map(|reference| &source_ids[reference])
+                    .collect::<Vec<_>>(),
+            )?;
+            let headword = card.prompt.chars().take(128).collect::<String>();
+            transaction.execute(
+                "INSERT INTO learning_cards(
+                    card_id, pack_id, headword, normalized_headword, phonetic,
+                    part_of_speech_json, meanings_zh_json, word_family_json,
+                    frequency_band, sense_basis_json, source_ids_json,
+                    content_sha256, created_at_unix_ms, external_card_id,
+                    exercise_kind, prompt_text, answer_text, choices_json,
+                    explanation_text, tags_json, source_refs_json, extensions_json,
+                    prompt_sha256, answer_sha256, schedule_epoch
+                 ) VALUES(
+                    ?1, ?2, ?3, ?4, NULL, '[\"generic\"]', ?5, '[]',
+                    'user_import', ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+                    ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21
+                 )
+                 ON CONFLICT(card_id) DO UPDATE SET
+                    pack_id = excluded.pack_id,
+                    headword = excluded.headword,
+                    normalized_headword = excluded.normalized_headword,
+                    meanings_zh_json = excluded.meanings_zh_json,
+                    sense_basis_json = excluded.sense_basis_json,
+                    source_ids_json = excluded.source_ids_json,
+                    content_sha256 = excluded.content_sha256,
+                    external_card_id = excluded.external_card_id,
+                    exercise_kind = excluded.exercise_kind,
+                    prompt_text = excluded.prompt_text,
+                    answer_text = excluded.answer_text,
+                    choices_json = excluded.choices_json,
+                    explanation_text = excluded.explanation_text,
+                    tags_json = excluded.tags_json,
+                    source_refs_json = excluded.source_refs_json,
+                    extensions_json = excluded.extensions_json,
+                    prompt_sha256 = excluded.prompt_sha256,
+                    answer_sha256 = excluded.answer_sha256,
+                    schedule_epoch = excluded.schedule_epoch",
+                params![
+                    card.card_id,
+                    import.pack_id,
+                    headword,
+                    card.external_card_id,
+                    serde_json::to_string(&[&card.answer])?,
+                    serde_json::json!({ "kind": "generic_local_pack", "packId": import.pack_id })
+                        .to_string(),
+                    source_ids_json,
+                    card.content_sha256,
+                    now_unix_ms,
+                    card.external_card_id,
+                    card.exercise_kind,
+                    card.prompt,
+                    card.answer,
+                    serde_json::to_string(&card.choices)?,
+                    card.explanation,
+                    serde_json::to_string(&card.tags)?,
+                    serde_json::to_string(&card.source_refs)?,
+                    card.extensions_json,
+                    card.prompt_sha256,
+                    card.answer_sha256,
+                    card.schedule_epoch,
+                ],
+            )?;
+            if !existing
+                .as_ref()
+                .is_some_and(|(_, _, has_schedule)| *has_schedule)
+                || should_reset
+            {
+                transaction.execute(
+                    "INSERT INTO card_schedule(
+                        card_id, stage, due_at_unix_ms, stability, difficulty,
+                        reps, lapses, last_review_at_unix_ms
+                     ) VALUES(?1, 'new', ?2, NULL, NULL, 0, 0, NULL)",
+                    params![card.card_id, now_unix_ms],
+                )?;
+            }
+        }
+        super::import::ensure_import_not_cancelled(is_cancelled)?;
+        let foreign_key_error: Option<String> = transaction
+            .query_row(
+                "SELECT 'invalid' FROM pragma_foreign_key_check LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if foreign_key_error.is_some() {
+            return Err(AppError::Validation(
+                "generic learning pack staging failed foreign key validation".into(),
+            ));
+        }
         transaction.commit()?;
         Ok(ImportCommitResult {
             schema_version: 1,
@@ -1648,9 +1971,107 @@ impl LearningRepository {
     }
 
     #[cfg(test)]
-    fn connection(&self) -> &Connection {
+    pub(super) fn connection(&self) -> &Connection {
         &self.conn
     }
+}
+
+fn stage_generic_pack_in_memory<F>(import: &GenericPackImport, is_cancelled: &F) -> AppResult<()>
+where
+    F: Fn() -> bool,
+{
+    super::import::ensure_import_not_cancelled(is_cancelled)?;
+    let mut staging = Connection::open_in_memory()?;
+    staging.pragma_update(None, "foreign_keys", "ON")?;
+    staging.execute_batch(
+        "CREATE TABLE staging_sources(
+            source_ref TEXT PRIMARY KEY NOT NULL,
+            label TEXT NOT NULL CHECK(length(trim(label)) > 0)
+         ) STRICT;
+         CREATE TABLE staging_cards(
+            card_id TEXT PRIMARY KEY NOT NULL,
+            external_card_id TEXT NOT NULL UNIQUE,
+            exercise_kind TEXT NOT NULL CHECK(exercise_kind IN ('recall', 'choice')),
+            prompt_text TEXT NOT NULL CHECK(length(trim(prompt_text)) > 0),
+            answer_text TEXT NOT NULL CHECK(length(trim(answer_text)) > 0),
+            schedule_epoch INTEGER NOT NULL CHECK(schedule_epoch >= 1)
+         ) STRICT;
+         CREATE TABLE staging_card_sources(
+            card_id TEXT NOT NULL REFERENCES staging_cards(card_id) DEFERRABLE INITIALLY DEFERRED,
+            source_ref TEXT NOT NULL REFERENCES staging_sources(source_ref) DEFERRABLE INITIALLY DEFERRED,
+            PRIMARY KEY(card_id, source_ref)
+         ) STRICT;",
+    )?;
+    let transaction = staging.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    for source in &import.sources {
+        super::import::ensure_import_not_cancelled(is_cancelled)?;
+        transaction.execute(
+            "INSERT INTO staging_sources(source_ref, label) VALUES(?1, ?2)",
+            params![source.source_ref, source.label],
+        )?;
+    }
+    for card in &import.cards {
+        super::import::ensure_import_not_cancelled(is_cancelled)?;
+        transaction.execute(
+            "INSERT INTO staging_cards(
+                card_id, external_card_id, exercise_kind, prompt_text, answer_text, schedule_epoch
+             ) VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                card.card_id,
+                card.external_card_id,
+                card.exercise_kind,
+                card.prompt,
+                card.answer,
+                card.schedule_epoch,
+            ],
+        )?;
+        for source_ref in &card.source_refs {
+            transaction.execute(
+                "INSERT INTO staging_card_sources(card_id, source_ref) VALUES(?1, ?2)",
+                params![card.card_id, source_ref],
+            )?;
+        }
+    }
+    let staged_sources: u32 =
+        transaction.query_row("SELECT COUNT(*) FROM staging_sources", [], |row| row.get(0))?;
+    let staged_cards: u32 =
+        transaction.query_row("SELECT COUNT(*) FROM staging_cards", [], |row| row.get(0))?;
+    let staged_links: u32 =
+        transaction.query_row("SELECT COUNT(*) FROM staging_card_sources", [], |row| {
+            row.get(0)
+        })?;
+    let expected_links = import
+        .cards
+        .iter()
+        .try_fold(0_u32, |total, card| {
+            total.checked_add(card.source_refs.len() as u32)
+        })
+        .ok_or_else(|| {
+            AppError::Validation("generic learning pack staging count overflow".into())
+        })?;
+    if staged_sources != import.sources.len() as u32
+        || staged_cards != import.cards.len() as u32
+        || staged_links != expected_links
+    {
+        return Err(AppError::Validation(
+            "generic learning pack staging counts do not match the parsed pack".into(),
+        ));
+    }
+    let foreign_key_error: Option<String> = transaction
+        .query_row(
+            "SELECT 'invalid' FROM pragma_foreign_key_check LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if foreign_key_error.is_some() {
+        return Err(AppError::Validation(
+            "generic learning pack staging database failed foreign key validation".into(),
+        ));
+    }
+    super::import::ensure_import_not_cancelled(is_cancelled)?;
+    transaction.commit()?;
+    Ok(())
 }
 
 fn validate_now(now_unix_ms: i64) -> AppResult<()> {
@@ -2382,7 +2803,7 @@ fn current_question_target(
     }
     let raw = conn
         .query_row(
-            "SELECT c.card_id, c.headword, c.phonetic, c.part_of_speech_json,
+            "SELECT c.card_id, COALESCE(c.prompt_text, c.headword), c.phonetic, c.part_of_speech_json,
                 c.meanings_zh_json, c.word_family_json, s.stage, c.source_ids_json
              FROM learning_remediation_queue q
              JOIN learning_cards c ON c.card_id = q.card_id
@@ -2442,7 +2863,7 @@ fn current_card_for_session(
     }
     let raw = conn
         .query_row(
-            "SELECT c.card_id, c.headword, c.phonetic, c.part_of_speech_json,
+            "SELECT c.card_id, COALESCE(c.prompt_text, c.headword), c.phonetic, c.part_of_speech_json,
                 c.meanings_zh_json, c.word_family_json, s.stage, c.source_ids_json
              FROM card_schedule s
              JOIN learning_cards c USING(card_id)
@@ -2494,7 +2915,7 @@ fn current_mistake_card_for_session(
 ) -> AppResult<Option<LearningCardDto>> {
     let raw = conn
         .query_row(
-            "SELECT c.card_id, c.headword, c.phonetic, c.part_of_speech_json,
+            "SELECT c.card_id, COALESCE(c.prompt_text, c.headword), c.phonetic, c.part_of_speech_json,
                 c.meanings_zh_json, c.word_family_json, s.stage, c.source_ids_json
              FROM card_schedule s
              JOIN learning_cards c USING(card_id)
@@ -2626,6 +3047,14 @@ fn initial_stage(progress_hint: ImportProgressHint) -> &'static str {
     }
 }
 
+fn learning_pack_digest(value: &str) -> String {
+    format!("{:x}", Sha256::digest(value.as_bytes()))
+}
+
+fn learning_pack_source_id(pack_id: &str, source_ref: &str) -> String {
+    learning_pack_digest(&format!("learning-pack-source-v1\0{pack_id}\0{source_ref}"))
+}
+
 fn configure_connection(conn: &Connection) -> AppResult<()> {
     conn.pragma_update(None, "foreign_keys", "ON")?;
     conn.busy_timeout(Duration::from_millis(BUSY_TIMEOUT_MILLIS))?;
@@ -2697,6 +3126,13 @@ fn apply_migrations(conn: &Connection) -> AppResult<()> {
     let schema_version: u32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
     if schema_version == 6 {
         if let Err(error) = conn.execute_batch(LEGACY_MIGRATION_RECEIPTS_MIGRATION) {
+            let _ = conn.execute_batch("ROLLBACK");
+            return Err(error.into());
+        }
+    }
+    let schema_version: u32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if schema_version == 7 {
+        if let Err(error) = conn.execute_batch(GENERIC_LEARNING_PACKS_MIGRATION) {
             let _ = conn.execute_batch("ROLLBACK");
             return Err(error.into());
         }
@@ -2792,6 +3228,7 @@ mod tests {
 
     use super::*;
     use crate::learning::import::parse_user_csv;
+    use crate::learning::pack::{GenericImportedCard, SourceDeclaration};
 
     #[derive(Debug, PartialEq)]
     struct AnswerTransactionState {
@@ -3059,7 +3496,7 @@ mod tests {
         let directory = tempdir().unwrap();
         let path = directory.path().join("future.sqlite3");
         let conn = Connection::open(&path).unwrap();
-        conn.pragma_update(None, "user_version", 8).unwrap();
+        conn.pragma_update(None, "user_version", 9).unwrap();
         drop(conn);
 
         assert!(matches!(
@@ -3070,7 +3507,7 @@ mod tests {
         let version: u32 = conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 8);
+        assert_eq!(version, 9);
     }
 
     #[test]
@@ -4896,5 +5333,204 @@ mod tests {
                 .unwrap()
                 .paused_today
         );
+    }
+
+    #[test]
+    fn generic_pack_staging_database_rejects_missing_source_before_live_writes() {
+        let import = GenericPackImport {
+            file_sha256: "a".repeat(64),
+            content_sha256: "b".repeat(64),
+            pack_id: "staging.test".into(),
+            version: "1.0.0".into(),
+            title: "Staging".into(),
+            description: String::new(),
+            rights_basis: "self_authored".into(),
+            rights_statement: "Synthetic".into(),
+            redistributable: true,
+            sources: vec![SourceDeclaration {
+                source_ref: "known".into(),
+                label: "Known".into(),
+                url: None,
+                license: None,
+            }],
+            cards: vec![GenericImportedCard {
+                card_id: "c".repeat(64),
+                external_card_id: "card-1".into(),
+                exercise_kind: "recall".into(),
+                prompt: "Question".into(),
+                answer: "Answer".into(),
+                choices: vec![],
+                explanation: None,
+                tags: vec![],
+                source_refs: vec!["missing".into()],
+                schedule_epoch: 1,
+                extensions_json: "{}".into(),
+                prompt_sha256: "d".repeat(64),
+                answer_sha256: "e".repeat(64),
+                content_sha256: "f".repeat(64),
+            }],
+        };
+        assert!(stage_generic_pack_in_memory(&import, &|| false)
+            .unwrap_err()
+            .to_string()
+            .contains("foreign key"));
+        let directory = tempdir().unwrap();
+        let mut repository =
+            LearningRepository::open(&directory.path().join("learning.sqlite3")).unwrap();
+        assert!(repository
+            .commit_generic_pack_with_cancellation(&import, 1_000, &|| false)
+            .is_err());
+        let pack_count: u32 = repository
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM content_packs WHERE pack_id = 'staging.test'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(pack_count, 0);
+    }
+
+    #[test]
+    fn generic_pack_mid_commit_cancellation_preserves_old_content_and_progress() {
+        use std::cell::Cell;
+
+        use crate::learning::pack::{GenericImportedCard, SourceDeclaration};
+        use sha2::{Digest, Sha256};
+
+        let card = |card_id: String, external_card_id: &str, prompt: &str, answer: &str| {
+            GenericImportedCard {
+                card_id,
+                external_card_id: external_card_id.into(),
+                exercise_kind: "recall".into(),
+                prompt: prompt.into(),
+                answer: answer.into(),
+                choices: vec![],
+                explanation: None,
+                tags: vec![],
+                source_refs: vec!["notes".into()],
+                schedule_epoch: 1,
+                extensions_json: "{}".into(),
+                prompt_sha256: format!("{:x}", Sha256::digest(prompt.as_bytes())),
+                answer_sha256: format!("{:x}", Sha256::digest(answer.as_bytes())),
+                content_sha256: format!(
+                    "{:x}",
+                    Sha256::digest(format!("{external_card_id}\0{prompt}\0{answer}").as_bytes())
+                ),
+            }
+        };
+        let first = GenericPackImport {
+            file_sha256: "a".repeat(64),
+            content_sha256: "b".repeat(64),
+            pack_id: "transaction.test".into(),
+            version: "1.0.0".into(),
+            title: "Original pack".into(),
+            description: "Original description".into(),
+            rights_basis: "self_authored".into(),
+            rights_statement: "Synthetic".into(),
+            redistributable: true,
+            sources: vec![SourceDeclaration {
+                source_ref: "notes".into(),
+                label: "Original notes".into(),
+                url: None,
+                license: None,
+            }],
+            cards: vec![
+                card("1".repeat(64), "c1", "Question one", "Answer one"),
+                card("2".repeat(64), "c2", "Question two", "Answer two"),
+            ],
+        };
+        let directory = tempdir().unwrap();
+        let mut repository =
+            LearningRepository::open(&directory.path().join("learning.sqlite3")).unwrap();
+        repository
+            .commit_generic_pack_with_cancellation(&first, 1_000, &|| false)
+            .unwrap();
+        repository
+            .connection()
+            .execute(
+                "UPDATE card_schedule
+                 SET stage = 'stable', due_at_unix_ms = 90000, stability = 3.5,
+                     difficulty = 5.2, reps = 3, lapses = 0,
+                     last_review_at_unix_ms = 80000",
+                [],
+            )
+            .unwrap();
+
+        let mut second = first.clone();
+        second.file_sha256 = "c".repeat(64);
+        second.content_sha256 = "d".repeat(64);
+        second.version = "1.1.0".into();
+        second.title = "Replacement pack".into();
+        second.sources[0].label = "Replacement notes".into();
+        second.cards[0] = card(
+            "1".repeat(64),
+            "c1",
+            "Replacement question",
+            "Replacement answer",
+        );
+        let checks = Cell::new(0_u32);
+        let error = repository
+            .commit_generic_pack_with_cancellation(&second, 2_000, &|| {
+                checks.set(checks.get() + 1);
+                checks.get() >= 9
+            })
+            .unwrap_err();
+        assert!(error.to_string().contains("learning import was cancelled"));
+
+        let pack: (String, String) = repository
+            .connection()
+            .query_row(
+                "SELECT version, title FROM content_packs WHERE pack_id = 'transaction.test'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(pack, ("1.0.0".into(), "Original pack".into()));
+        let cards = repository
+            .connection()
+            .prepare(
+                "SELECT c.external_card_id, c.prompt_text, c.answer_text,
+                        s.stage, s.due_at_unix_ms, s.reps
+                 FROM learning_cards c JOIN card_schedule s USING(card_id)
+                 WHERE c.pack_id = 'transaction.test'
+                 ORDER BY c.external_card_id",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, i64>(5)?,
+                ))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(
+            cards,
+            vec![
+                (
+                    "c1".into(),
+                    "Question one".into(),
+                    "Answer one".into(),
+                    "stable".into(),
+                    90_000,
+                    3,
+                ),
+                (
+                    "c2".into(),
+                    "Question two".into(),
+                    "Answer two".into(),
+                    "stable".into(),
+                    90_000,
+                    3,
+                ),
+            ]
+        );
+        assert_learning_database_healthy(repository.connection());
     }
 }

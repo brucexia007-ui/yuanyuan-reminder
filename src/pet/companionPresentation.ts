@@ -1,3 +1,4 @@
+import { petDisplayName, petText } from "../brand";
 import type {
   CompanionExpressionSnapshot,
   CompanionProp,
@@ -23,31 +24,31 @@ const fixedLabelCopy = {
 } as const;
 
 const fixedAccessibleCopy = {
-  welcoming_return: "圆圆起身靠近，轻轻蹭了蹭你",
-  quiet_presence: "圆圆正在安静陪伴",
-  focused_quietly: "圆圆正在安静陪你专注",
-  focus_finished: "专注结束，圆圆伸了个懒腰",
-  moving_together: "圆圆伸了个懒腰，陪你轻轻活动",
-  giving_space: "圆圆退到远一点的位置，安静留出空间",
-  sleeping: "圆圆正在睡觉",
-  heard_user: "圆圆听见了",
-  approaching: "圆圆正在靠近",
-  staying_close: "圆圆正在你身边守着",
-  water_reminder_due: "圆圆把喝水提醒推到了面前",
-  work_reminder_due: "圆圆把任务提醒推到了面前",
-  task_needs_user: "圆圆发现任务正在等待你的确认",
-  activity_reminder_due: "圆圆在邀请你起来活动",
-  task_running: "圆圆正在电脑旁守望任务",
-  task_still_running: "任务运行较久，圆圆仍在电脑旁守着",
-  task_completed: "圆圆发现任务已经完成",
-  task_failed: "圆圆发现任务没有成功，正在你身边陪着",
-  task_cancelled: "圆圆把已取消的任务卡收起来了",
-  task_possibly_stalled: "圆圆发现任务可能停住了",
-  task_status_unknown: "圆圆暂时无法确认任务状态",
-  information_available: "圆圆把资料放到了提词器上",
-  formal_decision_required: "圆圆把待确认事项放到了确认台上",
-  learning_invitation: "圆圆叼来一张英语复习卡，打开后才会显示单词",
-  learning_session: "圆圆在一旁安静守着这叠英语复习卡",
+  welcoming_return: `${petDisplayName}起身靠近，轻轻蹭了蹭你`,
+  quiet_presence: `${petDisplayName}正在安静陪伴`,
+  focused_quietly: `${petDisplayName}正在安静陪你专注`,
+  focus_finished: `专注结束，${petDisplayName}伸了个懒腰`,
+  moving_together: `${petDisplayName}伸了个懒腰，陪你轻轻活动`,
+  giving_space: `${petDisplayName}退到远一点的位置，安静留出空间`,
+  sleeping: `${petDisplayName}正在睡觉`,
+  heard_user: `${petDisplayName}听见了`,
+  approaching: `${petDisplayName}正在靠近`,
+  staying_close: `${petDisplayName}正在你身边守着`,
+  water_reminder_due: `${petDisplayName}把喝水提醒推到了面前`,
+  work_reminder_due: `${petDisplayName}把任务提醒推到了面前`,
+  task_needs_user: `${petDisplayName}发现任务正在等待你的确认`,
+  activity_reminder_due: `${petDisplayName}在邀请你起来活动`,
+  task_running: `${petDisplayName}正在电脑旁守望任务`,
+  task_still_running: `任务运行较久，${petDisplayName}仍在电脑旁守着`,
+  task_completed: `${petDisplayName}发现任务已经完成`,
+  task_failed: `${petDisplayName}发现任务没有成功，正在你身边陪着`,
+  task_cancelled: `${petDisplayName}把已取消的任务卡收起来了`,
+  task_possibly_stalled: `${petDisplayName}发现任务可能停住了`,
+  task_status_unknown: `${petDisplayName}暂时无法确认任务状态`,
+  information_available: `${petDisplayName}把资料放到了提词器上`,
+  formal_decision_required: `${petDisplayName}把待确认事项放到了确认台上`,
+  learning_invitation: `${petDisplayName}叼来一张英语复习卡，打开后才会显示单词`,
+  learning_session: `${petDisplayName}在一旁安静守着这叠英语复习卡`,
 } as const;
 
 const knownProps = new Set<CompanionProp>([
@@ -96,7 +97,7 @@ export function companionPresentation(
         ? fixedLabelCopy[label] ?? null
         : null,
     accessibleLabel:
-      fixedAccessibleCopy[accessibleState] ?? fixedAccessibleCopy.quiet_presence,
+      petText(fixedAccessibleCopy[accessibleState] ?? fixedAccessibleCopy.quiet_presence),
     sourceLabel:
       snapshot.taskSource === "codex"
         ? "Codex"

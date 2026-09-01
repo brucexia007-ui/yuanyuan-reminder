@@ -15,6 +15,20 @@ $package = Get-Content -Raw -Encoding UTF8 -LiteralPath $packagePath | ConvertFr
 $tauriConfigPath = Join-Path $projectRoot "src-tauri\tauri.conf.json"
 $tauriConfig = Get-Content -Raw -Encoding UTF8 -LiteralPath $tauriConfigPath | ConvertFrom-Json
 $productName = [string]$tauriConfig.productName
+$brandConfig = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $projectRoot "product-brand.json") | ConvertFrom-Json
+$installerBaseName = [string]$brandConfig.artifacts.installerBaseName
+if ([string]::IsNullOrWhiteSpace($installerBaseName) -or $installerBaseName -ne $productName) {
+    throw "product brand installer base name must match the Tauri product name"
+}
+$identifierSegments = @(([string]$tauriConfig.identifier).Split('.'))
+$installerManufacturer = if ($identifierSegments.Count -ge 2) {
+    [string]$identifierSegments[1]
+} else {
+    ""
+}
+if ([string]::IsNullOrWhiteSpace($installerManufacturer)) {
+    throw "Tauri identifier cannot determine the NSIS manufacturer registry key"
+}
 $sourcePath = Join-Path $releaseRoot "yuanyuan-reminder.exe"
 $installerCandidates = @(
     Get-ChildItem -LiteralPath (Join-Path $releaseRoot "bundle\nsis") -File -ErrorAction SilentlyContinue |
@@ -22,6 +36,10 @@ $installerCandidates = @(
 )
 if ($installerCandidates.Count -ne 1) {
     throw "release bundle must contain exactly one version-matched x64 NSIS installer"
+}
+$expectedInstallerName = "{0}_{1}_x64-setup.exe" -f $installerBaseName, [string]$package.version
+if ($installerCandidates[0].Name -cne $expectedInstallerName) {
+    throw "release installer name does not match the product brand"
 }
 $installerPath = $installerCandidates[0].FullName
 $payloadRoot = Join-Path $releaseRoot "nsis-payload"
@@ -36,14 +54,17 @@ $pendingPayloadPath = Join-Path $qaRoot "yuanyuan-reminder.exe"
 $expectedMarker = "YUANYUAN_NSIS_PAYLOAD_QA_V1`n"
 $sourceMarker = "__TAURI_BUNDLE_TYPE_VAR_UNK"
 $installedMarker = "__TAURI_BUNDLE_TYPE_VAR_NSS"
+if ([string]::IsNullOrWhiteSpace([string]$brandConfig.assets.licenseFile)) {
+    throw "product brand assets.licenseFile is required"
+}
 $expectedLicenseFiles = [ordered]@{
-    "ASSETS_LICENSE.md" = Join-Path $projectRoot "ASSETS_LICENSE.md"
+    "ASSETS_LICENSE.md" = Join-Path $projectRoot ([string]$brandConfig.assets.licenseFile)
     "LICENSE.txt" = Join-Path $projectRoot "LICENSE"
     "THIRD_PARTY_LICENSES.txt" = Join-Path $projectRoot "THIRD_PARTY_LICENSES.txt"
     "THIRD_PARTY_NOTICES.md" = Join-Path $projectRoot "THIRD_PARTY_NOTICES.md"
 }
 $uninstallKey = "Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\$productName"
-$productKey = "Registry::HKEY_CURRENT_USER\Software\yuanyuan\$productName"
+$productKey = "Registry::HKEY_CURRENT_USER\Software\$installerManufacturer\$productName"
 $desktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "$productName.lnk"
 $programsShortcut = Join-Path ([Environment]::GetFolderPath("Programs")) "$productName.lnk"
 
@@ -251,12 +272,24 @@ try {
     $licenseFilesExact = (ConvertTo-Json @($installedLicenses) -Compress) -eq
         (ConvertTo-Json @($expectedLicenseNames) -Compress)
     $licenseHashesMatch = $licenseFilesExact
+    $licenseBindings = @()
     foreach ($licenseName in $expectedLicenseNames) {
         $installedLicense = Join-Path (Join-Path $installRoot "licenses") $licenseName
-        if (
-            -not (Test-Path -LiteralPath $installedLicense -PathType Leaf) -or
-            (Get-Sha256 $installedLicense) -ne (Get-Sha256 $expectedLicenseFiles[$licenseName])
-        ) {
+        $sourceLicenseSha256 = Get-Sha256 $expectedLicenseFiles[$licenseName]
+        $installedLicenseSha256 = if (Test-Path -LiteralPath $installedLicense -PathType Leaf) {
+            Get-Sha256 $installedLicense
+        } else {
+            $null
+        }
+        $licenseMatches = $null -ne $installedLicenseSha256 -and
+            $installedLicenseSha256 -ceq $sourceLicenseSha256
+        $licenseBindings += [ordered]@{
+            fileName = $licenseName
+            sourceSha256 = $sourceLicenseSha256
+            installedSha256 = $installedLicenseSha256
+            matches = $licenseMatches
+        }
+        if (-not $licenseMatches) {
             $licenseHashesMatch = $false
         }
     }
@@ -341,6 +374,7 @@ try {
             licenseFiles = @($installedLicenses)
             licenseFilesExact = $licenseFilesExact
             licenseHashesMatch = $licenseHashesMatch
+            licenseBindings = @($licenseBindings)
         }
         environment = [ordered]@{
             currentUserAuthenticated = [bool]$identity.IsAuthenticated

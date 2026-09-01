@@ -11,6 +11,7 @@ import {
   type AiSupervisorStatus,
   type DiagnosticPreviewResult,
 } from "../lib/backend";
+import { petText } from "../brand";
 
 const statusCopy: Record<
   AiSupervisorStatus,
@@ -22,7 +23,7 @@ const statusCopy: Record<
   },
   starting: {
     label: "正在醒来",
-    description: "圆圆正在检查智能陪伴组件，请稍候。",
+    description: petText("圆圆正在检查智能陪伴组件，请稍候。"),
   },
   running: {
     label: "运行正常",
@@ -30,15 +31,15 @@ const statusCopy: Record<
   },
   backing_off: {
     label: "稍后重试",
-    description: "组件刚才没有正常启动，圆圆会短暂等待后再试。",
+    description: petText("组件刚才没有正常启动，圆圆会短暂等待后再试。"),
   },
   circuit_open: {
     label: "已暂停重试",
-    description: "组件连续启动失败，圆圆已停止自动重试，提醒功能不受影响。",
+    description: petText("组件连续启动失败，圆圆已停止自动重试，提醒功能不受影响。"),
   },
   stopped: {
     label: "已经停止",
-    description: "智能陪伴组件已停止，下次启动圆圆时会重新检查。",
+    description: petText("智能陪伴组件已停止，下次启动圆圆时会重新检查。"),
   },
 };
 
@@ -216,7 +217,7 @@ export function AiCompanionStatusCard({
           <p>
             不包含：任务内容、工作区路径、用户名、提示词、代码、凭据或倾诉内容；不会自动上传。
           </p>
-          <p>确认后由 Windows 选择本机保存位置；圆圆不会在应用目录额外保留副本。</p>
+          <p>{petText("确认后由 Windows 选择本机保存位置；圆圆不会在应用目录额外保留副本。")}</p>
           <div className="diagnostic-actions">
             <button
               ref={previewConfirmRef}
@@ -320,7 +321,7 @@ export function AiCompanionStatusCard({
               const accepted = await retryAiAfterFailure();
               onNotice(
                 accepted
-                  ? "圆圆正在重新检查智能陪伴组件。"
+                  ? petText("圆圆正在重新检查智能陪伴组件。")
                   : "组件当前不需要手动恢复。",
               );
               await refresh();

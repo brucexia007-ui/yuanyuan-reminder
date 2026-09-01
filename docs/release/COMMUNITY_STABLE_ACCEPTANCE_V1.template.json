@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "status": "pending",
   "product": {
-    "name": "圆圆提醒",
-    "identifier": "com.yuanyuan.reminder",
+    "name": "饺饺提醒",
+    "identifier": "com.brucexia.jiaojiao.reminder",
     "version": null
   },
   "candidate": {
@@ -14,6 +14,7 @@
     "endurance24h": {
       "status": "pending",
       "reportSha256": null,
+      "sourceBindingSha256": null,
       "observedSeconds": null,
       "activeCoverageSeconds": null,
       "suspendResumeObserved": false,
@@ -28,9 +29,13 @@
       "installerSha256": null,
       "scenarios": {
         "installAndLaunch": false,
+        "snoozeThirtyMinutes": false,
+        "missedReminderNotify": false,
+        "missedReminderSkipOld": false,
         "reminderDelivery": false,
         "hideAndRestorePet": false,
         "panelDrag": false,
+        "automaticBackup": false,
         "backupAndRestore": false,
         "restartPersistence": false,
         "uninstallKeepsDataByDefault": false
@@ -51,6 +56,7 @@
     "learningRuntime": {
       "status": "pending",
       "reportSha256": null,
+      "sourceBindingSha256": null,
       "tauriImportPassed": false,
       "cancellationPassed": false,
       "importedCards": null,

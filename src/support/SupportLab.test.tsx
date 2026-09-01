@@ -4,6 +4,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { petDisplayName } from "../brand";
+
 vi.mock("../pet/SpriteAnimator", () => ({
   SpriteAnimator: ({ animation }: { animation: string }) => (
     <div data-testid="sprite" data-animation={animation} />
@@ -44,12 +46,12 @@ describe("SupportLab", () => {
 
   it("exposes only the three basic user-triggered paths", async () => {
     await act(async () => root.render(<SupportLab />));
-    expect(container.textContent).toContain("让圆圆靠近");
+    expect(container.textContent).toContain(`让${petDisplayName}靠近`);
     expect(container.textContent).not.toContain("只听不记");
     expect(container.textContent).not.toContain("缓一缓");
     expect(container.textContent).not.toContain("理一理");
 
-    await click("让圆圆靠近");
+    await click(`让${petDisplayName}靠近`);
     expect(container.textContent).toContain("只陪我一会");
     expect(container.textContent).toContain("陪我动一动");
     expect(container.textContent).toContain("先别管我");
@@ -57,8 +59,8 @@ describe("SupportLab", () => {
 
   it("honors give-space without an optional check-in", async () => {
     await act(async () => root.render(<SupportLab />));
-    await click("让圆圆靠近");
-    await click("先别管我圆圆后退，不再回看");
+    await click(`让${petDisplayName}靠近`);
+    await click(`先别管我${petDisplayName}后退，不再回看`);
     expect(container.querySelector("[data-animation='running-right']")).not.toBeNull();
     await click("关闭，不再回看");
     expect(container.textContent).toContain("空间已留出来");

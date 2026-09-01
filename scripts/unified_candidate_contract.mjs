@@ -56,12 +56,16 @@ function validTimestamp(value, label) {
 
 export function unifiedInstallerFileName(product) {
   if (
-    product?.name !== "圆圆提醒" ||
-    product?.identifier !== "com.yuanyuan.reminder" ||
+    typeof product?.name !== "string" ||
+    product.name.length < 1 ||
+    product.name.length > 80 ||
+    /[\\/:*?"<>|\u0000-\u001f\u007f]/u.test(product.name) ||
+    typeof product?.identifier !== "string" ||
+    !/^[a-z][a-z0-9]*(?:\.[a-z0-9][a-z0-9-]*){2,}$/u.test(product.identifier) ||
     typeof product?.version !== "string" ||
     !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(product.version)
   ) {
-    fail("product must identify the unified 圆圆提醒 release train");
+    fail("product must identify a valid unified release train");
   }
   return `${product.name}_${product.version}_x64-setup.exe`;
 }

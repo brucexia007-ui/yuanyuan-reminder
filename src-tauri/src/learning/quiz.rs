@@ -29,20 +29,79 @@ pub(super) fn build_question(
     card: &LearningCardDto,
     is_remediation: bool,
 ) -> AppResult<LearningQuestionDto> {
-    let (pack_id, frequency_band, target_pos_json, target_meanings_json): (
+    let (
+        pack_id,
+        frequency_band,
+        target_pos_json,
+        target_meanings_json,
+        exercise_kind,
+        choices_json,
+        answer_text,
+    ): (
         String,
         String,
         String,
         String,
+        String,
+        String,
+        Option<String>,
     ) = conn.query_row(
-        "SELECT pack_id, frequency_band, part_of_speech_json, meanings_zh_json
+        "SELECT pack_id, frequency_band, part_of_speech_json, meanings_zh_json,
+                exercise_kind, choices_json, answer_text
          FROM learning_cards WHERE card_id = ?1",
         [&card.card_id],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+                row.get(6)?,
+            ))
+        },
     )?;
     let question_id = question_id(session_id, &card.card_id, is_remediation);
     let correct_meaning = display_meaning(&card.meanings_zh);
+    let declared_answer = answer_text.as_deref().unwrap_or(&correct_meaning);
     let target_pos: Vec<String> = serde_json::from_str(&target_pos_json)?;
+    let declared_choices: Vec<String> = serde_json::from_str(&choices_json)?;
+    if exercise_kind == "choice"
+        && (2..=MAX_OPTIONS).contains(&declared_choices.len())
+        && declared_choices
+            .iter()
+            .filter(|choice| choice.as_str() == declared_answer)
+            .count()
+            == 1
+    {
+        let mut options = declared_choices
+            .into_iter()
+            .map(|meaning_zh| LearningQuestionOptionDto {
+                option_id: if meaning_zh == declared_answer {
+                    option_id(&question_id, &card.card_id)
+                } else {
+                    hash_hex(format!("declared-option-v1\0{question_id}\0{meaning_zh}").as_bytes())
+                },
+                meaning_zh,
+            })
+            .collect::<Vec<_>>();
+        options.sort_by_key(|option| {
+            hash_hex(format!("position-v1\0{question_id}\0{}", option.option_id).as_bytes())
+        });
+        return Ok(LearningQuestionDto {
+            schema_version: 1,
+            question_id,
+            kind: LearningQuestionKind::MultipleChoice,
+            card_id: card.card_id.clone(),
+            headword: card.headword.clone(),
+            phonetic: card.phonetic.clone(),
+            part_of_speech: card.part_of_speech.clone(),
+            stage: card.stage,
+            is_remediation,
+            options,
+        });
+    }
 
     let mut statement = conn.prepare(
         "SELECT c.card_id, c.meanings_zh_json, c.part_of_speech_json, c.frequency_band

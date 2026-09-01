@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { validateV132Evidence } from "./verify_community_stable_v132_evidence.mjs";
@@ -236,4 +237,60 @@ test("rejects dirty formal evidence while allowing development evidence", () => 
   input.status.source.dirty = true;
   assert.throws(() => validateV132Evidence(input), /clean checkout/u);
   assert.doesNotThrow(() => validateV132Evidence({ ...input, requireClean: false }));
+});
+
+test("current v1.3.2 evidence uses a version-neutral migration report name", async () => {
+  const [host, verifier, draft] = await Promise.all([
+    readFile(new URL("./run_community_stable_v132_sandbox_probe_host.ps1", import.meta.url), "utf8"),
+    readFile(new URL("./verify_community_stable_v132_evidence.mjs", import.meta.url), "utf8"),
+    readFile(new URL("./prepare_community_stable_acceptance_draft.mjs", import.meta.url), "utf8"),
+  ]);
+  for (const source of [host, verifier, draft]) {
+    assert.match(source, /current-migration-report\.json/u);
+    assert.doesNotMatch(source, /v153-migration-report|v1\.5\.3 migration/u);
+  }
+});
+
+test("v1.3.2 public E2E builds, runs, and independently verifies under runtime guards", async () => {
+  const [wrapper, helperWrapper, host, packageJson] = await Promise.all([
+    readFile(new URL("./run_community_stable_v132_sandbox_probe_guarded.ps1", import.meta.url), "utf8"),
+    readFile(new URL("./build_community_stable_v132_sandbox_helpers_guarded.ps1", import.meta.url), "utf8"),
+    readFile(new URL("./run_community_stable_v132_sandbox_probe_host.ps1", import.meta.url), "utf8"),
+    readFile(new URL("../package.json", import.meta.url), "utf8").then(JSON.parse),
+  ]);
+  const wrapperExclusiveIndex = wrapper.indexOf("Assert-YuanyuanRuntimeQaExclusive");
+  const wrapperHelperIndex = wrapper.indexOf("& npm.cmd run release:community:v132-sandbox:helper");
+  const wrapperHostIndex = wrapper.indexOf("& powershell.exe");
+  const wrapperVerifierIndex = wrapper.indexOf('"scripts/verify_community_stable_v132_evidence.mjs"');
+  const allowDirtyConditionIndex = wrapper.indexOf("if ($AllowDirty)");
+  const allowDirtyForwardIndex = wrapper.indexOf('$verificationArguments += "--allow-dirty"');
+  assert.ok(
+    wrapperExclusiveIndex >= 0 &&
+      wrapperHelperIndex > wrapperExclusiveIndex &&
+      wrapperHostIndex > wrapperHelperIndex &&
+      wrapperVerifierIndex > wrapperHostIndex,
+  );
+  assert.ok(allowDirtyConditionIndex >= 0 && allowDirtyForwardIndex > allowDirtyConditionIndex);
+  assert.match(wrapper, /YUANYUAN_V132_EVIDENCE_ROOT=/u);
+  assert.match(wrapper, /evidenceMarkers\.Count -ne 1/u);
+  assert.match(wrapper, /\[IO\.Path\]::IsPathRooted\(\$evidenceRoot\)/u);
+  const helperExclusiveIndex = helperWrapper.indexOf("Assert-YuanyuanRuntimeQaExclusive");
+  const helperBuildIndex = helperWrapper.indexOf("& cargo build");
+  assert.ok(helperExclusiveIndex >= 0 && helperBuildIndex > helperExclusiveIndex);
+  assert.match(helperWrapper, /--locked/u);
+  assert.match(helperWrapper, /--features migration-qa/u);
+  assert.match(helperWrapper, /--bin yuanyuan-database-migration-qa\s/u);
+  assert.match(helperWrapper, /--bin yuanyuan-database-migration-qa-capture/u);
+  assert.match(
+    packageJson.scripts["release:community:v132-sandbox:helper"],
+    /build_community_stable_v132_sandbox_helpers_guarded\.ps1/u,
+  );
+  assert.match(
+    packageJson.scripts["release:community:v132-sandbox"],
+    /run_community_stable_v132_sandbox_probe_guarded\.ps1/u,
+  );
+  const hostExclusiveIndex = host.indexOf("Assert-YuanyuanRuntimeQaExclusive");
+  const hostSandboxIndex = host.indexOf("WindowsSandbox.exe");
+  assert.ok(hostExclusiveIndex >= 0 && hostSandboxIndex > hostExclusiveIndex);
+  assert.match(host, /YUANYUAN_V132_EVIDENCE_ROOT=\$outputRoot/u);
 });

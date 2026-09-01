@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { brandPetText } from "./product_brand_contract.mjs";
+
 import {
   syntheticPreemptionFixtureSha256,
   validateLearningReminderPreemptionReport,
@@ -90,7 +92,7 @@ function makeReport(count = 20, gate = true) {
       maxVisibleWindows: 2,
       maxAccessibleNodes: 50,
       observedAccessibleNames: [
-        "圆圆桌面英语复习",
+        brandPetText("圆圆桌面英语复习"),
         "事项提醒：运行验收事项-12345678，打开今日任务",
         "qaa",
       ],

@@ -1,3 +1,4 @@
+import { petText } from "../brand";
 import type { AnimationName } from "./manifest";
 
 export type TaskWatchState =
@@ -100,7 +101,7 @@ const vocabulary: Record<TaskWatchState, StateVocabulary> = {
     animation: "failed",
     props: ["task_card"],
     label: "没成功",
-    accessibleState: "任务没有成功，圆圆正在旁边陪着",
+    accessibleState: petText("任务没有成功，圆圆正在旁边陪着"),
     attention: "present",
     movePropForward: true,
     queueInBasket: false,
@@ -167,7 +168,7 @@ export function directTaskExpression(
     movePropForward: suppressedByFocus ? false : selected.movePropForward,
     queueInBasket: selected.queueInBasket,
     motion: input.reduceMotion ? "reduced" : "full",
-    accessibleName: `${input.sourceLabel}，${selected.accessibleState}`,
+    accessibleName: `${input.sourceLabel}，${petText(selected.accessibleState)}`,
   };
 }
 

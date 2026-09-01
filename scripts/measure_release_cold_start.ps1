@@ -17,10 +17,17 @@ $manifestPath = Join-Path $releaseRoot "release-manifest.json"
 $reportPath = Join-Path $releaseRoot "release-cold-start.json"
 $candidatePath = Join-Path $releaseRoot "nsis-payload\yuanyuan-reminder.exe"
 $measureScriptSha256 = (Get-FileHash -LiteralPath $MyInvocation.MyCommand.Path -Algorithm SHA256).Hash
+$brandConfig = Get-Content -Raw -Encoding UTF8 -LiteralPath (
+    Join-Path $projectRoot "product-brand.json"
+) | ConvertFrom-Json
+if ([string]::IsNullOrWhiteSpace([string]$brandConfig.storage.directoryName)) {
+    throw "product brand storage.directoryName is required"
+}
+$formalDataLeaf = [string]$brandConfig.storage.directoryName
 $localDataRoot = [Environment]::GetFolderPath(
     [Environment+SpecialFolder]::LocalApplicationData
 )
-$formalDataRoot = Join-Path $localDataRoot "com.yuanyuan.reminder"
+$formalDataRoot = Join-Path $localDataRoot $formalDataLeaf
 $profileRegistryQueryAvailable = $false
 $tokenProfilePathMatchesEnvironment = $false
 try {
@@ -203,7 +210,7 @@ function Claim-FreshDataRoot {
             Assert-OrdinaryExactDirectory `
                 $formalDataRoot `
                 $localDataRoot `
-                "com.yuanyuan.reminder" | Out-Null
+                $formalDataLeaf | Out-Null
             if (Test-Path -LiteralPath $dataMarker) {
                 throw "fresh_data_root_already_contains_ownership_marker"
             }
@@ -224,7 +231,7 @@ function Remove-OwnedDataRoot {
     Assert-OrdinaryExactDirectory `
         $formalDataRoot `
         $localDataRoot `
-        "com.yuanyuan.reminder" | Out-Null
+        $formalDataLeaf | Out-Null
     if (-not (Test-Path -LiteralPath $dataMarker -PathType Leaf) -or
         (Get-Content -Raw -Encoding UTF8 -LiteralPath $dataMarker) -ne $ownershipValue) {
         throw "refusing_to_remove_unowned_formal_data_root"

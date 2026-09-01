@@ -32,20 +32,11 @@ export function shouldAdvancePettingFrame(
   return distance >= 6 && elapsedMs >= 90;
 }
 
-export function wandDirectionFrame(
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  currentFrame = 2,
-): number {
-  const dx = x - width / 2;
-  const dy = y - height * 0.46;
-  if (Math.hypot(dx, dy) < Math.min(width, height) * 0.08) {
-    return currentFrame;
-  }
-  const clockwiseFromTop = (Math.atan2(dx, -dy) * 180) / Math.PI;
-  return Math.round((clockwiseFromTop + 360) / 45) % 8;
+export function shouldAdvanceWandFrame(
+  distance: number,
+  elapsedMs: number,
+): boolean {
+  return distance >= 8 && elapsedMs >= 80;
 }
 
 export function treatFrameFromPointerHeight(y: number, height: number): number {

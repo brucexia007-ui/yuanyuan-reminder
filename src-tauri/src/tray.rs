@@ -5,7 +5,7 @@ use tauri::{
 };
 
 use crate::{
-    commands,
+    brand, commands,
     error::{AppError, AppResult},
     windows,
 };
@@ -13,7 +13,8 @@ use crate::{
 pub fn create(app: &App) -> AppResult<()> {
     let open = MenuItem::with_id(app, "tray-open", "打开今日任务", true, None::<&str>)
         .map_err(|error| AppError::Window(error.to_string()))?;
-    let show = MenuItem::with_id(app, "tray-show-pet", "显示圆圆", true, None::<&str>)
+    let show_label = format!("显示{}", brand::pet_display_name());
+    let show = MenuItem::with_id(app, "tray-show-pet", show_label, true, None::<&str>)
         .map_err(|error| AppError::Window(error.to_string()))?;
     let water = MenuItem::with_id(app, "tray-water", "记录一次喝水", true, None::<&str>)
         .map_err(|error| AppError::Window(error.to_string()))?;
@@ -22,7 +23,7 @@ pub fn create(app: &App) -> AppResult<()> {
     let restore = MenuItem::with_id(
         app,
         "tray-restore-click",
-        "恢复圆圆鼠标交互",
+        format!("恢复{}鼠标交互", brand::pet_display_name()),
         true,
         None::<&str>,
     )
@@ -44,7 +45,7 @@ pub fn create(app: &App) -> AppResult<()> {
 
     TrayIconBuilder::with_id("yuanyuan-tray")
         .icon(icon)
-        .tooltip("圆圆提醒")
+        .tooltip(brand::tray_title())
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| handle_menu_event(app, event.id().as_ref()))
@@ -66,6 +67,7 @@ pub fn create(app: &App) -> AppResult<()> {
 }
 
 pub fn handle_menu_event(app: &AppHandle, id: &str) {
+    tracing::info!(menu_id = id, "native menu action selected");
     match id {
         "tray-open" | "pet-open-today" => {
             let _ = windows::show_task_panel(app, "today");

@@ -494,6 +494,20 @@
 .learning-no-content p { margin: 0; }
 .learning-no-content p { color: var(--muted); line-height: 1.5; }
 
+.learning-empty-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.learning-rights-note {
+  margin-top: 2px;
+  color: var(--muted);
+}
+
+.learning-rights-note p {
+  margin-top: 8px;
+}
+
 .learning-quick-guide {
   padding: 12px 14px;
   border: 1px dashed color-mix(in srgb, var(--accent) 38%, var(--border));

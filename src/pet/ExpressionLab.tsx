@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { petText } from "../brand";
 import { SpriteAnimator } from "./SpriteAnimator";
 import type { CompanionExpressionSnapshot } from "../types";
 import { settledAnimationAfterCompanionCue } from "./companionMotion";
@@ -75,11 +76,11 @@ export function ExpressionLab() {
   }, [plan.animation, state]);
 
   return (
-    <main className="expression-lab" aria-label="圆圆非语言任务状态实验台">
+    <main className="expression-lab" aria-label={petText("圆圆非语言任务状态实验台")}>
       <header>
         <p className="expression-eyebrow">P0 · 非语言表达验证</p>
         <h1>动作和道具能不能看懂？</h1>
-        <p>圆圆不说人话。请选择状态，观察动作、道具和标签是否足够清楚。</p>
+        <p>{petText("圆圆不说人话。请选择状态，观察动作、道具和标签是否足够清楚。")}</p>
       </header>
 
       <section className="expression-controls" aria-label="原型条件">

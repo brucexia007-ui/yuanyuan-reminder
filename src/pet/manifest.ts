@@ -1,3 +1,12 @@
+import {
+  applicationPackageName,
+  petBreed,
+  petDisplayName,
+  petPersonality,
+  petSex,
+  petSexLabel,
+} from "../brand";
+
 export type StandardAnimationName =
   | "idle"
   | "running-right"
@@ -58,6 +67,10 @@ export interface AnimationDefinition {
 export interface PetManifest {
   id: string;
   displayName: string;
+  sex: "female" | "male" | "unknown";
+  breed: string;
+  personality: string;
+  description: string;
   cellWidth: number;
   cellHeight: number;
   columns: number;
@@ -72,8 +85,12 @@ export interface PetManifest {
 }
 
 export const fallbackManifest: PetManifest = {
-  id: "yuanyuan-reminder",
-  displayName: "圆圆",
+  id: applicationPackageName,
+  displayName: petDisplayName,
+  sex: petSex,
+  breed: petBreed,
+  personality: petPersonality,
+  description: `${petDisplayName}是一只${petBreed}${petSexLabel}，性格${petPersonality}；陪你喝水、专注、休息和玩耍`,
   cellWidth: 192,
   cellHeight: 208,
   columns: 8,
@@ -87,24 +104,24 @@ export const fallbackManifest: PetManifest = {
   animations: {
     idle: {
       row: 0,
-      frames: [0, 1, 2, 3, 4, 5],
-      durations: [450, 120, 120, 180, 180, 550],
+      frames: [0, 1, 2, 3, 4, 5, 6, 7],
+      durations: [450, 180, 120, 180, 180, 180, 180, 450],
       loopStart: 0,
     },
     "running-right": row(1, 8, 110, 180),
     "running-left": row(2, 8, 110, 180),
-    waving: row(3, 4, 160, 260),
-    jumping: { ...row(4, 5, 140, 260), loopStart: null },
+    waving: row(3, 8, 150, 260),
+    jumping: { ...row(4, 8, 120, 260), loopStart: null },
     "activity-jumping": {
       row: 4,
-      frames: [0, 1, 2, 3, 4, 3, 2, 1],
-      durations: [150, 115, 105, 110, 150, 110, 105, 125],
+      frames: [0, 1, 2, 3, 4, 5, 6, 7],
+      durations: [150, 115, 105, 110, 110, 115, 140, 180],
       loopStart: 0,
     },
     failed: { ...row(5, 8, 180, 320), loopStart: null },
-    waiting: row(6, 6, 180, 320),
-    running: row(7, 6, 150, 240),
-    review: { ...row(8, 6, 180, 300), loopStart: null },
+    waiting: row(6, 8, 180, 320),
+    running: row(7, 8, 150, 240),
+    review: { ...row(8, 8, 180, 300), loopStart: null },
     "sleep-enter": {
       ...row(0, 8, 120, 180),
       sheet: "sleep",
@@ -159,7 +176,11 @@ export const fallbackManifest: PetManifest = {
       loopStart: 1,
     },
     "treat-follow": {
-      ...lifeRow(10, Array.from({ length: 8 }, () => 400)),
+      ...lifeRowWithFrames(
+        10,
+        [7, 6, 5, 4, 3, 2, 1, 0],
+        Array.from({ length: 8 }, () => 400),
+      ),
       loopStart: null,
     },
     "wand-play": {

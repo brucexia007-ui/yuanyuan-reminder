@@ -1,0 +1,43 @@
+# 个性化工作流
+
+`pet-request.schema.json` 是统一请求合同；请求中没有普通版/学习版之分。应用始终包含学习能力，但安装包不携带私人知识内容。新请求可在 `pet` 中同时记录 `sex`、`breed` 和 `personality`，恢复流程会把这三项与品牌配置和身份锁交叉核对；旧版 v1 请求仍可读取，避免破坏已经开始的定制任务。
+
+启动一次可恢复任务：
+
+```powershell
+npm.cmd run customize:start -- --request customization/pet-request.synthetic.example.json
+```
+
+命令会把实际 Git 提交、请求摘要、每一步状态和私人输入清单写到被 Git 忽略的 `work/customization/<run-id>/run-state.json`。继续任务时使用：
+
+```powershell
+npm.cmd run customize:resume -- --run-id <run-id>
+```
+
+启动命令会同时核对 `origin` 的 HTTPS 仓库身份、请求中 `source.ref` 实际解析的提交与当前 HEAD，三者必须一致。它会把请求快照放到被 Git 忽略的当次 `work/customization/<run-id>/request.json`，状态文件不保留原始外部路径。恢复命令会重新核对锁定的 Git 提交、请求快照哈希与最低产品版本，并只返回下一项未完成步骤。仅查看完整状态可用 `npm.cmd run customize:status -- --run-id <run-id>`。若源码、请求或已记录产物发生漂移，必须修复或重新创建任务，不能沿用旧证据。
+
+每一步完成时，用产物角色与项目内路径记录证据：
+
+```powershell
+npm.cmd run customize:complete-step -- `
+  --run-id <run-id> `
+  --step <customize:resume 返回的 nextStep> `
+  --artifact <role=relative\path> `
+  --artifact <role=relative\path>
+```
+
+命令只允许当前必需步骤，并会原子记录每个非空文件的 SHA-256 与字节数。后续恢复会重新校验所有已记录产物；缺失或改动时会闭合失败，防止跨智能体继续时误用旧证据。`customize:status` 中的 `requiredArtifactRoles` 是当前步骤必须提供的完整清单。
+
+自定义宠物的 `identity_lock` 使用 `customization/pet/identity-lock.template.json`：填写请求中的名称、风格、私人照片数量与哈希、九项视觉身份、至少两条必须保持/避免规则，并把最终主参考 PNG/WebP 作为 `identity_reference` 一并记录。记录只应放在当次被忽略的 `work/customization/<run-id>/`，不得把原始照片路径或照片复制到源码。
+
+`verification` 步骤使用 `npm.cmd run customize:verify -- --run-id <run-id>`。它会依次运行完整 `verify`、Rust 锁定依赖测试和 Tauri 正式构建，并将命令结果、基线提交、定制差异与非忽略新文件的整体快照哈希写入当次忽略目录。完成此步后，用 `npm.cmd run customize:package -- --run-id <run-id>` 复核快照未漂移，再把 NSIS 安装包和 Rust 发行 EXE 复制为具名安装版/便携版，生成 `SHA256SUMS.txt` 与交付清单。两个命令都不会覆盖旧证据。
+
+原始照片和私人学习来源只能留在 `work/` 或用户指定的外部目录，不能复制到 Git、`public/`、Tauri resources、安装包或测试日志。macOS 请求会稳定返回 `PLATFORM_NOT_IMPLEMENTED`；`platforms.json` 对全局鼠标、系统空闲、锁屏/唤醒、登录启动、通知、托盘/菜单栏、透明窗口、置顶、点击穿透、打包、签名与公证全部保留了平台接口，但不宣称已实现 macOS。宠物素材与知识包协议本身保持平台无关。
+
+新定制宠物必须生成视觉 QA 证据：
+
+```powershell
+npm.cmd run pet:qa -- --output-dir work\customization\<run-id>\pet-qa
+```
+
+该命令默认开启新宠物严格模式：标准 11 行、睡眠 3 行、生活 21 行与学习 4 行的每一行都必须有 8 个非空格；五张宠物图、四个 Windows 图标和单独的素材授权文件必须全部不同于官方包指纹。输出包含合并联系表、39 个动画 GIF、16 方向检查表、结构报告、静态回退图/图标/授权绑定和人工语义复核模板。模板中仍有 `pending` 时不得完成 `visual_qa` 步骤。

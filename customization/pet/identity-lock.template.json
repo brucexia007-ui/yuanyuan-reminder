@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "profile": "yuanyuan-custom-pet-identity-lock",
+  "petDisplayName": null,
+  "sex": "unknown",
+  "stylePreset": null,
+  "createdAt": null,
+  "sourcePhotoCount": 0,
+  "sourcePhotoSha256": [],
+  "referenceImage": {
+    "path": null,
+    "sha256": null,
+    "bytes": null
+  },
+  "visualIdentity": {
+    "speciesAndAge": "",
+    "coatAndGradient": "",
+    "faceShape": "",
+    "eyes": "",
+    "noseMuzzleAndEars": "",
+    "bodyAndProportions": "",
+    "markings": "",
+    "signatureTraits": "",
+    "motionPersonality": ""
+  },
+  "mustPreserve": [],
+  "mustAvoid": []
+}

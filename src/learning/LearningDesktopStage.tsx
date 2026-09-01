@@ -16,6 +16,7 @@ import type {
   LearningSessionSnapshot,
   LearningSessionSummary,
 } from "../types";
+import { petText } from "../brand";
 import { SpriteAnimator } from "../pet/SpriteAnimator";
 import type { AnimationName } from "../pet/manifest";
 import {
@@ -847,7 +848,7 @@ export function LearningDesktopStage({
       data-feedback-phase={feedbackPhase}
       data-feedback-contact={confirmedTarget ?? "none"}
       style={stageStyle}
-      aria-label="圆圆桌面英语复习"
+      aria-label={petText("圆圆桌面英语复习")}
       aria-busy={busy}
       onPointerDown={stopStagePointer}
       onPointerMove={stopStagePointer}
@@ -948,7 +949,7 @@ export function LearningDesktopStage({
                       ? answer.session.status === "completed"
                         ? "即将显示本次结果…"
                         : "即将自动进入下一题…"
-                      : "圆圆正在按按钮…"}
+                      : petText("圆圆正在按按钮…")}
                   </small>
                 ) : (
                   <button
@@ -962,14 +963,14 @@ export function LearningDesktopStage({
                       ? answer.session.status === "completed"
                         ? "查看结果"
                         : "我看懂了，下一题"
-                      : "圆圆正在按按钮…"}
+                      : petText("圆圆正在按按钮…")}
                   </button>
                 )}
               </div>
             )}
           </div>
         ) : (
-          <div className="desktop-learning-loading" role="status">圆圆正在写题目…</div>
+          <div className="desktop-learning-loading" role="status">{petText("圆圆正在写题目…")}</div>
         )}
       </article>
 
@@ -996,7 +997,7 @@ export function LearningDesktopStage({
         {feedbackAnnouncement}
       </p>
 
-      <div className="desktop-learning-console" aria-label="圆圆用按钮反馈答题结果">
+      <div className="desktop-learning-console" aria-label={petText("圆圆用按钮反馈答题结果")}>
         <span
           className={[
             "desktop-learning-result-button",

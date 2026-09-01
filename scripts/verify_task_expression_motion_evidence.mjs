@@ -3,6 +3,8 @@ import { lstat, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
+import { brandPetText } from "./product_brand_contract.mjs";
+
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const runtimeReleaseRoot = path.join(
   projectRoot,
@@ -88,15 +90,15 @@ const EXPECTED_LIMITATIONS = [
 ];
 const SCENARIOS = {
   "failed-only": {
-    accessibleFragment: "圆圆发现任务没有成功，正在你身边陪着",
+    accessibleFragment: brandPetText("圆圆发现任务没有成功，正在你身边陪着"),
     semanticReview: "failure_action_settles_with_failure_card",
   },
   "waiting-user-only": {
-    accessibleFragment: "圆圆发现任务正在等待你的确认",
+    accessibleFragment: brandPetText("圆圆发现任务正在等待你的确认"),
     semanticReview: "glass_paws_action_settles_with_bell_and_waiting_card",
   },
   "stalled-only": {
-    accessibleFragment: "圆圆发现任务可能停住了",
+    accessibleFragment: brandPetText("圆圆发现任务可能停住了"),
     semanticReview: "review_action_settles_with_stalled_card",
   },
 };

@@ -15,6 +15,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { applicationDisplayName, petText } from "../brand";
 import {
   completeOccurrence,
   cancelFocus,
@@ -255,7 +256,7 @@ export function TaskPanel() {
       try {
         setTaskWatch(await deferTaskWatchAttention(source, state, 10));
         setTaskWatchError(null);
-        setNotice("已暂停圆圆对这组状态的主动提示 10 分钟，任务仍保留在守望台。");
+        setNotice(petText("已暂停圆圆对这组状态的主动提示 10 分钟，任务仍保留在守望台。"));
       } catch {
         setNotice("暂时没能暂停主动提示，来源任务没有受到影响。");
       }
@@ -268,7 +269,7 @@ export function TaskPanel() {
       try {
         setTaskWatch(await resumeTaskWatchAttention(source, state));
         setTaskWatchError(null);
-        setNotice("圆圆会重新留意这组状态。");
+        setNotice(petText("圆圆会重新留意这组状态。"));
       } catch {
         setNotice("暂时没能恢复主动提示，来源任务没有受到影响。");
       }
@@ -450,7 +451,7 @@ export function TaskPanel() {
               : tab === "focus"
                 ? "专注"
               : tab === "care"
-                  ? "陪圆圆"
+                  ? petText("陪圆圆")
                   : tab === "learning"
                     ? "英语复习"
                   : tab === "history"
@@ -483,7 +484,7 @@ export function TaskPanel() {
 
       <nav
         className={`segmented ${taskWatch.available ? "has-task-watch" : ""} ${learningAvailable ? "has-learning" : ""}`}
-        aria-label="圆圆提醒页面"
+        aria-label={`${applicationDisplayName}页面`}
       >
         <TabButton active={tab === "today"} onClick={() => setTab("today")}>
           今日
@@ -520,7 +521,7 @@ export function TaskPanel() {
 
       <section className="panel-content">
         {activeModule && moduleLoading[activeModule] ? (
-          <div className="empty-state">圆圆正在整理今天的安排…</div>
+          <div className="empty-state">{petText("圆圆正在整理今天的安排…")}</div>
         ) : activeModule && moduleErrors[activeModule] ? (
           <ModuleLoadError
             module={activeModule}
@@ -529,7 +530,7 @@ export function TaskPanel() {
           />
         ) : tab === "taskwatch" ? (
           taskWatchLoading ? (
-            <div className="empty-state">圆圆正在看看任务牌…</div>
+            <div className="empty-state">{petText("圆圆正在看看任务牌…")}</div>
           ) : taskWatchError ? (
             <div className="empty-state module-error" role="alert">
               <strong>任务守望台暂时未能读取</strong>
@@ -567,7 +568,7 @@ export function TaskPanel() {
             onInteractiveStarted={() => void panelWindow?.hide()}
           />
         ) : tab === "learning" && learningAvailable && LazyLearningView ? (
-          <Suspense fallback={<div className="empty-state">圆圆正在取复习卡…</div>}>
+          <Suspense fallback={<div className="empty-state">{petText("圆圆正在取复习卡…")}</div>}>
             <LazyLearningView />
           </Suspense>
         ) : tab === "history" ? (
@@ -585,7 +586,7 @@ export function TaskPanel() {
             onSaved={async () => {
               await refresh();
               setTab("today");
-              setNotice("提醒已交给圆圆。");
+              setNotice(petText("提醒已交给圆圆。"));
             }}
           />
         ) : (
@@ -653,11 +654,11 @@ export function TaskWatchView({
       <section className="task-watch-overview" aria-labelledby="task-watch-title">
         <div>
           <p className="card-kicker">只看状态，不看正文</p>
-          <h2 id="task-watch-title">圆圆的任务守望台</h2>
+          <h2 id="task-watch-title">{petText("圆圆的任务守望台")}</h2>
           <p>
             这里只显示来源、固定状态和数量，不显示任务标题、项目路径、任务标识或精确活动时间。
           </p>
-          <p>“稍后提醒”只暂停圆圆的主动提示，任务会一直保留在这里。</p>
+          <p>{petText("“稍后提醒”只暂停圆圆的主动提示，任务会一直保留在这里。")}</p>
         </div>
         <button className="secondary compact" type="button" onClick={() => void onRefresh()}>
           重新查看
@@ -666,7 +667,7 @@ export function TaskWatchView({
 
       {!snapshot.available ? (
         <div className="empty-state">
-          还没有可信任务状态。圆圆不会自行修改 Codex 或 Claude Code 的配置。
+          {petText("还没有可信任务状态。圆圆不会自行修改 Codex 或 Claude Code 的配置。")}
         </div>
       ) : snapshot.states.length === 0 ? (
         <div className="empty-state">目前没有最近24小时内可守望的任务。</div>
@@ -758,40 +759,40 @@ const careActions: Array<{
     kind: "food",
     icon: "🍚",
     title: "喂猫粮",
-    description: "圆圆会走近小碗，低头慢慢吃。",
+    description: petText("圆圆会走近小碗，低头慢慢吃。"),
   },
   {
     kind: "water",
     icon: "💧",
     title: "喂水",
-    description: "让圆圆伏下来，认真舔几口水。",
+    description: petText("让圆圆伏下来，认真舔几口水。"),
   },
   {
     kind: "treat",
     icon: "🥣",
     title: "喂猫条",
-    description: "到桌面拖动猫条，圆圆会追着吃并站起来。",
+    description: petText("到桌面拖动猫条，圆圆会追着吃并站起来。"),
     interactive: true,
   },
   {
     kind: "wand",
     icon: "🪶",
     title: "逗猫棒",
-    description: "按住逗猫棒移向八个方位，圆圆会用对应爪子抓。",
+    description: petText("按住逗猫棒移动，圆圆会追着连续扑抓。"),
     interactive: true,
   },
   {
     kind: "pet",
     icon: "🤍",
-    title: "摸摸圆圆",
-    description: "把鼠标靠近圆圆，它会转头蹭你的手。",
+    title: petText("摸摸圆圆"),
+    description: petText("把鼠标靠近圆圆，它会转头蹭你的手。"),
     interactive: true,
   },
   {
     kind: "ball",
     icon: "🔴",
     title: "扔球游戏",
-    description: "按住球蓄力，松手后圆圆会把球捡回来。",
+    description: petText("按住球蓄力，松手后圆圆会把球捡回来。"),
     interactive: true,
   },
 ];
@@ -802,17 +803,17 @@ const basicSupportDetails: Record<
 > = {
   stay_close: {
     title: "只陪我一会",
-    description: "圆圆安静靠近，不追问",
+    description: petText("圆圆安静靠近，不追问"),
     durations: [2, 5, 10],
   },
   move_together: {
     title: "陪我动一动",
-    description: "圆圆先伸懒腰，不计分",
+    description: petText("圆圆先伸懒腰，不计分"),
     durations: [1, 3, 5, 10],
   },
   give_space: {
     title: "先别管我",
-    description: "圆圆退开，不再主动回看",
+    description: petText("圆圆退开，不再主动回看"),
     durations: [5, 15, 30, 60],
   },
 };
@@ -892,7 +893,7 @@ function CareView({
   const beginSupport = async () => {
     if (!selectedSupport) return;
     if (focusActive) {
-      onNotice("请先结束当前专注计时，再让圆圆陪你一会。");
+      onNotice(petText("请先结束当前专注计时，再让圆圆陪你一会。"));
       return;
     }
     setSupportWorking(true);
@@ -928,7 +929,7 @@ function CareView({
     interactive: boolean,
   ) => {
     if (focusActive) {
-      onNotice("专注期间圆圆会乖乖坐着或趴着，结束后再陪它玩吧。");
+      onNotice(petText("专注期间圆圆会乖乖坐着或趴着，结束后再陪它玩吧。"));
       return;
     }
     setWorking(kind);
@@ -937,12 +938,12 @@ function CareView({
       if (interactive) {
         onNotice(
           kind === "treat"
-            ? "猫条已经出现在圆圆身边：按住它上下移动。"
+            ? petText("猫条已经出现在圆圆身边：按住它上下移动。")
             : kind === "wand"
-              ? "按住逗猫棒移向不同方位；正上方时圆圆会站起来抓。"
+              ? petText("按住逗猫棒拖动；移动时圆圆才会推进扑抓动作。")
               : kind === "pet"
-                ? "把鼠标移到圆圆头上轻轻移动，它会朝你的方向蹭一蹭。"
-                : "球已经放在圆圆脚边：按住鼠标左键蓄力，松手扔出。",
+                ? petText("把鼠标移到圆圆头上轻轻移动，它会朝你的方向蹭一蹭。")
+                : petText("球已经放在圆圆脚边：按住鼠标左键蓄力，松手扔出。"),
         );
         onInteractiveStarted();
       }
@@ -959,7 +960,7 @@ function CareView({
         <div className="care-heart">♡</div>
         <div>
           <p className="card-kicker">今日陪伴</p>
-          <h2>{focusActive ? "圆圆正在乖乖陪你专注" : `已经互动 ${care.total} 次`}</h2>
+          <h2>{focusActive ? petText("圆圆正在乖乖陪你专注") : `已经互动 ${care.total} 次`}</h2>
           <p>
             {focusActive
               ? "此时不会走动或玩耍，只保留轻微呼吸和眨眼。"
@@ -1095,7 +1096,7 @@ function CareView({
 
       <div className="care-tip">
         <strong>互动优先级</strong>
-        <span>到点提醒、睡眠和专注会优先，必要时会立即让圆圆停下玩耍。</span>
+        <span>{petText("到点提醒、睡眠和专注会优先，必要时会立即让圆圆停下玩耍。")}</span>
       </div>
     </div>
   );
@@ -1142,8 +1143,8 @@ function FocusView({
       setNow(Date.now());
       onNotice(
         phase === "focus"
-          ? `圆圆开始陪你专注 ${duration} 分钟。`
-          : `圆圆开始陪你休息 ${duration} 分钟。`,
+          ? petText(`圆圆开始陪你专注 ${duration} 分钟。`)
+          : petText(`圆圆开始陪你休息 ${duration} 分钟。`),
       );
     } finally {
       setWorking(false);
@@ -1166,13 +1167,13 @@ function FocusView({
         </div>
         <h2>
           {session.phase === "focus"
-            ? "圆圆正在认真陪你工作"
-            : "先放松一下，圆圆替你看着时间"}
+            ? petText("圆圆正在认真陪你工作")
+            : petText("先放松一下，圆圆替你看着时间")}
         </h2>
         <p>
           {remainingSeconds > 0
-            ? "隐藏面板也不会中断计时，结束时圆圆会用动作提醒你。"
-            : "时间到了，圆圆正在准备结束动作…"}
+            ? petText("隐藏面板也不会中断计时，结束时圆圆会用动作提醒你。")
+            : petText("时间到了，圆圆正在准备结束动作…")}
         </p>
         <button
           className="secondary large"
@@ -1198,8 +1199,8 @@ function FocusView({
     <div className="focus-setup stack">
       <article className="focus-choice focus-work">
         <p className="card-kicker">专注工作</p>
-        <h2>让圆圆陪你进入状态</h2>
-        <p>进行中圆圆会乖乖坐着或趴着，结束后再伸懒腰提醒休息。</p>
+        <h2>{petText("让圆圆陪你进入状态")}</h2>
+        <p>{petText("进行中圆圆会乖乖坐着或趴着，结束后再伸懒腰提醒休息。")}</p>
         <div className="duration-buttons">
           {[25, 45, 60].map((duration) => (
             <button
@@ -1286,7 +1287,7 @@ function TodayView({
         </div>
         <div>
           <p className="card-kicker">今日喝水</p>
-          <h2>{percent >= 100 ? "目标完成啦" : "让圆圆陪你补点水"}</h2>
+          <h2>{percent >= 100 ? "目标完成啦" : petText("让圆圆陪你补点水")}</h2>
           <button
             className="primary compact"
             type="button"
@@ -1405,7 +1406,7 @@ function HistoryView() {
       <article className="history-summary">
         <div>
           <p className="card-kicker">处理记录</p>
-          <h2>{loading ? "圆圆正在翻记录…" : `查询到 ${records.length} 项`}</h2>
+          <h2>{loading ? petText("圆圆正在翻记录…") : `查询到 ${records.length} 项`}</h2>
           <p>完成和跳过的提醒都会留在这里，不影响下一次提醒。</p>
         </div>
         <div className="history-counts" aria-label="历史记录统计">
@@ -1475,7 +1476,7 @@ function HistoryView() {
       {error ? (
         <div className="empty-state history-error">{error}</div>
       ) : loading && records.length === 0 ? (
-        <div className="empty-state">圆圆正在整理历史记录…</div>
+        <div className="empty-state">{petText("圆圆正在整理历史记录…")}</div>
       ) : groups.length === 0 ? (
         <div className="empty-state">
           <span className="empty-dot" />
@@ -1607,7 +1608,7 @@ function PlannedReminderCard({ reminder }: { reminder: Reminder }) {
           <span className={`category-dot ${reminder.category}`} />
           <h3>{reminder.title}</h3>
         </div>
-        <p>{cadence} · 已交给圆圆</p>
+        <p>{petText(`${cadence} · 已交给圆圆`)}</p>
         <span className="planned-badge">等待提醒</span>
       </div>
     </article>
@@ -1995,7 +1996,7 @@ function AddView({
       )}
       {error && <div className="form-error" role="alert">{error}</div>}
       <button className="primary large" type="submit" disabled={saving || !title.trim()}>
-        {saving ? "正在保存…" : reminder ? "保存修改" : "交给圆圆提醒"}
+        {saving ? "正在保存…" : reminder ? "保存修改" : `交给${applicationDisplayName}`}
       </button>
     </form>
   );
@@ -2043,7 +2044,7 @@ function SettingsView({
 
   return (
     <div className="settings-list">
-      <SettingRow title="圆圆动画" description="不受 Windows 动画关闭影响">
+      <SettingRow title={petText("圆圆动画")} description="不受 Windows 动画关闭影响">
         <select
           value={settings.animationMode}
           onChange={(event) =>
@@ -2059,7 +2060,7 @@ function SettingsView({
       </SettingRow>
       <SettingRow
         title="陪伴亲密度"
-        description="只控制圆圆主动靠近或庆祝，不影响你设置的提醒"
+        description={petText("只控制圆圆主动靠近或庆祝，不影响你设置的提醒")}
       >
         <select
           value={settings.companionIntensity}
@@ -2077,7 +2078,7 @@ function SettingsView({
       </SettingRow>
       <SettingRow
         title="道具标签"
-        description="文字只贴在任务牌等工具上，不会变成圆圆的对白"
+        description={petText("文字只贴在任务牌等工具上，不会变成圆圆的对白")}
       >
         <select
           value={settings.companionLabelMode}
@@ -2107,13 +2108,13 @@ function SettingsView({
           ))}
         </select>
       </SettingRow>
-      <SettingRow title="看向鼠标" description="只在圆圆空闲时工作">
+      <SettingRow title="看向鼠标" description={petText("只在圆圆空闲时工作")}>
         <Toggle
           checked={settings.cursorFollow}
           onChange={(checked) => void onChange({ cursorFollow: checked })}
         />
       </SettingRow>
-      <SettingRow title="总在最前" description="让圆圆保持在其他窗口上方">
+      <SettingRow title="总在最前" description={petText("让圆圆保持在其他窗口上方")}>
         <Toggle
           checked={settings.alwaysOnTop}
           onChange={(checked) => void onChange({ alwaysOnTop: checked })}
@@ -2125,7 +2126,7 @@ function SettingsView({
           onChange={(checked) => void onChange({ clickThrough: checked })}
         />
       </SettingRow>
-      <SettingRow title="安静时段" description="圆圆会进入睡眠">
+      <SettingRow title="安静时段" description={petText("圆圆会进入睡眠")}>
         <div className="time-pair">
           <input
             type="time"
@@ -2244,6 +2245,7 @@ function SettingsView({
         description="电脑关机或休眠后，对已经过去很久的事项如何处理"
       >
         <select
+          aria-label="错过提醒策略，可选恢复后仍提醒、自动归入已跳过"
           value={settings.missedReminderPolicy}
           onChange={(event) =>
             void onChange({
@@ -2261,6 +2263,7 @@ function SettingsView({
           description="超过这段时间才视为错过，并在历史中标记原因"
         >
           <select
+            aria-label="错过提醒宽限，可选 15、30、60、120、240 分钟"
             value={settings.missedReminderGraceMinutes}
             onChange={(event) =>
               void onChange({ missedReminderGraceMinutes: Number(event.target.value) })
@@ -2403,7 +2406,7 @@ function SettingsView({
             if (!deleteReady) return;
             if (
               !window.confirm(
-                "最后确认：圆圆会完全退出，所有本地数据和应用内备份都将永久删除。确定继续吗？",
+                petText("最后确认：圆圆会完全退出，所有本地数据和应用内备份都将永久删除。确定继续吗？"),
               )
             ) {
               return;
@@ -2430,13 +2433,13 @@ function SettingsView({
           onClick={async () => {
             try {
               await requestSleep();
-              onNotice("圆圆已经去睡觉了；右键圆圆可叫醒它。");
+              onNotice(petText("圆圆已经去睡觉了；右键圆圆可叫醒它。"));
             } catch (error) {
-              onNotice(`圆圆暂时没能睡下：${String(error)}`);
+              onNotice(petText(`圆圆暂时没能睡下：${String(error)}`));
             }
           }}
         >
-          让圆圆睡觉
+          {petText("让圆圆睡觉")}
         </button>
         <button
           type="button"
@@ -2444,13 +2447,13 @@ function SettingsView({
             try {
               await showPetWindow();
               await requestWake();
-              onNotice("圆圆已经显示并醒来了。");
+              onNotice(petText("圆圆已经显示并醒来了。"));
             } catch (error) {
-              onNotice(`圆圆暂时没能显示或醒来：${String(error)}`);
+              onNotice(petText(`圆圆暂时没能显示或醒来：${String(error)}`));
             }
           }}
         >
-          显示并叫醒圆圆
+          {petText("显示并叫醒圆圆")}
         </button>
         <button
           type="button"
@@ -2486,15 +2489,22 @@ function SettingRow({
 }) {
   const titleId = useId();
   const descriptionId = useId();
-  const accessibleChild = isValidElement<{
+  const child = isValidElement<{
+    "aria-label"?: string;
     "aria-labelledby"?: string;
     "aria-describedby"?: string;
     role?: string;
   }>(children)
-    ? cloneElement(children, {
-        "aria-labelledby": titleId,
+    ? children
+    : null;
+  const hasExplicitAccessibleName = Boolean(
+    child?.props["aria-label"] || child?.props["aria-labelledby"],
+  );
+  const accessibleChild = child
+    ? cloneElement(child, {
+        ...(!hasExplicitAccessibleName ? { "aria-labelledby": titleId } : {}),
         "aria-describedby": descriptionId,
-        ...(children.type === "div" ? { role: "group" } : {}),
+        ...(child.type === "div" ? { role: "group" } : {}),
       })
     : children;
 

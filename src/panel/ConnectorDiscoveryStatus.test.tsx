@@ -4,6 +4,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { petDisplayName } from "../brand";
+
 const backend = vi.hoisted(() => ({
   applyProjectHookInspection: vi.fn(),
   cancelProjectHookInspection: vi.fn(),
@@ -283,7 +285,7 @@ describe("connector discovery status", () => {
     await flush();
     expect(container.textContent).toContain("授权状态暂时无法读取");
     expect(container.textContent).toContain("来源需要人工复核");
-    expect(container.textContent).not.toContain("尚未授权圆圆守望");
+    expect(container.textContent).not.toContain(`尚未授权${petDisplayName}守望`);
   });
 
   it("explains authentication pause without implying the source task was stopped", async () => {
@@ -324,7 +326,7 @@ describe("connector discovery status", () => {
 
     await act(async () => root.render(<ConnectorDiscoveryStatusCard />));
     await flush();
-    expect(container.textContent).toContain("圆圆已暂停接收");
+    expect(container.textContent).toContain(`${petDisplayName}已暂停接收`);
     expect(container.textContent).toContain("来源任务不受影响");
   });
 });

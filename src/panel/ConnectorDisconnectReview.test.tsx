@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { petDisplayName } from "../brand";
 import { ConnectorDisconnectReview } from "./ConnectorDisconnectReview";
 import type {
   ConnectorDisconnectResultFacts,
@@ -59,7 +60,7 @@ describe("connector disconnect review", () => {
     await act(async () => root.render(<ConnectorDisconnectReview state={readyState} onConfirm={onConfirm} />));
     const radios = [...container.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
     expect(radios).toHaveLength(2);
-    expect(container.textContent).toContain("先精确移除仍由圆圆所有的 Hook");
+    expect(container.textContent).toContain(`先精确移除仍由${petDisplayName}所有的 Hook`);
     expect(container.textContent).toContain("不会读取或修改 Hook 配置");
     expect(container.textContent).toContain("Bridge 签名、工具信任复核和安装升级门完成前，不开放执行");
     expect(container.textContent).not.toMatch(/builtin\.codex|00000000|[A-Z]:\\/);
@@ -113,7 +114,7 @@ describe("connector disconnect review", () => {
     };
     await act(async () => root.render(<ConnectorDisconnectReview state={state} />));
     expect(container.querySelector('[role="alert"]')?.textContent).toContain(
-      "圆圆不会删除被改动、重复或无法证明所有权的内容",
+      `${petDisplayName}不会删除被改动、重复或无法证明所有权的内容`,
     );
     expect(container.textContent).toContain("明确改选“仅撤销认证权限”");
     expect(container.querySelector('input[type="checkbox"]')).toBeNull();
@@ -129,7 +130,7 @@ describe("connector disconnect review", () => {
     };
     await act(async () => root.render(<ConnectorDisconnectReview state={state} />));
     const live = container.querySelector('[aria-live="polite"]')!;
-    expect(live.textContent?.indexOf("圆圆 Hook 已安全处理")).toBeLessThan(
+    expect(live.textContent?.indexOf(`${petDisplayName} Hook 已安全处理`)).toBeLessThan(
       live.textContent!.indexOf("正在撤销并复核认证权限"),
     );
     expect(container.textContent).toContain("来源工具中的任务不受影响");

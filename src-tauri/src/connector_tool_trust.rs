@@ -1213,14 +1213,22 @@ mod tests {
         assert!(!review.package_identity_attested);
     }
 
+    fn codex_desktop_trust_fixture() -> Option<PathBuf> {
+        let path = std::env::var_os("YUANYUAN_CODEX_DESKTOP_TRUST_FIXTURE").map(PathBuf::from)?;
+        assert!(
+            is_codex_desktop_managed_path(&path),
+            "the Codex trust fixture must use the reviewed desktop-managed path"
+        );
+        assert!(
+            open_ordinary_artifact(&path).is_ok(),
+            "the Codex trust fixture must be an ordinary readable artifact"
+        );
+        Some(path)
+    }
+
     #[test]
-    fn installed_desktop_codex_passes_the_real_offline_windows_signature_adapter_when_present() {
-        let candidate = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
-            .map(|directory| directory.join("codex.exe"))
-            .find(|path| {
-                is_codex_desktop_managed_path(path) && open_ordinary_artifact(path).is_ok()
-            });
-        let Some(path) = candidate else {
+    fn installed_desktop_codex_passes_the_real_offline_windows_signature_adapter_when_provided() {
+        let Some(path) = codex_desktop_trust_fixture() else {
             return;
         };
         let review = review_detected_artifacts(
@@ -1241,13 +1249,8 @@ mod tests {
     }
 
     #[test]
-    fn installed_desktop_codex_trust_adapter_tolerates_parallel_verification_when_present() {
-        let candidate = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
-            .map(|directory| directory.join("codex.exe"))
-            .find(|path| {
-                is_codex_desktop_managed_path(path) && open_ordinary_artifact(path).is_ok()
-            });
-        let Some(path) = candidate else {
+    fn installed_desktop_codex_trust_adapter_tolerates_parallel_verification_when_provided() {
+        let Some(path) = codex_desktop_trust_fixture() else {
             return;
         };
         let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));

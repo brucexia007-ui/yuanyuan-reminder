@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
+  communityProductFromBrand,
   validateCommunityStableAuthority,
   validateCommunityStablePolicy,
 } from "./community_release_contract.mjs";
@@ -14,7 +15,7 @@ async function readJson(filePath) {
 }
 
 async function main() {
-  const [policy, authority] = await Promise.all([
+  const [policy, authority, brand] = await Promise.all([
     readJson(
       path.join(
         projectRoot,
@@ -24,10 +25,12 @@ async function main() {
       ),
     ),
     readJson(path.join(projectRoot, "product-version.json")),
+    readJson(path.join(projectRoot, "product-brand.json")),
   ]);
 
-  validateCommunityStablePolicy(policy);
-  validateCommunityStableAuthority(authority);
+  const expectedProduct = communityProductFromBrand(brand);
+  validateCommunityStablePolicy(policy, expectedProduct);
+  validateCommunityStableAuthority(authority, expectedProduct);
   process.stdout.write(
     `Community stable authority OK: ${authority.productName} ${authority.version}.\n`,
   );

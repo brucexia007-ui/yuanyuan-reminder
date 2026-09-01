@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import path from "node:path";
 import {
@@ -24,12 +25,16 @@ import {
   upgradeRollbackProbeEvidenceMatches,
 } from "./generate_release_preflight.mjs";
 
+const projectRoot = path.resolve(import.meta.dirname, "..");
+const productBrand = JSON.parse(await readFile(path.join(projectRoot, "product-brand.json"), "utf8"));
+const assetLicenseSource = `../${productBrand.assets.licenseFile}`;
+
 test("license bundle requires exact configured resources and NSIS install/uninstall lines", () => {
   const resources = {
     "../LICENSE": "licenses/LICENSE.txt",
     "../THIRD_PARTY_NOTICES.md": "licenses/THIRD_PARTY_NOTICES.md",
     "../THIRD_PARTY_LICENSES.txt": "licenses/THIRD_PARTY_LICENSES.txt",
-    "../ASSETS_LICENSE.md": "licenses/ASSETS_LICENSE.md",
+    [assetLicenseSource]: "licenses/ASSETS_LICENSE.md",
   };
   const script = Object.entries(resources)
     .flatMap(([source, destination]) => {
@@ -302,6 +307,32 @@ test("NSIS payload evidence binds the installed executable and cleanup to the ca
       ],
       licenseFilesExact: true,
       licenseHashesMatch: true,
+      licenseBindings: [
+        {
+          fileName: "ASSETS_LICENSE.md",
+          sourceSha256: "E".repeat(64),
+          installedSha256: "E".repeat(64),
+          matches: true,
+        },
+        {
+          fileName: "LICENSE.txt",
+          sourceSha256: "F".repeat(64),
+          installedSha256: "F".repeat(64),
+          matches: true,
+        },
+        {
+          fileName: "THIRD_PARTY_LICENSES.txt",
+          sourceSha256: "A".repeat(64),
+          installedSha256: "A".repeat(64),
+          matches: true,
+        },
+        {
+          fileName: "THIRD_PARTY_NOTICES.md",
+          sourceSha256: "B".repeat(64),
+          installedSha256: "B".repeat(64),
+          matches: true,
+        },
+      ],
     },
     environment: {
       currentUserAuthenticated: true,
@@ -327,8 +358,20 @@ test("NSIS payload evidence binds the installed executable and cleanup to the ca
       "SmartScreen, security-software, upgrade interruption, authentic historical database migration, and default-path behavior remain separate gates.",
     ],
   };
+  const licenseSourceSha256 = {
+    "ASSETS_LICENSE.md": "E".repeat(64),
+    "LICENSE.txt": "F".repeat(64),
+    "THIRD_PARTY_LICENSES.txt": "A".repeat(64),
+    "THIRD_PARTY_NOTICES.md": "B".repeat(64),
+  };
   const matches = (candidate) =>
-    nsisPayloadEvidenceMatches(candidate, artifacts, "D".repeat(64), "1.4.0");
+    nsisPayloadEvidenceMatches(
+      candidate,
+      artifacts,
+      "D".repeat(64),
+      "1.4.0",
+      licenseSourceSha256,
+    );
   assert.equal(matches(report), true);
   assert.equal(matches({ ...report, ready: false }), false);
   assert.equal(
@@ -353,6 +396,27 @@ test("NSIS payload evidence binds the installed executable and cleanup to the ca
     false,
   );
   assert.equal(matches({ ...report, optimistic: true }), false);
+  assert.equal(
+    matches({
+      ...report,
+      installation: {
+        ...report.installation,
+        licenseBindings: report.installation.licenseBindings.map((binding, index) =>
+          index === 0 ? { ...binding, installedSha256: "F".repeat(64) } : binding),
+      },
+    }),
+    false,
+  );
+  assert.equal(
+    nsisPayloadEvidenceMatches(
+      report,
+      artifacts,
+      "D".repeat(64),
+      "1.4.0",
+      { ...licenseSourceSha256, "ASSETS_LICENSE.md": "F".repeat(64) },
+    ),
+    false,
+  );
 });
 
 test("upgrade/rollback probe binds historical bytes, candidate transitions, and cleanup", () => {

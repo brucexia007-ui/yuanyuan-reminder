@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "packId": "interop.workbuddy",
+  "version": "1.0.0",
+  "title": "WorkBuddy interop",
+  "description": "Compact optional fields",
+  "rights": {
+    "basis": "authorized",
+    "statement": "Synthetic authorized fixture",
+    "redistributable": false
+  },
+  "sources": [
+    {
+      "sourceRef": "sheet",
+      "label": "Synthetic sheet"
+    }
+  ],
+  "contentSha256": "cc636e5f3a091aac0d5cf7d0d09de35b9c115262faa96245bcf6351b1b4e32a0",
+  "cards": [
+    {
+      "cardId": "recall-compact",
+      "exerciseKind": "recall",
+      "prompt": "HTTP status for Not Found?",
+      "answer": "404",
+      "sourceRefs": ["sheet"],
+      "scheduleEpoch": 1
+    }
+  ]
+}

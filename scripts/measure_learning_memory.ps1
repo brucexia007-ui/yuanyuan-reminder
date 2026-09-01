@@ -42,6 +42,13 @@ if ($EvidenceGate) {
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $workspaceRoot = Split-Path -Parent $projectRoot
+$brandConfig = Get-Content -Raw -Encoding UTF8 -LiteralPath (
+    Join-Path $projectRoot "product-brand.json"
+) | ConvertFrom-Json
+if ([string]::IsNullOrWhiteSpace([string]$brandConfig.storage.directoryName) -or
+    [string]::IsNullOrWhiteSpace([string]$brandConfig.pet.displayName)) {
+    throw "product brand storage directory and pet display name are required"
+}
 $runtimeTarget = Join-Path $projectRoot "src-tauri\target\runtime-qa-learning-memory\release"
 $appPath = Join-Path $runtimeTarget "yuanyuan-reminder.exe"
 $fixturePath = Join-Path $runtimeTarget "yuanyuan-runtime-qa-fixture.exe"
@@ -52,13 +59,10 @@ $qaRoot = Join-Path $workspaceRoot $leaf
 $markerPath = Join-Path $qaRoot ".yuanyuan-runtime-qa-v1"
 $expectedMarker = "YUANYUAN_RUNTIME_QA_V1`n"
 $reportPath = Join-Path $evidenceRoot "learning-memory-$runId.json"
-$formalDataRoot = Join-Path $env:LOCALAPPDATA "com.yuanyuan.reminder"
+$formalDataRoot = Join-Path $env:LOCALAPPDATA ([string]$brandConfig.storage.directoryName)
 
 $learningPageFragment = -join @([char]0x5B66, [char]0x4E60, [char]0x9875, [char]0x9762)
-$blackboardFragment = -join @(
-    [char]0x5706, [char]0x5706, [char]0x684C, [char]0x9762,
-    [char]0x82F1, [char]0x8BED, [char]0x590D, [char]0x4E60
-)
+$blackboardFragment = "{0}桌面英语复习" -f ([string]$brandConfig.pet.displayName)
 $startRoundFragment = -join @([char]0x5F00, [char]0x59CB, [char]0x4E00, [char]0x8F6E)
 $syntheticChoiceFragment = -join @(
     [char]0x5408, [char]0x6210, [char]0x91CA, [char]0x4E49

@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { petDisplayName } from "../brand";
 import type {
   AppSettings,
   CompanionExpressionSnapshot,
@@ -251,7 +252,7 @@ describe("PetWindow manual sleep presentation", () => {
           restoreTarget: "learning",
         }),
       ),
-    ).toBe("圆圆正在睡觉");
+    ).toBe(`${petDisplayName}正在睡觉`);
     expect(
       petSleepAccessibleStatus(
         activity({
@@ -262,7 +263,7 @@ describe("PetWindow manual sleep presentation", () => {
           restoreTarget: "learning",
         }),
       ),
-    ).toBe("圆圆已醒，上一轮学习可以继续");
+    ).toBe(`${petDisplayName}已醒，上一轮学习可以继续`);
     expect(petSleepAccessibleStatus(activity())).toBeNull();
   });
 
@@ -286,7 +287,7 @@ describe("PetWindow manual sleep presentation", () => {
       }),
     );
     expect(animation()).toBe("sleep-enter");
-    expect(container.textContent).toContain("圆圆正在睡觉");
+    expect(container.textContent).toContain(`${petDisplayName}正在睡觉`);
 
     await emit("pet-activity-snapshot-updated", activity({ revision: 1 }));
     expect(animation()).toBe("sleep-enter");
@@ -318,7 +319,7 @@ describe("PetWindow manual sleep presentation", () => {
       }),
     );
     expect(animation()).toBe("wake-up");
-    expect(container.textContent).toContain("圆圆已醒，上一轮学习可以继续");
-    expect(container.textContent).not.toContain("圆圆桌面英语复习");
+    expect(container.textContent).toContain(`${petDisplayName}已醒，上一轮学习可以继续`);
+    expect(container.textContent).not.toContain(`${petDisplayName}桌面英语复习`);
   });
 });

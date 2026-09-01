@@ -16,7 +16,7 @@
 | AI 连续服务并行退出 | `cargo test -p yuanyuan-ai --lib` | 修复测试等待与现有 3 秒硬传输预算不一致的竞态；默认并行 10/10 轮（每轮 116 项）及 workspace 复验通过，生产超时未放宽 |
 | 仓库总质量门 | `npm.cmd run verify` | 通过；迁移、保留、安全、发布证据合同、许可证和宠物包验证全部完成 |
 | pre-GEN 文件读取+纯解析性能与协作检查 | `learning-pack-parse-spike-20260824T175724Z.json` + 性能/隔离 verifier | 30/30；20,000 卡 JSON/CSV 同时达到 26,020,105/26,120,061 bytes，内部管线 P95 481.523/359.907 ms，峰值 working set 123,691,008/75,395,072 bytes；三类进度检查点、独立 16 KiB 解码输入与单卡内部取消探针（含 Unicode 规范化输入和 CSV 分隔符/可选字段扫描）、JSON 九阶段/CSV 八阶段、≤256 回调和 `complete/cards` 终态均经复核；6 项隔离门测试及当前 metadata/源码/配置/产物扫描证明未接入应用、Tauri、SQLite、网络或发布能力；零数据库写入。未覆盖 Tauri 后台/IPC/WebView、OS 单次读取阻塞、文件替换 token 或真实导入 |
-| 统一产品真实学习规模门 | `npm.cmd run release:community:learning:gate` + 独立 verifier | v1.5.4 开发态候选已通过真实 Tauri 20,000 卡 CSV 导入、确定性事务取消零残留、首/中/末/越界分页、1,000 次答案、数据库增长、统一备份恢复、`quick_check`/外键、正式数据句柄隔离、受控退出和测试根清理；当前报告 `sourceDirty=true`，提交后必须重建重跑生成干净正式证据 |
+| 统一产品真实学习规模门 | `npm.cmd run release:community:learning:gate -- -SourceBindingPath "<learning-on 候选绑定>"` + 独立 verifier | v1.5.4 开发态候选已通过真实 Tauri 20,000 卡 CSV 导入、确定性事务取消零残留、首/中/末/越界分页、1,000 次答案、数据库增长、统一备份恢复、`quick_check`/外键、正式数据句柄隔离、受控退出和测试根清理；当前报告 `sourceDirty=true`，提交后必须以正式 24 小时门的同一干净 learning-on 候选绑定重建重跑，证据信封与最终验收同时核对 `sourceBindingSha256` |
 | 统一 Tauri 候选 | `npm.cmd run tauri build` | v1.5.4 工作树构建已通过；发布资产必须在最终干净提交上重新构建并执行安装态 E2E |
 | 历史 Learning Preview 双构建 | `npm.cmd run learning:desktop:build` + [QA-003](./QA_003_CLEAN_COMMIT_DUAL_BUILD_EVIDENCE.md) | 历史证据通过；不再作为统一产品默认关闭的依据 |
 | 个人词包与安装包 | `npm.cmd run learning:personal:prepare`、`learning:personal:desktop:build` | 历史个人构建通过；个人内容不得进入统一稳定版或 GitHub 发布资产 |

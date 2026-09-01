@@ -354,7 +354,7 @@ async function main() {
     webView: path.join(evidenceRoot, "webview2-mapped-runtime.json"),
     capture: path.join(evidenceRoot, "v132-capture-report.json"),
     provenance: path.join(evidenceRoot, "v132-provenance-report.json"),
-    migration: path.join(evidenceRoot, "v153-migration-report.json"),
+    migration: path.join(evidenceRoot, "current-migration-report.json"),
     fixture: path.join(evidenceRoot, "authentic-v1.3.2.sqlite3"),
   };
   const [status, sourceMetadata, webView, capture, provenance, migration] = await Promise.all([

@@ -73,16 +73,22 @@ fn run_tick(app: &AppHandle) {
                 settings.idle_sleep_minutes,
             );
         }
-        update_activity_tracking(
-            &state,
-            settings,
-            focus_state
-                .as_ref()
-                .ok()
-                .and_then(|focus| focus.session.as_ref())
-                .is_some_and(|session| session.phase == "break"),
-            now,
-        );
+        #[cfg(feature = "runtime-qa")]
+        let activity_tracking_isolated = crate::runtime_qa::isolates_activity_tracking();
+        #[cfg(not(feature = "runtime-qa"))]
+        let activity_tracking_isolated = false;
+        if !activity_tracking_isolated {
+            update_activity_tracking(
+                &state,
+                settings,
+                focus_state
+                    .as_ref()
+                    .ok()
+                    .and_then(|focus| focus.session.as_ref())
+                    .is_some_and(|session| session.phase == "break"),
+                now,
+            );
+        }
     }
 
     let Ok(due) = due else {

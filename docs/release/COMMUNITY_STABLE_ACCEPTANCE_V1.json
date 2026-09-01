@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "status": "pending",
+  "product": {
+    "name": "饺饺提醒",
+    "identifier": "com.brucexia.jiaojiao.reminder",
+    "version": "1.5.7"
+  },
+  "candidate": {
+    "testedCommit": null,
+    "installerSha256": null
+  },
+  "checks": {
+    "endurance24h": {
+      "status": "pending",
+      "reportSha256": null,
+      "sourceBindingSha256": null,
+      "observedSeconds": null,
+      "activeCoverageSeconds": null,
+      "suspendResumeObserved": false,
+      "lockUnlockObserved": false,
+      "controlledExit": false,
+      "applicationErrorCount": null,
+      "formalUserFilesWritten": null
+    },
+    "installedCandidateE2e": {
+      "status": "pending",
+      "reportSha256": null,
+      "installerSha256": null,
+      "scenarios": {
+        "installAndLaunch": false,
+        "snoozeThirtyMinutes": false,
+        "missedReminderNotify": false,
+        "missedReminderSkipOld": false,
+        "reminderDelivery": false,
+        "hideAndRestorePet": false,
+        "panelDrag": false,
+        "automaticBackup": false,
+        "backupAndRestore": false,
+        "restartPersistence": false,
+        "uninstallKeepsDataByDefault": false
+      },
+      "formalUserDataUsed": null,
+      "cleanupVerified": false
+    },
+    "legacyDataCompatibility": {
+      "status": "pending",
+      "sourceVersion": "1.3.2",
+      "normalizedSourceSha256": null,
+      "reportSha256": null,
+      "sourceUnchanged": false,
+      "allRowsPreserved": false,
+      "backupRestorePassed": false,
+      "failureRollbackPassed": false
+    },
+    "learningRuntime": {
+      "status": "pending",
+      "reportSha256": null,
+      "sourceBindingSha256": null,
+      "tauriImportPassed": false,
+      "cancellationPassed": false,
+      "importedCards": null,
+      "paginationPassed": false,
+      "answersApplied": null,
+      "databaseGrowthWithinLimit": false,
+      "backupRestorePassed": false
+    }
+  },
+  "review": {
+    "operator": null,
+    "completedAt": null,
+    "unresolvedFindings": []
+  }
+}

@@ -14,11 +14,21 @@ const paths = {
 
 const semverPattern = /^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?$/u;
 
-export function validateProductManifest(manifest) {
+export function validateProductManifest(manifest, brand = null) {
+  const officialIdentity =
+    manifest?.productName === "圆圆提醒"
+    && manifest?.identifier === "com.yuanyuan.reminder"
+    && manifest?.brandConfig === undefined;
+  const customIdentity =
+    manifest?.brandConfig === "product-brand.json"
+    && brand?.application?.displayName === manifest?.productName
+    && brand?.application?.identifier === manifest?.identifier
+    && typeof brand?.application?.packageName === "string"
+    && /^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(brand.application.packageName)
+    && /^[a-z][a-z0-9]*(?:\.[a-z0-9][a-z0-9-]*){2,}$/u.test(manifest?.identifier ?? "");
   if (
     manifest?.schemaVersion !== 1 ||
-    manifest.productName !== "圆圆提醒" ||
-    manifest.identifier !== "com.yuanyuan.reminder" ||
+    (!officialIdentity && !customIdentity) ||
     typeof manifest.version !== "string" ||
     !semverPattern.test(manifest.version) ||
     manifest.releaseTrain !== "unified-product" ||
@@ -56,13 +66,14 @@ function packageVersionFromCargoLock(cargoLock) {
 
 export function collectProductVersionDrift({
   manifest,
+  brand,
   packageJson,
   packageLock,
   cargoToml,
   cargoLock,
   tauriConfig,
 }) {
-  validateProductManifest(manifest);
+  validateProductManifest(manifest, brand);
   const expected = manifest.version;
   const observations = [
     ["package.json", packageJson.version],
@@ -75,8 +86,9 @@ export function collectProductVersionDrift({
   const drift = observations
     .filter(([, actual]) => actual !== expected)
     .map(([source, actual]) => ({ source, expected, actual: actual ?? null }));
-  if (packageJson.name !== "yuanyuan-reminder") {
-    drift.push({ source: "package.json name", expected: "yuanyuan-reminder", actual: packageJson.name });
+  const expectedPackageName = brand?.application?.packageName ?? "yuanyuan-reminder";
+  if (packageJson.name !== expectedPackageName) {
+    drift.push({ source: "package.json name", expected: expectedPackageName, actual: packageJson.name });
   }
   if (tauriConfig.productName !== manifest.productName) {
     drift.push({
@@ -121,7 +133,7 @@ function replaceCargoLockVersion(source, version) {
 }
 
 export function synchronizeProductVersionSources(sources) {
-  validateProductManifest(sources.manifest);
+  validateProductManifest(sources.manifest, sources.brand);
   const version = sources.manifest.version;
   const packageJson = { ...sources.packageJson, version };
   const packageLock = {
@@ -148,16 +160,19 @@ export function synchronizeProductVersionSources(sources) {
 }
 
 async function readSources() {
-  const [manifest, packageJson, packageLock, cargoToml, cargoLock, tauriConfig] =
+  const manifest = await readFile(paths.manifest, "utf8").then(JSON.parse);
+  const [packageJson, packageLock, cargoToml, cargoLock, tauriConfig, brand] =
     await Promise.all([
-      readFile(paths.manifest, "utf8").then(JSON.parse),
       readFile(paths.packageJson, "utf8").then(JSON.parse),
       readFile(paths.packageLock, "utf8").then(JSON.parse),
       readFile(paths.cargoToml, "utf8"),
       readFile(paths.cargoLock, "utf8"),
       readFile(paths.tauriConfig, "utf8").then(JSON.parse),
+      manifest.brandConfig
+        ? readFile(path.join(projectRoot, manifest.brandConfig), "utf8").then(JSON.parse)
+        : Promise.resolve(null),
     ]);
-  return { manifest, packageJson, packageLock, cargoToml, cargoLock, tauriConfig };
+  return { manifest, brand, packageJson, packageLock, cargoToml, cargoLock, tauriConfig };
 }
 
 async function main() {

@@ -1,18 +1,20 @@
 use std::{
     fs,
+    io::Read,
     path::{Path, PathBuf},
 };
 
 use chrono::{Duration, Local, Utc};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 
 use crate::{
+    backups,
     error::{AppError, AppResult},
     models::CreateReminderInput,
     repository::Repository,
 };
 
-const PRODUCT_IDENTIFIER: &str = "com.yuanyuan.reminder";
 const SANDBOX_USER: &str = "WDAGUtilityAccount";
 const MARKER_NAME: &str = ".yuanyuan-installed-candidate-qa-v1";
 const MARKER_CONTENT: &[u8] = b"YUANYUAN_INSTALLED_CANDIDATE_QA_V1\n";
@@ -38,6 +40,8 @@ pub struct ReminderInspection {
     pub reminder_id: String,
     pub present: bool,
     pub occurrence_status: Option<String>,
+    pub snoozed_until: Option<String>,
+    pub resolution_reason: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -47,10 +51,24 @@ pub struct Inspection {
     pub records: Vec<ReminderInspection>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomaticBackupInspection {
+    pub file_name: String,
+    pub created_at: String,
+    pub size_bytes: u64,
+    pub sha256: String,
+    pub automatic: bool,
+    pub learning_included: bool,
+    pub database_healthy: bool,
+    pub reminder_id: String,
+    pub reminder_present: bool,
+}
+
 fn expected_data_root() -> AppResult<PathBuf> {
     let local = dirs::data_local_dir()
         .ok_or_else(|| AppError::Validation("local app data directory is unavailable".into()))?;
-    Ok(local.join(PRODUCT_IDENTIFIER))
+    Ok(local.join(crate::brand::storage_directory_name()))
 }
 
 fn validate_sandbox() -> AppResult<()> {
@@ -120,7 +138,7 @@ pub fn seed(root: &Path, due_after_seconds: u64) -> AppResult<SeedPlan> {
     }
     fs::create_dir(&root)?;
     fs::write(root.join(MARKER_NAME), MARKER_CONTENT)?;
-    let repository = Repository::open(&root.join("yuanyuan-reminder.sqlite3"))?;
+    let repository = Repository::open(&root.join(crate::brand::main_database_file()))?;
     let now = Utc::now();
     let scheduled = now + Duration::seconds(due_after_seconds as i64);
     let placeholder = (now + Duration::hours(1))
@@ -149,7 +167,7 @@ pub fn seed(root: &Path, due_after_seconds: u64) -> AppResult<SeedPlan> {
 
 pub fn add_mutation(root: &Path) -> AppResult<MutationPlan> {
     let root = require_owned_root(root)?;
-    let repository = Repository::open(&root.join("yuanyuan-reminder.sqlite3"))?;
+    let repository = Repository::open(&root.join(crate::brand::main_database_file()))?;
     let token = uuid::Uuid::new_v4().simple().to_string();
     let title = format!("E2E变更-{}", &token[..8]);
     let at_local = (Local::now() + Duration::hours(2))
@@ -171,9 +189,77 @@ pub fn add_mutation(root: &Path) -> AppResult<MutationPlan> {
     })
 }
 
+pub fn add_overdue_notify(root: &Path, overdue_minutes: u64) -> AppResult<SeedPlan> {
+    if !(16..=240).contains(&overdue_minutes) {
+        return Err(AppError::Validation(
+            "installed-candidate overdue reminder age must be 16 to 240 minutes".into(),
+        ));
+    }
+    let root = require_owned_root(root)?;
+    let repository = Repository::open(&root.join(crate::brand::main_database_file()))?;
+    let now = Utc::now();
+    let scheduled = now - Duration::minutes(overdue_minutes as i64);
+    let placeholder = (now + Duration::hours(1))
+        .with_timezone(&Local)
+        .format("%Y-%m-%dT%H:%M")
+        .to_string();
+    let token = uuid::Uuid::new_v4().simple().to_string();
+    let title = format!("E2E错过仍提醒-{}", &token[..8]);
+    let reminder = repository.create_reminder(CreateReminderInput {
+        title: title.clone(),
+        category: "work".into(),
+        schedule_kind: "once".into(),
+        at_local: Some(placeholder),
+        every_minutes: None,
+        active_start_local: None,
+        active_end_local: None,
+        weekdays: None,
+    })?;
+    repository.set_runtime_qa_reminder_due(&reminder.id, scheduled)?;
+    Ok(SeedPlan {
+        reminder_id: reminder.id,
+        title,
+        scheduled_at: scheduled.to_rfc3339(),
+    })
+}
+
+pub fn add_missed(root: &Path, overdue_minutes: u64) -> AppResult<SeedPlan> {
+    if !(16..=240).contains(&overdue_minutes) {
+        return Err(AppError::Validation(
+            "installed-candidate missed reminder age must be 16 to 240 minutes".into(),
+        ));
+    }
+    let root = require_owned_root(root)?;
+    let repository = Repository::open(&root.join(crate::brand::main_database_file()))?;
+    let now = Utc::now();
+    let scheduled = now - Duration::minutes(overdue_minutes as i64);
+    let placeholder = (now + Duration::hours(1))
+        .with_timezone(&Local)
+        .format("%Y-%m-%dT%H:%M")
+        .to_string();
+    let token = uuid::Uuid::new_v4().simple().to_string();
+    let title = format!("E2E错过自动跳过-{}", &token[..8]);
+    let reminder = repository.create_reminder(CreateReminderInput {
+        title: title.clone(),
+        category: "work".into(),
+        schedule_kind: "once".into(),
+        at_local: Some(placeholder),
+        every_minutes: None,
+        active_start_local: None,
+        active_end_local: None,
+        weekdays: None,
+    })?;
+    repository.set_runtime_qa_reminder_due(&reminder.id, scheduled)?;
+    Ok(SeedPlan {
+        reminder_id: reminder.id,
+        title,
+        scheduled_at: scheduled.to_rfc3339(),
+    })
+}
+
 pub fn inspect(root: &Path, reminder_ids: &[String]) -> AppResult<Inspection> {
     let root = require_owned_root(root)?;
-    let repository = Repository::open(&root.join("yuanyuan-reminder.sqlite3"))?;
+    let repository = Repository::open(&root.join(crate::brand::main_database_file()))?;
     let snapshot = repository.list_today(false)?;
     let mut records = Vec::with_capacity(reminder_ids.len());
     for reminder_id in reminder_ids {
@@ -181,17 +267,69 @@ pub fn inspect(root: &Path, reminder_ids: &[String]) -> AppResult<Inspection> {
             .reminders
             .iter()
             .any(|reminder| reminder.id == *reminder_id);
-        let occurrence_status = repository
-            .runtime_qa_reminder_claim(reminder_id)?
-            .map(|(_, _, status)| status);
+        let occurrence_state = repository.runtime_qa_reminder_occurrence_state(reminder_id)?;
+        let (occurrence_status, snoozed_until, resolution_reason) = occurrence_state
+            .map(|(status, snoozed_until, resolution_reason)| {
+                (Some(status), snoozed_until, resolution_reason)
+            })
+            .unwrap_or((None, None, None));
         records.push(ReminderInspection {
             reminder_id: reminder_id.clone(),
             present,
             occurrence_status,
+            snoozed_until,
+            resolution_reason,
         });
     }
     Ok(Inspection {
         database_healthy: true,
         records,
+    })
+}
+
+pub fn inspect_automatic_backup(
+    root: &Path,
+    reminder_id: &str,
+) -> AppResult<AutomaticBackupInspection> {
+    uuid::Uuid::parse_str(reminder_id)
+        .map_err(|_| AppError::Validation("automatic-backup reminder id is invalid".into()))?;
+    let root = require_owned_root(root)?;
+    let backup_dir = root.join("backups");
+    let expected_file_name = format!("auto-{}.sqlite3", Local::now().format("%Y-%m-%d"));
+    let backup = backups::list_backups(&backup_dir)?
+        .into_iter()
+        .find(|item| item.automatic && item.file_name == expected_file_name)
+        .ok_or_else(|| {
+            AppError::Validation("today's installed automatic backup is missing".into())
+        })?;
+    let backup_path = backup_dir.join(&backup.file_name);
+    Repository::validate_database_file(&backup_path)?;
+    let reminder_present =
+        Repository::runtime_qa_backup_contains_reminder(&backup_path, reminder_id)?;
+    let mut file = fs::File::open(&backup_path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let bytes = file.read(&mut buffer)?;
+        if bytes == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes]);
+    }
+    let sha256 = hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02X}"))
+        .collect();
+    Ok(AutomaticBackupInspection {
+        file_name: backup.file_name,
+        created_at: backup.created_at,
+        size_bytes: backup.size_bytes,
+        sha256,
+        automatic: backup.automatic,
+        learning_included: backup.learning_included,
+        database_healthy: true,
+        reminder_id: reminder_id.to_string(),
+        reminder_present,
     })
 }

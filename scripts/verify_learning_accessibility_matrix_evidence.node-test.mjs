@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { brandPetText } from "./product_brand_contract.mjs";
+
 import {
   syntheticAccessibilityFixtureSha256,
   validateLearningAccessibilityMatrixReport,
@@ -150,7 +152,7 @@ function makeReport() {
         method: "uia-set-focus-request",
       },
       accessibilityNames: [
-        "圆圆桌面英语复习",
+        brandPetText("圆圆桌面英语复习"),
         "请选择中文释义",
         "结束本轮",
         ...(mode === "reduced-motion" ? ["已减少动态效果"] : []),

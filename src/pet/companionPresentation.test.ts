@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { petDisplayName } from "../brand";
 import type { CompanionExpressionSnapshot } from "../types";
 import { companionPresentation } from "./companionPresentation";
 
@@ -29,7 +30,7 @@ describe("companionPresentation", () => {
   it("turns fixed task state into fixed prop copy without accepting task text", () => {
     expect(companionPresentation(snapshot())).toEqual({
       shortLabel: "守望中",
-      accessibleLabel: "圆圆正在电脑旁守望任务",
+      accessibleLabel: `${petDisplayName}正在电脑旁守望任务`,
       sourceLabel: "Codex",
       props: ["computer"],
       groupLabel: null,
@@ -40,7 +41,7 @@ describe("companionPresentation", () => {
     expect(companionPresentation(snapshot(), "adaptive")).toMatchObject({
       shortLabel: null,
       sourceLabel: "Codex",
-      accessibleLabel: "圆圆正在电脑旁守望任务",
+      accessibleLabel: `${petDisplayName}正在电脑旁守望任务`,
     });
   });
 
@@ -95,7 +96,7 @@ describe("companionPresentation", () => {
     });
     expect(companionPresentation(future)).toMatchObject({
       shortLabel: null,
-      accessibleLabel: "圆圆正在安静陪伴",
+      accessibleLabel: `${petDisplayName}正在安静陪伴`,
       sourceLabel: null,
     });
   });
@@ -113,7 +114,7 @@ describe("companionPresentation", () => {
           accessibleState: "focus_finished",
         }),
       ).accessibleLabel,
-    ).toBe("专注结束，圆圆伸了个懒腰");
+    ).toBe(`专注结束，${petDisplayName}伸了个懒腰`);
   });
 
   it("provides fixed accessible meaning for the nonverbal reunion ritual", () => {
@@ -129,6 +130,6 @@ describe("companionPresentation", () => {
           accessibleState: "welcoming_return",
         }),
       ).accessibleLabel,
-    ).toBe("圆圆起身靠近，轻轻蹭了蹭你");
+    ).toBe(`${petDisplayName}起身靠近，轻轻蹭了蹭你`);
   });
 });

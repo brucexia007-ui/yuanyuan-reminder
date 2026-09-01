@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
 
+import { brandPetText } from "./product_brand_contract.mjs";
+
 import {
   parseTaskExpressionMotionEvidence,
   validateTaskExpressionMotionEvidence,
@@ -16,9 +18,9 @@ const bindings = {
   measureScriptSha256: "E".repeat(64),
 };
 const scenarios = [
-  ["failed-only", "圆圆发现任务没有成功，正在你身边陪着", "failure_action_settles_with_failure_card"],
-  ["waiting-user-only", "圆圆发现任务正在等待你的确认", "glass_paws_action_settles_with_bell_and_waiting_card"],
-  ["stalled-only", "圆圆发现任务可能停住了", "review_action_settles_with_stalled_card"],
+  ["failed-only", brandPetText("圆圆发现任务没有成功，正在你身边陪着"), "failure_action_settles_with_failure_card"],
+  ["waiting-user-only", brandPetText("圆圆发现任务正在等待你的确认"), "glass_paws_action_settles_with_bell_and_waiting_card"],
+  ["stalled-only", brandPetText("圆圆发现任务可能停住了"), "review_action_settles_with_stalled_card"],
 ];
 
 function validBundle() {

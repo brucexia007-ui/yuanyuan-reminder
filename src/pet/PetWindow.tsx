@@ -17,6 +17,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { petDisplayName, petIdentityDescription, petText } from "../brand";
 import {
   completeOccurrence,
   getBasicSupportState,
@@ -91,11 +92,11 @@ import {
   followOffsetTowardPointer,
   gentleHeadOffsetTowardPointer,
   shouldAdvancePettingFrame,
+  shouldAdvanceWandFrame,
   shouldMirrorTowardPointer,
   shouldMirrorTowardPointerWithHysteresis,
   transitionToolInteraction,
   treatFrameFromPointerHeight,
-  wandDirectionFrame,
 } from "./interactionMotion";
 import {
   COMPACT_PET_WINDOW_GUTTER,
@@ -189,13 +190,6 @@ interface ActiveToolInteraction {
   flightDuration: number;
   ballVisible: boolean;
 }
-
-const wandPhaseAnimations = [
-  "wand-reach",
-  "wand-swipe",
-  "wand-return",
-  "wand-swipe",
-] as const satisfies readonly AnimationName[];
 
 const lifeAnimations: Array<{
   name: Exclude<LifeAnimationName, "belly-down">;
@@ -294,6 +288,19 @@ function isCoreDirectedOccurrence(intent: PetIntent): boolean {
   );
 }
 
+type AlertAction = "complete" | "snooze" | "skip";
+
+function alertActionAccessibleLabel(action: AlertAction): string {
+  switch (action) {
+    case "complete":
+      return `记录完成；${petDisplayName}高兴地跳了一下`;
+    case "snooze":
+      return `提醒已延后；${petDisplayName}安静等候`;
+    case "skip":
+      return `提醒已跳过；${petDisplayName}把任务牌收起`;
+  }
+}
+
 function animationForPetIntent(
   intent: PetIntent,
   companion: CompanionExpressionSnapshot | null,
@@ -316,13 +323,13 @@ function ballPhaseMessage(phase: BallGamePhase | null): string {
     case "flying":
       return "球飞出去啦";
     case "chasing":
-      return "圆圆正在追球";
+      return `${petDisplayName}正在追球`;
     case "batting":
       return "先扒拉两下";
     case "pickup":
-      return "圆圆叼起球了";
+      return `${petDisplayName}叼起球了`;
     case "returning":
-      return "圆圆正慢慢走回来";
+      return `${petDisplayName}正慢慢走回来`;
     case "dropping":
       return "把球放回脚边";
     default:
@@ -333,13 +340,13 @@ function ballPhaseMessage(phase: BallGamePhase | null): string {
 export function petSleepAccessibleStatus(
   snapshot: PetActivitySnapshot | null | undefined,
 ): string | null {
-  if (snapshot?.activity === "sleeping") return "圆圆正在睡觉";
+  if (snapshot?.activity === "sleeping") return `${petDisplayName}正在睡觉`;
   if (
     snapshot?.activity === "interrupted" &&
     snapshot.resumableLearningSessionId &&
     snapshot.restoreTarget === "learning"
   ) {
-    return "圆圆已醒，上一轮学习可以继续";
+    return `${petDisplayName}已醒，上一轮学习可以继续`;
   }
   return null;
 }
@@ -354,6 +361,8 @@ export function PetWindow() {
   const [lookFrame, setLookFrame] = useState<number | null>(null);
   const [activeIntent, setActiveIntent] = useState<PetIntent | null>(null);
   const [alertActionPending, setAlertActionPending] = useState(false);
+  const [alertActionAccessibleStatus, setAlertActionAccessibleStatus] =
+    useState<string | null>(null);
   const [alertSnoozeMinutes, setAlertSnoozeMinutes] = useState(10);
   const [focusState, setFocusState] = useState<FocusState>({ session: null });
   const [companionExpression, setCompanionExpression] =
@@ -374,6 +383,7 @@ export function PetWindow() {
   const currentAnimation = useRef<AnimationName>("idle");
   const cursorFollowEnabled = useRef(true);
   const bellyHoldTimer = useRef<number | null>(null);
+  const alertActionStatusTimer = useRef<number | null>(null);
   const activeIntentRef = useRef<PetIntent | null>(null);
   const basicSupportRef = useRef<BasicSupportSession | null>(null);
   const focusStateRef = useRef<FocusState>({ session: null });
@@ -393,6 +403,26 @@ export function PetWindow() {
       bellyHoldTimer.current = null;
     }
   }, []);
+
+  const announceAlertAction = useCallback((action: AlertAction) => {
+    if (alertActionStatusTimer.current !== null) {
+      window.clearTimeout(alertActionStatusTimer.current);
+    }
+    setAlertActionAccessibleStatus(alertActionAccessibleLabel(action));
+    alertActionStatusTimer.current = window.setTimeout(() => {
+      alertActionStatusTimer.current = null;
+      setAlertActionAccessibleStatus(null);
+    }, 30_000);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (alertActionStatusTimer.current !== null) {
+        window.clearTimeout(alertActionStatusTimer.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     currentAnimation.current = animation;
@@ -589,6 +619,7 @@ export function PetWindow() {
     });
     toolInteractionRef.current = next;
     setToolInteraction(next);
+    setLookFrame(null);
   }, []);
 
   const restoreFunctionalAnimation = useCallback(() => {
@@ -797,6 +828,7 @@ export function PetWindow() {
 
   useEffect(() => {
     if (!learningBuildEnabled) return;
+    let active = true;
     const cleanups: Array<() => void> = [];
     void import("../learning/backend").then(
       async ({ getLearningHome, getPendingLearningInvitation }) => {
@@ -804,6 +836,7 @@ export function PetWindow() {
           getPendingLearningInvitation().catch(() => null),
           getLearningHome().catch(() => null),
         ]);
+        if (!active) return;
         setLearningInvitation(invitation);
         if (home?.activeSession?.status === "active") {
           activateDesktopLearning(home.activeSession);
@@ -813,24 +846,36 @@ export function PetWindow() {
     void Promise.all([
       onBackendEvent<LearningInvitationDto>(
         "learning-invitation-presented",
-        setLearningInvitation,
+        (invitation) => {
+          if (active) setLearningInvitation(invitation);
+        },
       ),
       onBackendEvent<{ invitationId: string }>(
         "learning-invitation-withdrawn",
-        ({ invitationId }) =>
+        ({ invitationId }) => {
+          if (!active) return;
           setLearningInvitation((current) =>
             current?.invitationId === invitationId ? null : current,
-          ),
+          );
+        },
       ),
       onBackendEvent<LearningSessionSnapshot>(
         "learning-session-updated",
-        activateDesktopLearning,
+        (session) => {
+          if (active) activateDesktopLearning(session);
+        },
       ),
       onBackendEvent("learning-session-interrupted", () => {
-        setDesktopLearningSession(null);
+        if (active) setDesktopLearningSession(null);
       }),
-    ]).then((unlisten) => cleanups.push(...unlisten));
-    return () => cleanups.forEach((cleanup) => cleanup());
+    ]).then((unlisten) => {
+      if (active) cleanups.push(...unlisten);
+      else unlisten.forEach((cleanup) => cleanup());
+    });
+    return () => {
+      active = false;
+      cleanups.forEach((cleanup) => cleanup());
+    };
   }, [activateDesktopLearning]);
 
   const openLearningInvitation = useCallback(async () => {
@@ -1080,7 +1125,7 @@ export function PetWindow() {
                 : kind === "treat"
                   ? 30
                   : 48,
-            frame: kind === "treat" ? 6 : kind === "wand" ? 1 : 0,
+            frame: kind === "treat" ? 6 : 0,
             mirrored: false,
             offsetX: kind === "pet" || kind === "ball" ? 0 : 8,
             engaged: kind !== "pet" && kind !== "wand" && kind !== "ball",
@@ -1165,20 +1210,6 @@ export function PetWindow() {
     restoreFunctionalAnimation,
     toolInteraction?.id,
   ]);
-
-  useEffect(() => {
-    if (toolInteraction?.kind !== "wand" || !toolInteraction.engaged) return;
-    const timer = window.setInterval(() => {
-      const current = toolInteractionRef.current;
-      if (!current || current.kind !== "wand" || !current.engaged) return;
-      const phase = (current.phase + 1) % wandPhaseAnimations.length;
-      const next: ActiveToolInteraction = { ...current, phase };
-      toolInteractionRef.current = next;
-      setToolInteraction(next);
-      setAnimation(wandPhaseAnimations[phase]);
-    }, 130);
-    return () => window.clearInterval(timer);
-  }, [toolInteraction?.engaged, toolInteraction?.id, toolInteraction?.kind]);
 
   useEffect(() => {
     if (
@@ -1556,16 +1587,17 @@ export function PetWindow() {
       const y = Math.max(12, Math.min(bounds.height - 12, clientY - bounds.top));
       const distance = Math.hypot(x - current.frameX, y - current.frameY);
       if (distance < 2 && current.kind !== "treat") return;
-      const advancePetting =
-        current.kind !== "pet" ||
-        shouldAdvancePettingFrame(
-          distance,
-          Math.max(0, eventTime - current.lastFrameAt),
-        );
+      const elapsedMs = Math.max(0, eventTime - current.lastFrameAt);
+      const advanceFrame =
+        current.kind === "pet"
+          ? shouldAdvancePettingFrame(distance, elapsedMs)
+          : current.kind === "wand"
+            ? shouldAdvanceWandFrame(distance, elapsedMs)
+            : true;
       const mirrored =
+        current.kind === "pet" ||
+        current.kind === "treat" ||
         current.kind === "wand"
-          ? false
-          : current.kind === "pet" || current.kind === "treat"
           ? shouldMirrorTowardPointerWithHysteresis(
               x,
               bounds.width,
@@ -1586,22 +1618,18 @@ export function PetWindow() {
           current.kind === "treat"
             ? treatFrameFromPointerHeight(y, bounds.height)
             : current.kind === "wand"
-              ? wandDirectionFrame(
-                  x,
-                  y,
-                  bounds.width,
-                  bounds.height,
-                  current.frame,
-                )
-            : advancePetting
+              ? advanceFrame
+                ? advanceInteractionFrame(current.frame, distance)
+                : current.frame
+            : advanceFrame
               ? advanceInteractionFrame(current.frame, distance)
               : current.frame,
         mirrored,
         offsetX,
-        frameX: advancePetting ? x : current.frameX,
-        frameY: advancePetting ? y : current.frameY,
+        frameX: advanceFrame ? x : current.frameX,
+        frameY: advanceFrame ? y : current.frameY,
         lastFrameAt:
-          current.kind === "pet" && advancePetting
+          (current.kind === "pet" || current.kind === "wand") && advanceFrame
             ? eventTime
             : current.lastFrameAt,
       };
@@ -1657,7 +1685,7 @@ export function PetWindow() {
     toolInteractionRef.current = next;
     setToolInteraction(next);
     setLookFrame(null);
-    setAnimation(engaged ? "wand-reach" : "idle");
+    setAnimation(engaged ? "wand-play" : "idle");
   }, []);
 
   const startBallCharge = useCallback(() => {
@@ -1775,9 +1803,7 @@ export function PetWindow() {
     void showTaskPanel(route);
   };
 
-  const handleAlertAction = async (
-    action: "complete" | "snooze" | "skip",
-  ) => {
+  const handleAlertAction = async (action: AlertAction) => {
     const intent = activeIntentRef.current;
     if (!intent?.occurrenceId || alertActionPending) return;
     setAlertActionPending(true);
@@ -1789,6 +1815,7 @@ export function PetWindow() {
       } else {
         await skipOccurrence(intent.occurrenceId);
       }
+      announceAlertAction(action);
       if (!tauriAvailable()) {
         updateActiveIntent(null);
         const today = await listToday();
@@ -1814,7 +1841,7 @@ export function PetWindow() {
     ? intentTextSurface(activeIntent)
     : "none";
   const motionAccessibleLabel =
-    petActivity?.activity === "reminding" && activeIntent
+    activeIntent
     ? motionOnlyAccessibleLabel(activeIntent)
     : null;
   const informationCard = sleepPresentationActive
@@ -1855,9 +1882,9 @@ export function PetWindow() {
               toolInteraction.kind === "treat"
                 ? "猫条时间"
                 : toolInteraction.kind === "wand"
-                  ? "逗圆圆玩"
+                  ? petText("逗圆圆玩")
                   : toolInteraction.kind === "pet"
-                    ? "摸摸圆圆"
+                    ? petText("摸摸圆圆")
                     : "扔球游戏",
             message:
               toolInteraction.kind === "treat"
@@ -1865,7 +1892,7 @@ export function PetWindow() {
                 : toolInteraction.kind === "wand"
                   ? "按住逗猫棒移动"
                   : toolInteraction.kind === "pet"
-                    ? "把鼠标放在圆圆头上轻轻移动"
+                    ? petText("把鼠标放在圆圆头上轻轻移动")
                     : ballPhaseMessage(toolInteraction.ballPhase),
             route: "care" as const,
           }
@@ -1914,7 +1941,8 @@ export function PetWindow() {
       window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
   return (
-    <main className="pet-window" aria-label="圆圆桌面宠物">
+    <main className="pet-window" aria-label={`${petDisplayName}桌面宠物`}>
+      <span className="sr-only">{petIdentityDescription}</span>
       <div
         className={`pet-hit-region ${
           toolInteraction?.kind === "pet" ? "petting-active" : ""
@@ -1945,7 +1973,7 @@ export function PetWindow() {
                   role="status"
                   onPointerDown={(event) => event.stopPropagation()}
                 >
-                  圆圆正在拉出小黑板…
+                  {petDisplayName}正在拉出小黑板…
                 </div>
               }
             >
@@ -1996,6 +2024,7 @@ export function PetWindow() {
                 <label className="pet-alert-snooze">
                   <span className="sr-only">稍后提醒时长</span>
                   <select
+                    aria-label="稍后提醒时长，可选 5、10、30、60 分钟"
                     value={alertSnoozeMinutes}
                     disabled={alertActionPending}
                     onChange={(event) => setAlertSnoozeMinutes(Number(event.target.value))}
@@ -2051,8 +2080,25 @@ export function PetWindow() {
           </button>
         ) : null}
         {motionAccessibleLabel && (
-          <span className="sr-only" role="status" aria-live="polite">
+          <span
+            className="sr-only"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            aria-label={motionAccessibleLabel}
+          >
             {motionAccessibleLabel}
+          </span>
+        )}
+        {alertActionAccessibleStatus && (
+          <span
+            className="sr-only"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            aria-label={alertActionAccessibleStatus}
+          >
+            {alertActionAccessibleStatus}
           </span>
         )}
         {petSleepAccessibleStatus(petActivity) && (
@@ -2131,7 +2177,7 @@ export function PetWindow() {
                 toolInteraction.engaged ? "is-engaged" : ""
               }`}
               type="button"
-              aria-label="轻轻摸摸圆圆的头"
+              aria-label={`轻轻摸摸${petDisplayName}的头`}
               onPointerEnter={updatePettingFromPointer}
               onPointerMove={updatePettingFromPointer}
               onPointerDown={updatePettingFromPointer}
@@ -2206,7 +2252,7 @@ export function PetWindow() {
         <button
           className={`resize-handle ${strongAlertActive || desktopLearningActive || toolInteraction ? "is-hidden" : ""}`}
           type="button"
-          aria-label="调整圆圆大小"
+          aria-label={`调整${petDisplayName}大小`}
           onPointerDown={onResizePointerDown}
         />
       </div>

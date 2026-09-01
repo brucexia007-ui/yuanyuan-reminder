@@ -41,6 +41,12 @@ fn parse_ids(value: &str) -> Result<Vec<String>, String> {
     Ok(values)
 }
 
+fn parse_id(value: &str) -> Result<String, String> {
+    uuid::Uuid::parse_str(value)
+        .map(|_| value.to_owned())
+        .map_err(|_| "--reminder-id must be a UUID".into())
+}
+
 fn run(arguments: &[String]) -> Result<String, String> {
     let mode = arguments
         .first()
@@ -57,6 +63,24 @@ fn run(arguments: &[String]) -> Result<String, String> {
                     .map_err(|error| error.to_string())?,
             )
         }
+        "add-overdue-notify" => {
+            let minutes = value(arguments, "--overdue-minutes")?
+                .parse::<u64>()
+                .map_err(|_| "--overdue-minutes must be an integer".to_string())?;
+            serde_json::to_value(
+                yuanyuan_reminder_lib::installed_candidate_qa::add_overdue_notify(&root, minutes)
+                    .map_err(|error| error.to_string())?,
+            )
+        }
+        "add-missed" => {
+            let minutes = value(arguments, "--overdue-minutes")?
+                .parse::<u64>()
+                .map_err(|_| "--overdue-minutes must be an integer".to_string())?;
+            serde_json::to_value(
+                yuanyuan_reminder_lib::installed_candidate_qa::add_missed(&root, minutes)
+                    .map_err(|error| error.to_string())?,
+            )
+        }
         "mutate" => serde_json::to_value(
             yuanyuan_reminder_lib::installed_candidate_qa::add_mutation(&root)
                 .map_err(|error| error.to_string())?,
@@ -68,7 +92,18 @@ fn run(arguments: &[String]) -> Result<String, String> {
                     .map_err(|error| error.to_string())?,
             )
         }
-        _ => return Err("mode must be seed, mutate, or inspect".into()),
+        "inspect-automatic-backup" => {
+            let id = parse_id(&value(arguments, "--reminder-id")?)?;
+            serde_json::to_value(
+                yuanyuan_reminder_lib::installed_candidate_qa::inspect_automatic_backup(&root, &id)
+                    .map_err(|error| error.to_string())?,
+            )
+        }
+        _ => {
+            return Err(
+                "mode must be seed, add-overdue-notify, add-missed, mutate, inspect, or inspect-automatic-backup".into(),
+            );
+        }
     }
     .map_err(|error| error.to_string())?;
     serde_json::to_string(&document).map_err(|error| error.to_string())
@@ -114,6 +149,24 @@ mod tests {
             "--data-root".into(),
             root,
             "--reminder-ids".into(),
+            "not-an-id".into(),
+            "--attest-windows-sandbox".into(),
+        ])
+        .unwrap_err()
+        .contains("UUID"));
+        assert!(run(&[
+            "inspect-automatic-backup".into(),
+            "--data-root".into(),
+            [
+                "C:",
+                "Users",
+                "WDAGUtilityAccount",
+                "AppData",
+                "Local",
+                "com.brucexia.jiaojiao.reminder",
+            ]
+            .join(r"\"),
+            "--reminder-id".into(),
             "not-an-id".into(),
             "--attest-windows-sandbox".into(),
         ])

@@ -4,6 +4,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
+. (Join-Path $PSScriptRoot "assert_runtime_qa_exclusive.ps1")
+Assert-YuanyuanRuntimeQaExclusive -Activity "Authentic v1.3.2 Windows Sandbox compatibility E2E"
 $systemModuleRoot = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\Modules"
 $env:PSModulePath = $systemModuleRoot
 [void](Get-Command Get-AuthenticodeSignature -ErrorAction Stop)
@@ -276,7 +278,7 @@ try {
     $fixturePath = Join-Path $outputRoot "authentic-v1.3.2.sqlite3"
     $captureReportPath = Join-Path $outputRoot "v132-capture-report.json"
     $provenancePath = Join-Path $outputRoot "v132-provenance-report.json"
-    $migrationReportPath = Join-Path $outputRoot "v153-migration-report.json"
+    $migrationReportPath = Join-Path $outputRoot "current-migration-report.json"
     $captureLogPath = Join-Path $outputRoot "v132-capture.log"
     & powershell.exe -NoProfile -ExecutionPolicy Bypass `
         -File "C:\YuanyuanRepo\scripts\capture_v132_runtime_database.ps1" `
@@ -330,7 +332,7 @@ try {
         --fixture $fixturePath `
         --report $migrationReportPath `
         --attest-source-release 1.3.2
-    if ($LASTEXITCODE -ne 0) { throw "v1.5.3 migration, backup or rollback QA failed" }
+    if ($LASTEXITCODE -ne 0) { throw "current migration, backup or rollback QA failed" }
     $migration = Get-Content -Raw -Encoding UTF8 -LiteralPath $migrationReportPath |
         ConvertFrom-Json
     $migrationChecks = @{}
@@ -357,7 +359,7 @@ try {
             -not $migrationChecks.ContainsKey($_) -or -not $migrationChecks[$_]
         }).Count -ne 0
     ) {
-        throw "v1.5.3 migration report is incomplete"
+        throw "current migration report is incomplete"
     }
     $status.migrationBackupRollbackPassed = $true
     $status.migrationReportSha256 = (
@@ -448,6 +450,7 @@ if (-not $status.ready) { exit 2 }
         throw "Windows Sandbox v1.3.2 probe failed: $($status.failure)"
     }
     Write-Output "Windows Sandbox authentic v1.3.2 compatibility probe passed: $statusPath"
+    Write-Output "YUANYUAN_V132_EVIDENCE_ROOT=$outputRoot"
 }
 finally {
     if ($null -ne $sandbox -and -not $sandbox.HasExited) {
