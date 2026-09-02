@@ -1,5 +1,26 @@
 # 个性化工作流
 
+## 粘贴一段提示词即可（推荐）
+
+新用户可以直接从 GitHub 项目主页复制根目录的 `AI_CUSTOMIZATION_PROMPT.md`，替换宠物名和性格，然后把整段提示词与照片一起发给具备本地文件和 Coding 能力的 Kimi Code、WorkBuddy 或 Codex。用户电脑不需要预先存在本项目，也不需要下载源码、运行命令、安装开发依赖、创建 JSON、填写 identifier，或判断品种、性别和风格。
+
+Coding 工具必须从 `https://github.com/brucexia007-ui/yuanyuan-reminder` 自行获取完整 Git 工作副本，再读取 `PET_CUSTOMIZATION_AGENT_PROMPT.zh-CN.md`、处理附件并完成后续步骤。
+
+## 智能体内部入口（普通用户不要运行）
+
+下面命令只供 Coding 工具和维护者调用：
+
+```powershell
+npm.cmd --silent run customize:auto -- `
+  --photos "C:\path\to\pet-photos" `
+  --name "糖糖" `
+  --personality "安静但好奇"
+```
+
+目录只读取第一层的 PNG、JPEG 和 WebP，合计 1–16 张；建议 3–8 张。照片若放在仓库内，必须位于被 Git 忽略的 `work/`。`--silent` 会阻止 npm 回显包含照片路径的执行行；脚本的正常输出也只包含照片计数。命令自动验证图片内容、创建私人请求快照、计算照片哈希、推导独立 Windows 应用标识，并生成品牌草稿、身份锁草稿和三种工具共用的接力合同。Coding 工具随后按照输出的 `resumeCommand` 自动完成素材生成、QA、Windows 验证和打包。维护者可用 `--dry-run` 只验证三个输入且不创建任务。
+
+通用智能体执行约束见 `PET_CUSTOMIZATION_AGENT_PROMPT.zh-CN.md`。用户不需要在后续步骤手工填写品种、性别或风格；智能体从照片推断，无法可靠判断时保持 `unknown / 由参考照片识别 / auto`。
+
 `pet-request.schema.json` 是统一请求合同；请求中没有普通版/学习版之分。应用始终包含学习能力，但安装包不携带私人知识内容。新请求可在 `pet` 中同时记录 `sex`、`breed` 和 `personality`，恢复流程会把这三项与品牌配置和身份锁交叉核对；旧版 v1 请求仍可读取，避免破坏已经开始的定制任务。
 
 启动一次可恢复任务：

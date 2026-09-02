@@ -69,6 +69,10 @@ test("checked-in request JSON Schema is parseable and mirrors the v1 contract", 
 
 test("request contract keeps learning local and targets implemented Windows x64", () => {
   assert.doesNotThrow(() => validateRequest(request()));
+  const threeInputRequest = request();
+  delete threeInputRequest.pet.sex;
+  delete threeInputRequest.pet.breed;
+  assert.doesNotThrow(() => validateRequest(threeInputRequest));
   const legacy = request();
   delete legacy.pet.sex;
   delete legacy.pet.breed;

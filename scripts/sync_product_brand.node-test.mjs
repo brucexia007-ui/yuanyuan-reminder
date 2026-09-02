@@ -152,7 +152,7 @@ test("runtime QA fixtures use the branded reminder and learning database filenam
   assert.doesNotMatch(runtimeQa, /yuanyuan-learning\.sqlite3/u);
 });
 
-test("public product documents describe the current 饺饺 1.5.7 identity and data boundary", async () => {
+test("public product documents describe the current 饺饺 1.5.10 identity and data boundary", async () => {
   const [readme, readmeEnglish, privacy, security, changelog, learningStatus] = await Promise.all([
     readFile(path.join(projectRoot, "README.md"), "utf8"),
     readFile(path.join(projectRoot, "README.en.md"), "utf8"),
@@ -170,7 +170,7 @@ test("public product documents describe the current 饺饺 1.5.7 identity and da
     assert.doesNotMatch(document, /圆圆/u, relativePath);
   }
   assert.match(readme, /<h1 align="center">饺饺提醒<\/h1>/u);
-  assert.match(readme, /Version 1\.5\.7/u);
+  assert.match(readme, /Version 1\.5\.10/u);
   assert.match(readme, /饺饺提醒_\*_x64-setup\.exe/u);
   assert.match(readme, /饺饺提醒_\*_windows-x64-portable\.exe/u);
   assert.match(readme, /%LOCALAPPDATA%\\com\.brucexia\.jiaojiao\.reminder\\/u);
@@ -180,11 +180,11 @@ test("public product documents describe the current 饺饺 1.5.7 identity and da
   assert.match(readmeEnglish, /^# 饺饺提醒 \(Jiaojiao Reminder\)$/mu);
   assert.match(readmeEnglish, /public\/assets\/pet\/fallback\.png/u);
   assert.doesNotMatch(readmeEnglish, /docs\/images\//u);
-  assert.match(privacy, /适用版本：饺饺提醒 1\.5\.7/u);
+  assert.match(privacy, /适用版本：饺饺提醒 1\.5\.10/u);
   assert.match(privacy, /通用学习包内容/u);
   assert.match(privacy, /答题进度/u);
   assert.match(security, /饺饺提醒是本地桌面工具/u);
-  assert.match(changelog, /^## 1\.5\.7 -/mu);
+  assert.match(changelog, /^## 1\.5\.10 -/mu);
   assert.match(changelog, /英短金点母猫“饺饺”/u);
   assert.match(changelog, /乖巧高冷/u);
   assert.match(learningStatus, /基线：饺饺提醒统一产品 v1\.5\.7/u);

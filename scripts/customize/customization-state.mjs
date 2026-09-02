@@ -61,8 +61,9 @@ export function validateRequest(request) {
     throw new Error("CUSTOMIZATION_REQUEST_INVALID: source identity is invalid");
   }
   const petKeys = Object.keys(request.pet ?? {}).sort().join(",");
+  const personalityOnlyIdentity = petKeys === "customize,displayName,personality,photoInputs,stylePreset";
   const extendedPetIdentity = petKeys === "breed,customize,displayName,personality,photoInputs,sex,stylePreset";
-  if (!["customize,displayName,photoInputs,stylePreset", "breed,customize,displayName,personality,photoInputs,sex,stylePreset"].includes(petKeys)
+  if (!["customize,displayName,photoInputs,stylePreset", "customize,displayName,personality,photoInputs,stylePreset", "breed,customize,displayName,personality,photoInputs,sex,stylePreset"].includes(petKeys)
       || typeof request.pet.customize !== "boolean"
       || (extendedPetIdentity && !["female", "male", "unknown"].includes(request.pet.sex))
       || !["auto", "soft-illustration", "pixel", "flat"].includes(request.pet.stylePreset)) {
@@ -94,6 +95,13 @@ export function validateRequest(request) {
       || typeof request.pet.personality !== "string" || request.pet.personality.trim().length === 0 || request.pet.personality.length > 120
   )) {
     throw new Error("CUSTOMIZATION_REQUEST_INVALID: pet breed and personality are required");
+  }
+  if (personalityOnlyIdentity && (
+    typeof request.pet.personality !== "string"
+    || request.pet.personality.trim().length === 0
+    || request.pet.personality.length > 120
+  )) {
+    throw new Error("CUSTOMIZATION_REQUEST_INVALID: pet personality is required");
   }
   for (const name of ["photoInputs", "sourceInputs"]) {
     const value = name === "photoInputs" ? request.pet[name] : request.learning[name];

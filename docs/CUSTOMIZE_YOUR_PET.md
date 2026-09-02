@@ -2,6 +2,14 @@
 
 本教程适用于 Codex、Kimi Code 和其他能够读写本地项目的 Coding 工具。最终 Windows 程序完全独立运行，不需要保留 Coding 工具。
 
+## 最简单的开始方式
+
+新用户无需先下载本项目。打开 GitHub 上的 [一段提示词制作自己的桌面宠物](https://github.com/brucexia007-ui/yuanyuan-reminder/blob/main/AI_CUSTOMIZATION_PROMPT.md)，只替换其中的宠物名和性格，再把整段提示词和 3–8 张照片一起发给具备本地文件和 Coding 能力的 Kimi Code、WorkBuddy 或 Codex。
+
+这就是普通用户需要完成的全部操作。不要自行下载或解压项目、运行命令、安装开发依赖、编辑 JSON 或填写 Windows identifier；Coding 工具会从官方 GitHub 仓库获取源码、准备环境、处理附件、从照片推断品种与性别、生成独立应用标识，并持续完成动作素材、质量检查和 Windows 打包。
+
+照片应只作为当前消息附件提供。Coding 工具如需整理附件，会将其放入被 Git 忽略的 `work/`，不会把原始照片、私人路径或家庭环境信息提交到 Git、公开目录、安装包或日志。后续章节是 Coding 工具必须自动执行的质量要求，普通用户无需手工操作。
+
 ## 准备照片
 
 建议提供 3–8 张清晰照片：

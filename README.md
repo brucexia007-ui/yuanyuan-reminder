@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img alt="Version 1.5.7" src="https://img.shields.io/badge/version-1.5.7-bb835c">
+  <img alt="Version 1.5.10" src="https://img.shields.io/badge/version-1.5.10-bb835c">
   <img alt="Windows 10/11 x64" src="https://img.shields.io/badge/Windows-10%20%2F%2011-5b8fb9">
   <img alt="Code license MIT" src="https://img.shields.io/badge/code-MIT-76a985">
   <img alt="Offline first" src="https://img.shields.io/badge/runtime-offline-8a78a8">
@@ -99,8 +99,10 @@
 这套工具不仅可以运行饺饺，也可以成为你自己的桌面宠物项目：
 
 1. 准备 3–8 张你有权使用的宠物照片，覆盖正脸、侧脸、全身和标志性花纹；
-2. 将仓库和照片交给 Codex、Kimi Code 或其他 Coding 工具，并附上 [AI 定制提示词](AI_CUSTOMIZATION_PROMPT.md)；
-3. 按照 [自定义宠物教程](docs/CUSTOMIZE_YOUR_PET.md) 生成、验证动作图集，然后重新构建 Windows 程序。
+2. 打开 [一段提示词制作自己的桌面宠物](AI_CUSTOMIZATION_PROMPT.md)，只替换宠物名和性格；
+3. 把整段提示词与照片一起发给具备本地文件和 Coding 能力的 Kimi Code、WorkBuddy 或 Codex。即使电脑上没有本项目，Coding 工具也会从官方 GitHub 仓库自行获取源码，并完成环境、命令、配置、素材、验证和 Windows 打包。
+
+普通用户不需要下载或解压项目、运行命令、安装开发依赖、编辑 JSON、填写 Windows identifier，也不需要自己判断宠物品种或性别。
 
 完整动作和文件格式见 [宠物包规范](docs/PET_PACK_SPEC.md)。生成过程中必须锁定毛色、脸型、眼睛、花纹和体态，不能用一张静态图代替连续动作帧。
 

@@ -4,8 +4,8 @@ This archive contains license, copyright, copying, and notice files from the loc
 third-party production dependency graph for the Windows x64 release. Development-only
 dependencies and first-party Yuanyuan workspace packages are excluded.
 
-package-lock.json SHA-256: 899B5DA4409C55DACD9F6378C462C6EE74C7823E273188CE786ADC52B307A86E
-src-tauri/Cargo.lock SHA-256: E14F29BA9F57D37506A15484B0D6071781C07AF8593DD41356D945FB1DA23DDA
+package-lock.json SHA-256: 7DA1B958E5FD9699A904901FC78D6F51153B4717A386ECFBFF632A799C4DB63D
+src-tauri/Cargo.lock SHA-256: 4F2C1C8F2B1C73838C687CA10CE98E9282D49158B9C5AA97F9901D05A27DB2A5
 License policy SHA-256: 50C6F62276D40756AC9DDD9E9FEBA8C258B1DA256A1752798F0209E50E23E78C
 Third-party production components: 326
 
