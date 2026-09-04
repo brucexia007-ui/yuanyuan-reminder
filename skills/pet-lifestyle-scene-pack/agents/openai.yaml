@@ -1,0 +1,6 @@
+interface:
+  display_name: "宠物生活场景写真套装"
+  short_description: "根据猫狗照片、性格与自选场景生成身份统一的柔和生活写真"
+  default_prompt: "$pet-lifestyle-scene-pack Use my attached pet photos, name, sex, personality, and requested scenes to create an individualized pastel lifestyle portrait set."
+policy:
+  allow_implicit_invocation: true

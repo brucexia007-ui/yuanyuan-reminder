@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "packId": "pet-lifestyle-scene-pack",
+  "skillVersion": "1.1.0",
+  "description": "User-authorized Jiaojiao scene artworks for composition and style reference only.",
+  "license": "../REFERENCE_ASSETS_LICENSE.md",
+  "targetAspectRatio": "3:4",
+  "scenes": [
+    {"id": "01-music-phone", "file": "01-music-phone.png", "width": 1086, "height": 1448, "aspectRatio": 0.75, "sha256": "8aacd2fb0fa10c82108d829a396f15e2193a5905ecc1a34b534d150690289f96"},
+    {"id": "02-spa-mask", "file": "02-spa-mask.png", "width": 1086, "height": 1448, "aspectRatio": 0.75, "sha256": "ac6d7f938dce265bf20bb0390d8cd0982523ae60b008657a00421b01bba6b80f"},
+    {"id": "03-travel-suitcase", "file": "03-travel-suitcase.png", "width": 1086, "height": 1448, "aspectRatio": 0.75, "sha256": "7288cca4cfe9ae935b6ac9ca4c41b49cdc5e8ac3b241ee264b590f27f1300d0b"},
+    {"id": "04-badminton", "file": "04-badminton.png", "width": 1086, "height": 1448, "aspectRatio": 0.75, "sha256": "8bd2687c946403c563c040c66d3e67118e31d5af267a9cabb0470791cf34a79f"},
+    {"id": "05-swimming", "file": "05-swimming.png", "width": 1086, "height": 1448, "aspectRatio": 0.75, "sha256": "20a1d24095fbbe483f8ebaac536ac784b49630b32e359c2d12dee467adec6149"},
+    {"id": "06-hydration", "file": "06-hydration.png", "width": 1086, "height": 1448, "aspectRatio": 0.75, "sha256": "18efa9db75b7b5db9995f2aa9f5babae36004b408b1c4dc5945f6ce15ce39682"},
+    {"id": "07-online-duty", "file": "07-online-duty.png", "width": 1086, "height": 1448, "aspectRatio": 0.75, "sha256": "d37aae829555606287dd896120f973e1772b1eea245acc9fbc61b3e6cc5916d0"},
+    {"id": "08-sleep", "file": "08-sleep.png", "width": 1086, "height": 1448, "aspectRatio": 0.75, "sha256": "ce463b55028e735a51169ac606009a50bd4603d8767ce1e7557630dec51f401c"},
+    {"id": "09-study", "file": "09-study.png", "width": 1086, "height": 1448, "aspectRatio": 0.75, "sha256": "b36668141373c912701e9b66c49a0b52bc7e956318a90eb2970d38022d261b1e"},
+    {"id": "10-exercise", "file": "10-exercise.png", "width": 1086, "height": 1448, "aspectRatio": 0.75, "sha256": "dd980a2f95546f83166a69d12dc89d2f8789fdca09d72e1765f83befd968c49f"},
+    {"id": "11-weekend-off-duty", "file": "11-weekend-off-duty.png", "width": 1089, "height": 1444, "aspectRatio": 0.754155, "sha256": "b776eeec9fedaa1f9e0446c62c687455d06b3033fb977d80e55b7fce1ed00491"},
+    {"id": "12-work-fatigued", "file": "12-work-fatigued.png", "width": 774, "height": 1024, "aspectRatio": 0.755859, "sha256": "7ce63a86e690f5adba2fcdf77c73490147ce403890090233626f6b72339032a3"},
+    {"id": "13-work-focused", "file": "13-work-focused.png", "width": 774, "height": 1024, "aspectRatio": 0.755859, "sha256": "a8dd998e371783a4876e068c719a9bb469de4639db2fe9a92d6450e12ae7c8b4"}
+  ]
+}
