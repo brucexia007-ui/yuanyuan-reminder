@@ -6,6 +6,8 @@ An offline Windows desktop pet that helps with hydration, tasks, focus sessions,
 
 ![Yuanyuan showing a prominent reminder](docs/images/yuanyuan-alert.jpg)
 
+The local 1.5.28 candidate integrates generic learning packs and keeps one Yuanyuan application with independent pet packages. Switching pets preserves shared learning data and settings. Native playback, Windows scaling, and installer upgrade/rollback acceptance are still pending; see [candidate acceptance](docs/unified/UNIFIED_1_5_28_CANDIDATE.md).
+
 ## What Yuanyuan does
 
 - Shows prominent task, water, and movement reminders without covering her face.

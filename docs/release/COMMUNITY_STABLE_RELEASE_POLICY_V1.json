@@ -25,7 +25,8 @@
     "npm.cmd run product:version:check",
     "npm.cmd run verify",
     "cargo test --manifest-path src-tauri/Cargo.toml --locked",
-    "npm.cmd run tauri build"
+    "npm.cmd run tauri build",
+    "npm.cmd run release:community:artifact-binding"
   ],
   "blockingQualityGates": [
     "clean-main-tag",

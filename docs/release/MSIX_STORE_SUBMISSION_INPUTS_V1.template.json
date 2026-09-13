@@ -11,7 +11,7 @@
   },
   "listing": {
     "shortDescription": "一只完全本地运行的 Windows 桌面小猫，陪你喝水、专注、休息和安排提醒。",
-    "description": "圆圆提醒是一款完全本地运行的 Windows 桌面宠物与提醒工具。小猫会留在桌面陪伴你，在合适的时间提醒喝水、处理待办、专注工作和离屏休息。\n\n你可以创建一次性、间隔、每日和每周提醒，完成、稍后或跳过事项；也可以查看今天的喝水进度与历史记录。专注期间圆圆保持安静，离屏休息可由你主动请求 Windows 锁屏。\n\n应用支持托盘、自启动、Windows 通知、本地 SQLite 数据库、每日自动备份和手动恢复。日常使用不需要账户、云服务、遥测、广告或远程 AI，提醒和记录保存在当前 Windows 用户的本地目录。",
+    "description": "圆圆提醒是一款完全本地运行的 Windows 桌面宠物与提醒工具。小猫会留在桌面陪伴你，在合适的时间提醒喝水、处理待办、专注工作和离屏休息。\n\n你可以创建一次性、间隔、每日和每周提醒，完成、稍后或跳过事项；也可以查看今天的喝水进度与历史记录。专注期间饺饺保持安静，离屏休息可由你主动请求 Windows 锁屏。\n\n应用支持托盘、自启动、Windows 通知、本地 SQLite 数据库、每日自动备份和手动恢复。日常使用不需要账户、云服务、遥测、广告或远程 AI，提醒和记录保存在当前 Windows 用户的本地目录。",
     "whatsNew": null,
     "features": [
       "一次性、间隔、每日和每周提醒",
@@ -29,15 +29,15 @@
       "休息",
       "离线"
     ],
-    "copyright": "© 2026 Yuanyuan Reminder contributors。圆圆素材权利保留，详见素材许可。",
-    "appLicenseTerms": "程序代码采用 MIT License；圆圆照片、图集、图标和演示图片适用单独的圆圆素材许可，仅允许官方免费分发和个人非商业使用。",
+    "copyright": "© 2026 圆圆提醒 contributors。饺饺素材权利保留，详见素材许可。",
+    "appLicenseTerms": "程序代码采用 MIT License；饺饺照片、图集、图标和演示图片适用单独的饺饺素材许可，仅允许官方免费分发和个人非商业使用。",
     "screenshots": [
       {
         "path": "docs/release/store-assets/01-today.png",
         "sha256": null,
         "width": null,
         "height": null,
-        "caption": "今日喝水进度、待办事项与桌面上的圆圆",
+        "caption": "今日喝水进度、待办事项与桌面上的饺饺",
         "capturedFromCandidateSha256": null
       },
       {
@@ -104,7 +104,7 @@
     "restrictedCapabilities": [
       {
         "name": "runFullTrust",
-        "justification": "Yuanyuan Reminder is a packaged classic Win32/Tauri desktop application that runs at medium integrity. runFullTrust is required to launch the classic executable and provide the system tray, local SQLite data and backups, startup registration, Windows notifications, and the user-initiated LockWorkStation break flow. The app does not request elevation, install a service or driver, bypass Windows authentication, or use this capability for remote access."
+        "justification": "圆圆提醒 is a packaged classic Win32/Tauri desktop application that runs at medium integrity. runFullTrust is required to launch the classic executable and provide the system tray, local SQLite data and backups, startup registration, Windows notifications, and the user-initiated LockWorkStation break flow. The app does not request elevation, install a service or driver, bypass Windows authentication, or use this capability for remote access."
       }
     ],
     "confirmedBy": null,
