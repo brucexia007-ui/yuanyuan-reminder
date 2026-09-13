@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yuanyuan.local/schemas/learning-pack-v1.json",
+  "title": "Yuanyuan local learning pack v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "packId", "version", "title", "description", "rights", "sources", "contentSha256", "cards"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "packId": { "$ref": "#/$defs/id" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "title": { "$ref": "#/$defs/title" },
+    "description": { "type": "string", "maxLength": 1000 },
+    "rights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basis", "statement", "redistributable"],
+      "properties": {
+        "basis": { "type": "string", "enum": ["self_authored", "public_domain", "open_license", "authorized", "personal_use_only", "unknown"] },
+        "statement": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "redistributable": { "type": "boolean" }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sourceRef", "label"],
+        "properties": {
+          "sourceRef": { "$ref": "#/$defs/id" },
+          "label": { "$ref": "#/$defs/title" },
+          "url": { "type": "string", "format": "uri", "maxLength": 2048 },
+          "license": { "type": "string", "maxLength": 256 }
+        }
+      }
+    },
+    "contentSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "cards": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20000,
+      "items": { "$ref": "#/$defs/card" }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9._:-]{1,128}$" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "card": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cardId", "exerciseKind", "prompt", "answer", "sourceRefs", "scheduleEpoch"],
+      "properties": {
+        "cardId": { "$ref": "#/$defs/id" },
+        "exerciseKind": { "type": "string", "enum": ["recall", "choice"] },
+        "prompt": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "answer": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "choices": { "type": "array", "minItems": 2, "maxItems": 4, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 1000 } },
+        "explanation": { "type": "string", "maxLength": 8000 },
+        "tags": { "type": "array", "maxItems": 32, "uniqueItems": true, "items": { "type": "string", "minLength": 1, "maxLength": 64 } },
+        "sourceRefs": { "type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+        "scheduleEpoch": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
+        "extensions": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[A-Za-z][A-Za-z0-9.-]{0,63}$" },
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["version", "payload"],
+            "properties": {
+              "version": { "type": "integer", "minimum": 1, "maximum": 4294967295 },
+              "payload": {
+                "description": "JSON payload; numeric values must be safe integers in [-9007199254740991, 9007199254740991] and negative zero is forbidden."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

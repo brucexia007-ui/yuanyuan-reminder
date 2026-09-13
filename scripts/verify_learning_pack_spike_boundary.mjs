@@ -110,11 +110,11 @@ if (findings.length > 0) {
   process.exitCode = 1;
 } else {
   console.log(
-    `Pre-GEN parser isolation passed: excluded from ${metadata.workspace_default_members.length} default workspace members; no application, Tauri, SQLite, network, process-spawn, or publish capability.`,
+    `Learning pack parser boundary passed: linked only through the reviewed learning adapter; parser crate has no Tauri, SQLite, network, process-spawn, or publish capability.`,
   );
   if (artifacts.directory) {
     console.log(
-      `Pre-GEN parser artifact isolation passed: ${artifacts.files.length} files (${artifacts.directory}).`,
+      `Learning pack parser artifact boundary passed: ${artifacts.files.length} files (${artifacts.directory}).`,
     );
   }
 }

@@ -115,6 +115,8 @@ pub struct LearningPackSummary {
     pub title: String,
     pub exam_scope: String,
     pub status: String,
+    pub rights_basis: String,
+    pub redistributable: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -168,6 +170,16 @@ struct NativePack {
     status: String,
     manifest_sha256: String,
     created_at_unix_ms: i64,
+    #[serde(default)]
+    description: String,
+    #[serde(default = "default_rights_basis")]
+    rights_basis: String,
+    #[serde(default = "default_rights_statement")]
+    rights_statement: String,
+    #[serde(default)]
+    redistributable: bool,
+    #[serde(default)]
+    content_sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -186,6 +198,74 @@ struct NativeCard {
     source_ids: Vec<String>,
     content_sha256: String,
     created_at_unix_ms: i64,
+    #[serde(default)]
+    external_card_id: Option<String>,
+    #[serde(default = "default_exercise_kind")]
+    exercise_kind: String,
+    #[serde(default)]
+    prompt_text: Option<String>,
+    #[serde(default)]
+    answer_text: Option<String>,
+    #[serde(default)]
+    choices: Vec<String>,
+    #[serde(default)]
+    explanation_text: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(default)]
+    source_refs: Vec<String>,
+    #[serde(default = "default_extensions")]
+    extensions: serde_json::Value,
+    #[serde(default)]
+    prompt_sha256: Option<String>,
+    #[serde(default)]
+    answer_sha256: Option<String>,
+    #[serde(default = "default_schedule_epoch")]
+    schedule_epoch: u32,
+}
+
+struct RawNativeCard {
+    card_id: String,
+    pack_id: String,
+    headword: String,
+    normalized_headword: String,
+    phonetic: Option<String>,
+    part_of_speech_json: String,
+    meanings_zh_json: String,
+    word_family_json: String,
+    frequency_band: String,
+    sense_basis_json: String,
+    source_ids_json: String,
+    content_sha256: String,
+    created_at_unix_ms: i64,
+    external_card_id: Option<String>,
+    exercise_kind: String,
+    prompt_text: Option<String>,
+    answer_text: Option<String>,
+    choices_json: String,
+    explanation_text: Option<String>,
+    tags_json: String,
+    source_refs_json: String,
+    extensions_json: String,
+    prompt_sha256: Option<String>,
+    answer_sha256: Option<String>,
+    schedule_epoch: u32,
+}
+
+fn default_rights_basis() -> String {
+    "authorized".into()
+}
+fn default_rights_statement() -> String {
+    "Legacy local learning content".into()
+}
+fn default_exercise_kind() -> String {
+    "choice".into()
+}
+fn default_extensions() -> serde_json::Value {
+    serde_json::json!({})
+}
+fn default_schedule_epoch() -> u32 {
+    1
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -393,7 +473,7 @@ impl LearningRepository {
         let packs = self
             .conn
             .prepare(
-                "SELECT pack_id, title, exam_scope, status
+                "SELECT pack_id, title, exam_scope, status, rights_basis, redistributable
                  FROM content_packs ORDER BY created_at_unix_ms, pack_id",
             )?
             .query_map([], |row| {
@@ -402,6 +482,8 @@ impl LearningRepository {
                     title: row.get(1)?,
                     exam_scope: row.get(2)?,
                     status: row.get(3)?,
+                    rights_basis: row.get(4)?,
+                    redistributable: row.get(5)?,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -582,7 +664,9 @@ fn read_native_export(conn: &Connection, now_unix_ms: i64) -> AppResult<NativeLe
     let packs = conn
         .prepare(
             "SELECT pack_id, stable_namespace, version, title, exam_scope, status,
-                manifest_sha256, created_at_unix_ms FROM content_packs ORDER BY pack_id",
+                manifest_sha256, created_at_unix_ms, description, rights_basis,
+                rights_statement, redistributable, content_sha256
+             FROM content_packs ORDER BY pack_id",
         )?
         .query_map([], |row| {
             Ok(NativePack {
@@ -594,6 +678,11 @@ fn read_native_export(conn: &Connection, now_unix_ms: i64) -> AppResult<NativeLe
                 status: row.get(5)?,
                 manifest_sha256: row.get(6)?,
                 created_at_unix_ms: row.get(7)?,
+                description: row.get(8)?,
+                rights_basis: row.get(9)?,
+                rights_statement: row.get(10)?,
+                redistributable: row.get(11)?,
+                content_sha256: row.get(12)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -601,7 +690,10 @@ fn read_native_export(conn: &Connection, now_unix_ms: i64) -> AppResult<NativeLe
         .prepare(
             "SELECT card_id, pack_id, headword, normalized_headword, phonetic,
                 part_of_speech_json, meanings_zh_json, word_family_json, frequency_band,
-                sense_basis_json, source_ids_json, content_sha256, created_at_unix_ms
+                sense_basis_json, source_ids_json, content_sha256, created_at_unix_ms,
+                external_card_id, exercise_kind, prompt_text, answer_text, choices_json,
+                explanation_text, tags_json, source_refs_json, extensions_json,
+                prompt_sha256, answer_sha256, schedule_epoch
              FROM learning_cards ORDER BY card_id",
         )?
         .query_map([], |row| {
@@ -610,38 +702,62 @@ fn read_native_export(conn: &Connection, now_unix_ms: i64) -> AppResult<NativeLe
             let word_family_json: String = row.get(7)?;
             let sense_basis_json: String = row.get(9)?;
             let source_ids_json: String = row.get(10)?;
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, Option<String>>(4)?,
+            Ok(RawNativeCard {
+                card_id: row.get(0)?,
+                pack_id: row.get(1)?,
+                headword: row.get(2)?,
+                normalized_headword: row.get(3)?,
+                phonetic: row.get(4)?,
                 part_of_speech_json,
                 meanings_zh_json,
                 word_family_json,
-                row.get::<_, String>(8)?,
+                frequency_band: row.get(8)?,
                 sense_basis_json,
                 source_ids_json,
-                row.get::<_, String>(11)?,
-                row.get::<_, i64>(12)?,
-            ))
+                content_sha256: row.get(11)?,
+                created_at_unix_ms: row.get(12)?,
+                external_card_id: row.get(13)?,
+                exercise_kind: row.get(14)?,
+                prompt_text: row.get(15)?,
+                answer_text: row.get(16)?,
+                choices_json: row.get(17)?,
+                explanation_text: row.get(18)?,
+                tags_json: row.get(19)?,
+                source_refs_json: row.get(20)?,
+                extensions_json: row.get(21)?,
+                prompt_sha256: row.get(22)?,
+                answer_sha256: row.get(23)?,
+                schedule_epoch: row.get(24)?,
+            })
         })?
         .map(|raw| {
             let raw = raw?;
             Ok(NativeCard {
-                card_id: raw.0,
-                pack_id: raw.1,
-                headword: raw.2,
-                normalized_headword: raw.3,
-                phonetic: raw.4,
-                part_of_speech: serde_json::from_str(&raw.5)?,
-                meanings_zh: serde_json::from_str(&raw.6)?,
-                word_family: serde_json::from_str(&raw.7)?,
-                frequency_band: raw.8,
-                sense_basis: serde_json::from_str(&raw.9)?,
-                source_ids: serde_json::from_str(&raw.10)?,
-                content_sha256: raw.11,
-                created_at_unix_ms: raw.12,
+                card_id: raw.card_id,
+                pack_id: raw.pack_id,
+                headword: raw.headword,
+                normalized_headword: raw.normalized_headword,
+                phonetic: raw.phonetic,
+                part_of_speech: serde_json::from_str(&raw.part_of_speech_json)?,
+                meanings_zh: serde_json::from_str(&raw.meanings_zh_json)?,
+                word_family: serde_json::from_str(&raw.word_family_json)?,
+                frequency_band: raw.frequency_band,
+                sense_basis: serde_json::from_str(&raw.sense_basis_json)?,
+                source_ids: serde_json::from_str(&raw.source_ids_json)?,
+                content_sha256: raw.content_sha256,
+                created_at_unix_ms: raw.created_at_unix_ms,
+                external_card_id: raw.external_card_id,
+                exercise_kind: raw.exercise_kind,
+                prompt_text: raw.prompt_text,
+                answer_text: raw.answer_text,
+                choices: serde_json::from_str(&raw.choices_json)?,
+                explanation_text: raw.explanation_text,
+                tags: serde_json::from_str(&raw.tags_json)?,
+                source_refs: serde_json::from_str(&raw.source_refs_json)?,
+                extensions: serde_json::from_str(&raw.extensions_json)?,
+                prompt_sha256: raw.prompt_sha256,
+                answer_sha256: raw.answer_sha256,
+                schedule_epoch: raw.schedule_epoch,
             })
         })
         .collect::<AppResult<Vec<_>>>()?;
@@ -1302,8 +1418,9 @@ where
         super::super::import::ensure_import_not_cancelled(is_cancelled)?;
         conn.execute(
             "INSERT INTO content_packs(pack_id, stable_namespace, version, title, exam_scope,
-                status, manifest_sha256, created_at_unix_ms)
-             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                status, manifest_sha256, created_at_unix_ms, description, rights_basis,
+                rights_statement, redistributable, content_sha256)
+             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 item.pack_id,
                 item.stable_namespace,
@@ -1312,7 +1429,12 @@ where
                 item.exam_scope,
                 item.status,
                 item.manifest_sha256,
-                item.created_at_unix_ms
+                item.created_at_unix_ms,
+                item.description,
+                item.rights_basis,
+                item.rights_statement,
+                item.redistributable,
+                item.content_sha256,
             ],
         )?;
     }
@@ -1322,8 +1444,11 @@ where
             "INSERT INTO learning_cards(card_id, pack_id, headword, normalized_headword,
                 phonetic, part_of_speech_json, meanings_zh_json, word_family_json,
                 frequency_band, sense_basis_json, source_ids_json, content_sha256,
-                created_at_unix_ms)
-             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                created_at_unix_ms, external_card_id, exercise_kind, prompt_text,
+                answer_text, choices_json, explanation_text, tags_json, source_refs_json,
+                extensions_json, prompt_sha256, answer_sha256, schedule_epoch)
+             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
+                ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
             params![
                 item.card_id,
                 item.pack_id,
@@ -1337,7 +1462,19 @@ where
                 serde_json::to_string(&item.sense_basis)?,
                 serde_json::to_string(&item.source_ids)?,
                 item.content_sha256,
-                item.created_at_unix_ms
+                item.created_at_unix_ms,
+                item.external_card_id,
+                item.exercise_kind,
+                item.prompt_text,
+                item.answer_text,
+                serde_json::to_string(&item.choices)?,
+                item.explanation_text,
+                serde_json::to_string(&item.tags)?,
+                serde_json::to_string(&item.source_refs)?,
+                serde_json::to_string(&item.extensions)?,
+                item.prompt_sha256,
+                item.answer_sha256,
+                item.schedule_epoch,
             ],
         )?;
     }

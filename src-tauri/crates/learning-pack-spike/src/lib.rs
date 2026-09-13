@@ -12,7 +12,7 @@ use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use unicode_normalization::UnicodeNormalization;
 
-pub const PARSER_VERSION: &str = "pre-gen-spike-7";
+pub const PARSER_VERSION: &str = "learning-pack-v1";
 pub const MAX_PACKAGE_BYTES: usize = 25 * 1024 * 1024;
 pub const MAX_CARDS: usize = 20_000;
 pub const MAX_JSON_DEPTH: usize = 8;
@@ -329,7 +329,21 @@ where
             "content package root must be an object",
         )
     })?;
-    reject_unknown_fields(root, &["schemaVersion", "packId", "title", "cards"], "json")?;
+    reject_unknown_fields(
+        root,
+        &[
+            "schemaVersion",
+            "packId",
+            "version",
+            "title",
+            "description",
+            "rights",
+            "sources",
+            "contentSha256",
+            "cards",
+        ],
+        "json",
+    )?;
     let schema_version = required_u64(root, "schemaVersion", "json.schemaVersion")?;
     if schema_version != 1 {
         return Err(ValidationError::new(
@@ -975,6 +989,7 @@ where
             "choices",
             "explanation",
             "tags",
+            "sourceRefs",
             "scheduleEpoch",
             "extensions",
         ],
@@ -2168,7 +2183,7 @@ where
 fn valid_namespace(value: &str) -> bool {
     let mut bytes = value.bytes();
     matches!(bytes.next(), Some(first) if first.is_ascii_alphabetic())
-        && value.len() <= 128
+        && value.len() <= 64
         && bytes.all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
 }
 

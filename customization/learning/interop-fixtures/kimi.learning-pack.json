@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "packId": "interop.kimi",
+  "version": "1.0.0",
+  "title": "Kimi 互操作样例",
+  "description": "Unicode 与 recall",
+  "rights": {
+    "basis": "personal_use_only",
+    "statement": "仅作本机合成测试",
+    "redistributable": false
+  },
+  "sources": [
+    {
+      "sourceRef": "md",
+      "label": "Markdown 合成资料"
+    }
+  ],
+  "contentSha256": "b1d7b6bf0e87574c2170ec4863cff5322b25fcfafd7f584765d8b4118c73075b",
+  "cards": [
+    {
+      "cardId": "recall-1",
+      "exerciseKind": "recall",
+      "prompt": "请写出圆周率常用近似值。",
+      "answer": "3.14",
+      "explanation": "这里只测试文本互操作。",
+      "tags": ["unicode"],
+      "sourceRefs": ["md"],
+      "scheduleEpoch": 2
+    }
+  ]
+}

@@ -53,6 +53,32 @@ import { SpriteAnimator } from "../pet/SpriteAnimator";
 import type { AnimationName } from "../pet/manifest";
 import "./learning.css";
 
+export const LEARNING_PACK_AGENT_PROMPT = petText(`请把我提供且有权使用的资料整理为圆圆提醒 learning-pack v1 JSON。请先读取 customization/learning/learning-pack.schema.json 和 customization/learning/LEARNING_IMPORT_PROMPT.zh-CN.md；原样记录我的权利基础，unknown 必须停止最终制包，personal_use_only 必须禁止公开分发。每张卡使用稳定 cardId、recall 或 choice、prompt、answer、sourceRefs 和 scheduleEpoch；无法保证干扰项无歧义时改为 recall。完成后运行本地验证器和报告生成器，并把结果放在 work/personal-learning/<run-id>/，不要放入 Git、public、Tauri resources、安装包、Release 或测试日志。`);
+export const LEARNING_PACK_TEMPLATE_FILENAME = "learning-pack.template.learning-pack.json";
+
+const LEARNING_PACK_TEMPLATE = `${JSON.stringify({
+  schemaVersion: 1,
+  packId: "my.private.pack",
+  version: "1.0.0",
+  title: "我的本地知识",
+  description: "",
+  rights: {
+    basis: "unknown",
+    statement: "请填写你声明的权利基础；unknown 会阻止最终制包。",
+    redistributable: false,
+  },
+  sources: [{ sourceRef: "source-001", label: "我的资料" }],
+  contentSha256: "由验证工具计算并填写",
+  cards: [{
+    cardId: "card-001",
+    exerciseKind: "recall",
+    prompt: "问题",
+    answer: "答案",
+    sourceRefs: ["source-001"],
+    scheduleEpoch: 1,
+  }],
+}, null, 2)}\n`;
+
 type LearningScreen = "home" | "card" | "complete";
 type LearningHubSection = "start" | "dashboard" | "words";
 type LearningOperation =
@@ -61,6 +87,22 @@ type LearningOperation =
   | "export_picker"
   | "legacy_migration"
   | "delete";
+
+interface LearningImportProgress {
+  phase:
+    | "reading_input"
+    | "validating_input"
+    | "validating_text"
+    | "scanning_syntax"
+    | "decoding"
+    | "validating_structure"
+    | "validating_cards"
+    | "finalizing"
+    | "complete";
+  unit: "bytes" | "values" | "cards";
+  completedUnits: number;
+  totalUnits: number | null;
+}
 
 export function LearningView() {
   const desktopAvailable = tauriAvailable();
@@ -90,6 +132,7 @@ export function LearningView() {
   const [pendingOperation, setPendingOperation] =
     useState<LearningOperation | null>(null);
   const [importCancellationBusy, setImportCancellationBusy] = useState(false);
+  const [importProgress, setImportProgress] = useState<LearningImportProgress | null>(null);
   const [recordFilter, setRecordFilter] = useState<LearningRecordFilter>("mistakes");
   const [recordPage, setRecordPage] = useState<LearningRecordPage | null>(null);
   const [recordBusy, setRecordBusy] = useState(false);
@@ -185,18 +228,22 @@ export function LearningView() {
   }, [loadHome]);
 
   useEffect(() => {
-    let cleanup: (() => void) | undefined;
+    let disposed = false;
     const cleanups: Array<() => void> = [];
     void Promise.all([
       onBackendEvent("learning-session-interrupted", () => {
-        void loadHome().then(() =>
-          setError("更重要的提醒到了，这张未评分卡没有计入；稍后可继续上一轮。"),
-        );
+        if (disposed) return;
+        void loadHome().then(() => {
+          if (!disposed) setError("更重要的提醒到了，这张未评分卡没有计入；稍后可继续上一轮。");
+        });
       }),
-      onBackendEvent("learning-data-updated", () => void loadHome()),
-    ]).then((unlisten) => cleanups.push(...unlisten));
-    cleanup = () => cleanups.forEach((unlisten) => unlisten());
-    return () => cleanup?.();
+      onBackendEvent("learning-data-updated", () => { if (!disposed) void loadHome(); }),
+      onBackendEvent<LearningImportProgress>("learning-import-progress", (progress) => { if (!disposed) setImportProgress(progress); }),
+    ]).then((unlisten) => {
+      if (disposed) unlisten.forEach((stop) => stop());
+      else cleanups.push(...unlisten);
+    });
+    return () => { disposed = true; cleanups.forEach((stop) => stop()); };
   }, [loadHome]);
 
   useEffect(() => {
@@ -449,6 +496,7 @@ export function LearningView() {
   const previewImport = async () => {
     setBusy(true);
     setPendingOperation("import_picker");
+    setImportProgress(null);
     setError(null);
     try {
       const preview = await previewLearningImport();
@@ -461,6 +509,7 @@ export function LearningView() {
       }
     } finally {
       setPendingOperation(null);
+      setImportProgress(null);
       setBusy(false);
     }
   };
@@ -470,6 +519,7 @@ export function LearningView() {
     if (!token) return;
     setBusy(true);
     setPendingOperation("import_commit");
+    setImportProgress(null);
     setError(null);
     try {
       await confirmLearningImport(token);
@@ -484,6 +534,7 @@ export function LearningView() {
       }
     } finally {
       setPendingOperation(null);
+      setImportProgress(null);
       setBusy(false);
     }
   };
@@ -502,6 +553,27 @@ export function LearningView() {
     } finally {
       setImportCancellationBusy(false);
     }
+  };
+
+  const copyLearningPackPrompt = async () => {
+    try {
+      await navigator.clipboard.writeText(LEARNING_PACK_AGENT_PROMPT);
+      setFeedback("已复制智能体整理提示词；生成的私人知识包不会进入安装包。");
+    } catch (reason) {
+      setError(`暂时无法复制提示词：${learningErrorMessage(reason)}`);
+    }
+  };
+
+  const downloadLearningPackTemplate = () => {
+    const url = URL.createObjectURL(
+      new Blob([LEARNING_PACK_TEMPLATE], { type: "application/json" }),
+    );
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = LEARNING_PACK_TEMPLATE_FILENAME;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setFeedback("已下载空白知识包模板；填写后请先用本地验证工具检查。");
   };
 
   const previewLegacyMigration = async (edition: LegacyLearningEdition) => {
@@ -645,7 +717,11 @@ export function LearningView() {
     <div className="learning-view" aria-busy={busy}>
       {pendingOperation && (
         <div className="learning-operation-status" role="status" aria-live="polite">
-          <span>{learningOperationMessage(pendingOperation)}</span>
+          <span>
+            {pendingOperation.startsWith("import_") && importProgress
+              ? learningImportProgressMessage(importProgress, pendingOperation)
+              : learningOperationMessage(pendingOperation)}
+          </span>
           {pendingOperation.startsWith("import_") && (
             <button
               type="button"
@@ -691,6 +767,8 @@ export function LearningView() {
               onStart={start}
               onResume={resumeDesktopSession}
               onImport={previewImport}
+              onCopyAgentPrompt={copyLearningPackPrompt}
+              onDownloadTemplate={downloadLearningPackTemplate}
               onSettings={saveSettings}
               onExport={exportData}
               onDelete={setDeleteScope}
@@ -1252,6 +1330,8 @@ function LearningHome({
   onStart,
   onResume,
   onImport,
+  onCopyAgentPrompt,
+  onDownloadTemplate,
   onSettings,
   onExport,
   onDelete,
@@ -1272,6 +1352,8 @@ function LearningHome({
   ) => Promise<void>;
   onResume: () => Promise<void>;
   onImport: () => Promise<void>;
+  onCopyAgentPrompt: () => Promise<void>;
+  onDownloadTemplate: () => void;
   onSettings: (patch: LearningSettingsPatch) => Promise<void>;
   onExport: (format: LearningExportFormat) => Promise<void>;
   onDelete: (scope: LearningDeleteScope) => void;
@@ -1418,17 +1500,29 @@ function LearningHome({
         </section>
       ) : (
         <section className="learning-no-content">
-          <h3>先放入你合法取得的词表</h3>
-          <p>{petText("第一版不内置来源不明的“官方考研词库”。CSV 与{pet}原生 JSON 只在本机解析和保存。")}</p>
-          <button
-            className="primary"
-            type="button"
-            disabled={busy || !desktopAvailable}
-            title={desktopAvailable ? undefined : "仅桌面版可导入本机文件"}
-            onClick={() => void onImport()}
-          >
-            {desktopAvailable ? "选择 CSV 或原生 JSON" : "选择 CSV 或原生 JSON · 仅桌面版"}
-          </button>
+          <h3>导入你的本地知识</h3>
+          <p>应用不内置来源不明的课程。词表、知识包和学习进度只在本机解析和保存。</p>
+          <div className="learning-empty-actions">
+            <button
+              className="primary"
+              type="button"
+              disabled={busy || !desktopAvailable}
+              title={desktopAvailable ? undefined : "仅桌面版可导入本机文件"}
+              onClick={() => void onImport()}
+            >
+              {desktopAvailable ? "导入本地知识" : "导入本地知识 · 仅桌面版"}
+            </button>
+            <button type="button" disabled={busy} onClick={() => void onCopyAgentPrompt()}>
+              复制智能体整理提示词
+            </button>
+            <button type="button" disabled={busy} onClick={onDownloadTemplate}>
+              下载空白模板
+            </button>
+          </div>
+          <details className="learning-rights-note">
+            <summary>查看内容来源与权利说明</summary>
+            <p>知识包必须记录用户声明的权利基础。unknown 会阻止最终制包；personal_use_only 只允许本机导入，不能公开分发。应用只记录声明，不替用户作出法律结论。</p>
+          </details>
         </section>
       )}
 
@@ -1504,13 +1598,14 @@ function LearningHome({
 
       <details className="learning-settings learning-data-settings">
         <summary>来源、导出与删除</summary>
-        <p className="learning-data-intro">{petText("学习库与提醒主库分开保存。{pet}不会自动上传，也不会把学习记录混入提醒备份。")}</p>
+        <p className="learning-data-intro">学习库与提醒主库分开保存，统一备份可同时保存两者；完整 JSON 用于导出学习内容和进度。所有数据保留在本机。</p>
         {dataSummary && dataSummary.packs.length > 0 ? (
           <div className="learning-source-list">
             {dataSummary.packs.map((pack) => (
               <article key={pack.packId}>
                 <strong>{pack.title}</strong>
                 <span>{pack.examScope} · {pack.status === "ready" ? "正在使用" : "已停用"}</span>
+                <small>权利基础：{pack.rightsBasis ?? "用户声明"} · {pack.redistributable ? "用户声明可分发" : "仅限本机"}</small>
               </article>
             ))}
             {dataSummary.sources.map((source) => (
@@ -1614,24 +1709,46 @@ function ImportConfirmation({
         onKeyDown={(event) => handleModalKeyDown(event, onCancel)}
       >
         <h2 id="import-title">
-          {preview.format === "json" ? "确认恢复这份学习数据" : "确认导入这份词表"}
+          {preview.format === "json"
+            ? "确认恢复这份学习数据"
+            : preview.format === "learning_pack"
+              ? "确认导入这份本地知识包"
+              : "确认导入这份词表"}
         </h2>
         <p>{preview.sourceLabel ?? "用户导入"} · {preview.cardCount} 张卡片</p>
-        <dl>
-          <div><dt>新词</dt><dd>{preview.newCount}</dd></div>
-          <div><dt>学习中</dt><dd>{preview.learningCount}</dd></div>
-          <div><dt>已知提示</dt><dd>{preview.reviewKnownCount}</dd></div>
-        </dl>
+        {preview.format === "learning_pack" ? (
+          <dl>
+            <div><dt>新增</dt><dd>{preview.addedCount ?? 0}</dd></div>
+            <div><dt>变化</dt><dd>{preview.changedCount ?? 0}</dd></div>
+            <div><dt>停用</dt><dd>{preview.disabledCount ?? 0}</dd></div>
+            <div><dt>重置进度</dt><dd>{preview.resetCount ?? 0}</dd></div>
+          </dl>
+        ) : (
+          <dl>
+            <div><dt>新词</dt><dd>{preview.newCount}</dd></div>
+            <div><dt>学习中</dt><dd>{preview.learningCount}</dd></div>
+            <div><dt>已知提示</dt><dd>{preview.reviewKnownCount}</dd></div>
+          </dl>
+        )}
         {preview.sampleHeadwords.length > 0 && (
-          <p lang="en" className="learning-import-sample">
+          <p className="learning-import-sample">
             示例：{preview.sampleHeadwords.join(" · ")}
           </p>
         )}
         <p>
           {preview.format === "json"
             ? "原生 JSON 会替换当前学习库中的词表、设置、调度状态和复习记录；提醒主库不受影响。"
-            : "“进度提示”只决定初始队列，不会冒充原应用的精确调度。"}
+            : preview.format === "learning_pack"
+              ? `权利基础：${preview.rightsBasis ?? "未声明"}。未变化卡片保留进度；答案变化或内容包要求重新学习时，只重置对应卡片；删除卡片先停用。`
+              : "“进度提示”只决定初始队列，不会冒充原应用的精确调度。"}
         </p>
+        {preview.format === "learning_pack" && (
+          <section aria-label="知识包来源与许可">
+            <p>{preview.rightsStatement}</p>
+            <p>{preview.redistributable ? "内容提供者声明允许分发" : "内容提供者声明不允许公开分发"}</p>
+            <ul>{preview.sourceDetails?.map((source, index) => <li key={index}>{source}</li>)}</ul>
+          </section>
+        )}
         <div className="learning-dialog-actions">
           <button type="button" disabled={busy} onClick={onCancel}>取消</button>
           <button className="primary" type="button" disabled={busy} onClick={() => void onConfirm()}>
@@ -1920,6 +2037,27 @@ function learningOperationMessage(operation: LearningOperation) {
     legacy_migration: "正在只读核查旧版数据或执行已确认迁移，请稍候。",
     delete: "正在处理本机学习数据，请稍候。",
   }[operation];
+}
+
+function learningImportProgressMessage(
+  progress: LearningImportProgress,
+  operation: LearningOperation,
+) {
+  const phase = {
+    reading_input: "正在读取本地文件",
+    validating_input: "正在检查文件安全性",
+    validating_text: "正在检查文字内容",
+    scanning_syntax: "正在检查内容结构",
+    decoding: "正在解析知识卡",
+    validating_structure: "正在核对知识包结构",
+    validating_cards: "正在逐张核对知识卡",
+    finalizing: operation === "import_commit" ? "正在准备写入本机学习库" : "正在生成导入预览",
+    complete: "导入已完成",
+  }[progress.phase];
+  const percent = progress.totalUnits && progress.totalUnits > 0
+    ? Math.min(100, Math.round((progress.completedUnits / progress.totalUnits) * 100))
+    : null;
+  return percent === null ? `${phase}…` : `${phase}（${percent}%）`;
 }
 
 function learningErrorMessage(reason: unknown) {

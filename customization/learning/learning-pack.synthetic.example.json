@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "packId": "synthetic.general-basics",
+  "version": "1.0.0",
+  "title": "合成通用知识示例",
+  "description": "仅用于验证格式，不包含真实课程内容。",
+  "rights": {
+    "basis": "self_authored",
+    "statement": "本文件中的合成示例由项目维护者编写，可随代码示例使用。",
+    "redistributable": true
+  },
+  "sources": [
+    {
+      "sourceRef": "synthetic-notes",
+      "label": "合成示例笔记"
+    }
+  ],
+  "contentSha256": "1e30219a6faafa02a46a95b4fcb453e7dc3ffb1f8c3f3826c201b26bc7f60c34",
+  "cards": [
+    {
+      "cardId": "recall-001",
+      "exerciseKind": "recall",
+      "prompt": "把一个大任务拆成下一步行动时，首先要确认什么？",
+      "answer": "确认一个可观察、可在当前条件下完成的最小结果。",
+      "explanation": "题目只演示 recall 字段，不代表项目提供课程。",
+      "tags": ["synthetic", "planning"],
+      "sourceRefs": ["synthetic-notes"],
+      "scheduleEpoch": 1
+    },
+    {
+      "cardId": "choice-001",
+      "exerciseKind": "choice",
+      "prompt": "以下哪项是内容包导入前的必要步骤？",
+      "answer": "先预览并由用户确认",
+      "choices": ["直接覆盖现有进度", "先预览并由用户确认", "上传到远程服务器"],
+      "explanation": "本地导入采用预览—确认流程。",
+      "tags": ["synthetic", "privacy"],
+      "sourceRefs": ["synthetic-notes"],
+      "scheduleEpoch": 1
+    }
+  ]
+}

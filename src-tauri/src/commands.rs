@@ -79,15 +79,15 @@ mod learning_command_concurrency_tests {
     fn import_dialog_uses_the_effective_pet_name_without_changing_content() {
         assert_eq!(
             learning_import_dialog_title("x"),
-            "选择交给x复习的词表或原生学习数据"
+            "选择交给x复习的知识包、词表或原生学习数据"
         );
         assert_eq!(
             learning_import_dialog_title("小月亮🐱"),
-            "选择交给小月亮🐱复习的词表或原生学习数据"
+            "选择交给小月亮🐱复习的知识包、词表或原生学习数据"
         );
         assert_eq!(
             learning_import_dialog_title("圆圆"),
-            "选择交给圆圆复习的词表或原生学习数据"
+            "选择交给圆圆复习的知识包、词表或原生学习数据"
         );
     }
 
@@ -130,7 +130,7 @@ pub fn get_runtime_capabilities(state: State<'_, AppState>) -> crate::models::Ru
 
 #[cfg(all(feature = "learning", windows))]
 fn learning_import_dialog_title(pet_name: &str) -> String {
-    format!("选择交给{pet_name}复习的词表或原生学习数据")
+    format!("选择交给{pet_name}复习的知识包、词表或原生学习数据")
 }
 
 #[cfg(all(feature = "learning", windows))]
@@ -143,10 +143,8 @@ pub async fn preview_learning_import(
         let mut picker = app
             .dialog()
             .file()
-            .set_title(learning_import_dialog_title(
-                &crate::pet_commands::current_name(&app),
-            ))
-            .add_filter("圆圆学习数据", &["csv", "json"]);
+            .set_title(learning_import_dialog_title(&crate::pet_commands::current_name(&app)))
+            .add_filter("本地学习数据", &["csv", "json"]);
         if let Some(panel) = app.get_webview_window("panel").as_ref() {
             picker = picker.set_parent(panel);
         }
@@ -165,11 +163,19 @@ pub async fn preview_learning_import(
         run_learning_background("import preview", move || {
             let state = worker_app.state::<AppState>();
             let cancellation = &state.learning_import_cancellation;
-            let result = state.learning.lock().preview_import_file_with_cancellation(
-                &path,
-                Utc::now().timestamp_millis(),
-                &|| cancellation.is_cancelled(operation_id),
-            );
+            let progress_app = worker_app.clone();
+            let mut report_progress = move |progress| {
+                let _ = progress_app.emit("learning-import-progress", progress);
+            };
+            let result = state
+                .learning
+                .lock()
+                .preview_import_file_with_progress_and_cancellation(
+                    &path,
+                    Utc::now().timestamp_millis(),
+                    &|| cancellation.is_cancelled(operation_id),
+                    &mut report_progress,
+                );
             result
         })
         .await
@@ -201,11 +207,30 @@ pub async fn confirm_learning_import(
     let result = run_learning_background("import confirmation", move || {
         let state = worker_app.state::<AppState>();
         let cancellation = &state.learning_import_cancellation;
-        let result = state.learning.lock().confirm_import_with_cancellation(
-            &preview_token,
-            Utc::now().timestamp_millis(),
-            &|| cancellation.is_cancelled(operation_id),
-        );
+        let progress_app = worker_app.clone();
+        let mut report_progress = move |progress| {
+            let _ = progress_app.emit("learning-import-progress", progress);
+        };
+        let result = state
+            .learning
+            .lock()
+            .confirm_import_with_progress_and_cancellation(
+                &preview_token,
+                Utc::now().timestamp_millis(),
+                &|| cancellation.is_cancelled(operation_id),
+                &mut report_progress,
+            );
+        if result.is_ok() {
+            let _ = worker_app.emit(
+                "learning-import-progress",
+                serde_json::json!({
+                    "phase": "complete",
+                    "unit": "cards",
+                    "completedUnits": 1,
+                    "totalUnits": 1
+                }),
+            );
+        }
         result
     })
     .await;
@@ -723,9 +748,11 @@ pub async fn export_learning_data(
         }
     };
     let filter_name = match format {
-        crate::learning::LearningExportFormat::NativeJson => "圆圆原生学习数据",
-        crate::learning::LearningExportFormat::CardsCsv => "学习卡片表格",
-        crate::learning::LearningExportFormat::ReviewLogsCsv => "复习记录表格",
+        crate::learning::LearningExportFormat::NativeJson => {
+            format!("{}原生学习数据", crate::pet_commands::current_name(&app))
+        }
+        crate::learning::LearningExportFormat::CardsCsv => "学习卡片表格".into(),
+        crate::learning::LearningExportFormat::ReviewLogsCsv => "复习记录表格".into(),
     };
     let mut picker = app
         .dialog()
@@ -1432,12 +1459,15 @@ pub fn hide_pet_window(app: AppHandle) -> AppResult<()> {
 }
 
 pub fn hide_pet_window_inner(app: &AppHandle) -> AppResult<()> {
+    tracing::info!("pet hide requested");
     let pet = app
         .get_webview_window("pet")
         .ok_or_else(|| AppError::Window("pet window is unavailable".into()))?;
     windows::show_task_panel(app, "settings")?;
     pet.hide()
-        .map_err(|error| AppError::Window(error.to_string()))
+        .map_err(|error| AppError::Window(error.to_string()))?;
+    tracing::info!("pet hide completed with settings panel available");
+    Ok(())
 }
 
 #[tauri::command]
@@ -1620,6 +1650,7 @@ pub fn quit_application(app: AppHandle) {
 }
 
 pub fn quit_inner(app: &AppHandle) {
+    tracing::info!("application quit requested");
     app.state::<AppState>().set_quitting();
     app.exit(0);
 }

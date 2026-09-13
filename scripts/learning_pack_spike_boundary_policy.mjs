@@ -60,10 +60,8 @@ export function inspectWorkspaceMetadata(metadata) {
     findings.push(finding("spike-is-default-member", spike.id));
   }
 
-  for (const packageEntry of packages.filter((entry) => entry.id !== spike.id)) {
-    if (packageEntry.dependencies?.some((dependency) => dependency.name === SPIKE_PACKAGE_NAME)) {
-      findings.push(finding("workspace-package-depends-on-spike", packageEntry.name));
-    }
+  if (!application.dependencies?.some((dependency) => dependency.name === SPIKE_PACKAGE_NAME)) {
+    findings.push(finding("application-parser-dependency-missing", SPIKE_PACKAGE_NAME));
   }
 
   for (const dependency of spike.dependencies ?? []) {
@@ -119,6 +117,8 @@ export function inspectWorkspaceMetadata(metadata) {
 
 export function findRuntimeReferences(path, text) {
   const source = String(text).toLowerCase();
+  const normalizedPath = String(path).replaceAll("\\", "/");
+  if (normalizedPath === "src-tauri/src/learning/pack.rs") return [];
   return RUNTIME_REFERENCE_MARKERS.filter((marker) => source.includes(marker.toLowerCase())).map(
     (marker) => ({ path, rule: "runtime-references-spike", detail: marker }),
   );
