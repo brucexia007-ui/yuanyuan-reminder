@@ -6,7 +6,7 @@ function snapshot(
   overrides: Partial<CompanionExpressionSnapshot> = {},
 ): CompanionExpressionSnapshot {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     revision: 1,
     tier: "n2",
     intent: "watch",
@@ -21,6 +21,7 @@ function snapshot(
     groupedCount: 1,
     focusDeferredCount: 0,
     accessibleState: "task_running",
+    sceneAppearance: { kind: "work", stage: "fresh" },
     ...overrides,
   };
 }

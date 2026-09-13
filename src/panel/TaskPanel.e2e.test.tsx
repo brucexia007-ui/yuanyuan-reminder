@@ -6,6 +6,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AppSettings, TodaySnapshot } from "../types";
 
+const nativeDialog = vi.hoisted(() => ({ invoke: vi.fn() }));
+vi.mock("@tauri-apps/api/core", () => ({ invoke: nativeDialog.invoke }));
+
 const backend = vi.hoisted(() => ({
   listToday: vi.fn(),
   getRuntimeCapabilities: vi.fn(),
@@ -30,8 +33,11 @@ const backend = vi.hoisted(() => ({
   startFocus: vi.fn(),
   cancelFocus: vi.fn(),
   getBasicSupportState: vi.fn(),
+  getSceneRestState: vi.fn(),
   startBasicSupport: vi.fn(),
   stopBasicSupport: vi.fn(),
+  startSceneRest: vi.fn(),
+  stopSceneRest: vi.fn(),
   startPetInteraction: vi.fn(),
   updateSettings: vi.fn(),
   deleteAllLocalDataAndExit: vi.fn(),
@@ -67,6 +73,8 @@ import { TaskPanel } from "./TaskPanel";
 
 const settings: AppSettings = {
   animationMode: "always",
+  sceneWardrobeMode: "full",
+  petProfile: { schemaVersion: 1, selectedPackId: "builtin:yuanyuan", nicknames: {} },
   companionIntensity: "everyday",
   companionLabelMode: "adaptive",
   animationSpeed: 1,
@@ -205,6 +213,7 @@ describe("TaskPanel complete reminder workflows", () => {
     backend.getSettings.mockResolvedValue(structuredClone(settings));
     backend.getFocusState.mockResolvedValue({ session: null });
     backend.getBasicSupportState.mockResolvedValue(null);
+    backend.getSceneRestState.mockResolvedValue(null);
     backend.getTaskWatchSnapshot.mockResolvedValue({
       schemaVersion: 2,
       available: false,
@@ -257,6 +266,8 @@ describe("TaskPanel complete reminder workflows", () => {
     await act(async () => root.unmount());
     container.remove();
     vi.clearAllMocks();
+    nativeDialog.invoke.mockReset();
+    vi.unstubAllGlobals();
   });
 
   it("keeps Today usable when Care fails, and sends the selected snooze duration", async () => {
@@ -399,10 +410,66 @@ describe("TaskPanel complete reminder workflows", () => {
     expect(document.activeElement).toBe(button("打开三张陪伴小牌"));
   });
 
+  it("waits for backup confirmation and preserves data on cancellation or dialog failure", async () => {
+    vi.stubGlobal("__TAURI_INTERNALS__", {});
+    let resolve!: (value: string) => void;
+    nativeDialog.invoke.mockImplementation(() => new Promise<string>(r => { resolve = r; }));
+    await click("设置");
+    await click("恢复");
+    expect(button("恢复").disabled).toBe(true);
+    expect(backend.restoreBackup).not.toHaveBeenCalled();
+    expect(nativeDialog.invoke).toHaveBeenCalledWith("plugin:dialog|message", expect.objectContaining({ buttons: "OkCancel" }));
+    await act(async () => resolve("Cancel"));
+    await flush();
+    expect(button("恢复").disabled).toBe(false);
+    expect(backend.restoreBackup).not.toHaveBeenCalled();
+    nativeDialog.invoke.mockRejectedValueOnce(new Error("dialog unavailable"));
+    await click("恢复");
+    expect(container.textContent).toContain("dialog unavailable");
+    expect(backend.restoreBackup).not.toHaveBeenCalled();
+  });
+
+  it("offers the supported 20 minute activity interval used by the work-fatigue boundary", async () => {
+    await click("设置");
+
+    const activityIntervalRow = [...container.querySelectorAll(".setting-row")].find(
+      (row) => row.querySelector("strong")?.textContent?.trim() === "活动间隔",
+    );
+    const activityInterval = activityIntervalRow?.querySelector<HTMLSelectElement>("select");
+
+    expect(activityInterval).toBeDefined();
+    expect([...activityInterval!.options].map((option) => option.value)).toEqual([
+      "20",
+      "30",
+      "45",
+      "60",
+      "90",
+      "120",
+    ]);
+  });
+
+  it("deletes a reminder only after explicit asynchronous consent", async () => {
+    vi.stubGlobal("__TAURI_INTERNALS__", {});
+    let resolve!: (value: string) => void;
+    nativeDialog.invoke.mockImplementation(() => new Promise<string>(r => { resolve = r; }));
+    await click("管理");
+    await click("删除");
+    expect(backend.deleteReminder).not.toHaveBeenCalled();
+    expect(button("删除").disabled).toBe(true);
+    await act(async () => resolve("Cancel"));
+    await flush();
+    expect(backend.deleteReminder).not.toHaveBeenCalled();
+    nativeDialog.invoke.mockResolvedValueOnce("Ok");
+    await click("删除");
+    expect(backend.deleteReminder).toHaveBeenCalledExactlyOnceWith("work-1");
+  });
+
   it("requires the exact phrase, acknowledgement, and final dialog before local deletion", async () => {
+    vi.stubGlobal("__TAURI_INTERNALS__", {});
     backend.tauriAvailable.mockReturnValue(true);
     backend.deleteAllLocalDataAndExit.mockResolvedValue(undefined);
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    let resolve!: (value: string) => void;
+    nativeDialog.invoke.mockImplementation(() => new Promise<string>(r => { resolve = r; }));
     await remount();
     await click("设置");
 
@@ -429,11 +496,23 @@ describe("TaskPanel complete reminder workflows", () => {
 
     expect(button("永久删除本地数据并退出").disabled).toBe(false);
     await click("永久删除本地数据并退出");
-    expect(confirm).toHaveBeenCalledOnce();
+    expect(nativeDialog.invoke).toHaveBeenCalledExactlyOnceWith("plugin:dialog|message", expect.objectContaining({ buttons: "OkCancel" }));
+    expect(backend.deleteAllLocalDataAndExit).not.toHaveBeenCalled();
+    expect(button("正在退出并清理…").disabled).toBe(true);
+    await act(async () => resolve("Cancel"));
+    await flush();
+    expect(backend.deleteAllLocalDataAndExit).not.toHaveBeenCalled();
+    nativeDialog.invoke.mockRejectedValueOnce(new Error("dialog denied"));
+    await click("永久删除本地数据并退出");
+    expect(container.textContent).toContain("dialog denied");
+    expect(backend.deleteAllLocalDataAndExit).not.toHaveBeenCalled();
+    nativeDialog.invoke.mockResolvedValueOnce("Ok");
+    await click("永久删除本地数据并退出");
     expect(backend.deleteAllLocalDataAndExit).toHaveBeenCalledWith(
       "删除圆圆全部本地数据",
       true,
     );
+    expect(backend.deleteAllLocalDataAndExit).toHaveBeenCalledOnce();
   });
 
   it("opens the sanitized task-watch route without exposing task identity fields", async () => {

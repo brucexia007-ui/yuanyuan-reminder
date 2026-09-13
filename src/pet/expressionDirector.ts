@@ -1,4 +1,5 @@
 import type { AnimationName } from "./manifest";
+import { petText } from "./petProfile";
 
 export type TaskWatchState =
   | "running"
@@ -100,7 +101,7 @@ const vocabulary: Record<TaskWatchState, StateVocabulary> = {
     animation: "failed",
     props: ["task_card"],
     label: "没成功",
-    accessibleState: "任务没有成功，圆圆正在旁边陪着",
+    get accessibleState() { return petText("任务没有成功，{pet}正在旁边陪着"); },
     attention: "present",
     movePropForward: true,
     queueInBasket: false,

@@ -131,6 +131,48 @@
     rgb(255 255 255 / 74%);
 }
 
+.scene-rest-card {
+  display: grid;
+  gap: 12px;
+  padding: 15px;
+  border: 1px solid rgb(96 143 151 / 18%);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 100% 0%, rgb(197 231 233 / 62%), transparent 42%),
+    rgb(250 255 255 / 84%);
+}
+
+.scene-rest-card h2 {
+  margin: 2px 0 4px;
+  color: #36575c;
+  font-size: 16px;
+}
+
+.scene-rest-card p:last-child {
+  margin: 0;
+  color: #668086;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.scene-rest-active {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #52747a;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.scene-rest-active button {
+  padding: 7px 10px;
+  border: 1px solid rgb(82 116 122 / 18%);
+  border-radius: 10px;
+  background: #fff;
+  color: #45666c;
+}
+
 .basic-support-heading {
   display: flex;
   gap: 12px;
@@ -782,6 +824,10 @@
 
 .category-dot.water {
   background: #6ca8ae;
+}
+
+.category-dot.meal {
+  background: #d08462;
 }
 
 .category-dot.personal {
@@ -2035,4 +2081,35 @@ button:disabled {
     color: HighlightText;
     forced-color-adjust: none;
   }
+}
+/* Local pet customization keeps the existing compact settings layout. */
+.my-pet-entry { display: flex; width: 100%; flex-direction: column; align-items: flex-start; gap: 6px; padding: 16px; margin-bottom: 16px; border: 1px solid rgb(164 121 86 / 18%); border-radius: 14px; background: rgb(255 255 255 / 68%); color: inherit; cursor: pointer; }
+.my-pet-entry span, .my-pet-page small, .pet-backup-note { color: #806d61; font-size: 11px; line-height: 1.6; }
+.my-pet-page { display: grid; gap: 14px; font-size: 13px; line-height: 1.6; }
+.my-pet-page h2, .my-pet-page p { margin: 0; }
+.my-pet-page h2 { font-size: 17px; }
+.my-pet-page :is(button, input, select) { box-sizing: border-box; min-height: 36px; padding: 7px 10px; border: 1px solid rgb(131 105 83 / 20%); border-radius: 10px; background: rgb(255 255 255 / 76%); color: #49392e; font: inherit; }
+.my-pet-page button { cursor: pointer; }
+.my-pet-page button.primary { background: #705642; color: white; }
+.my-pet-page button:disabled { cursor: default; opacity: .55; }
+.my-pet-page input { width: 100%; }
+.my-pet-page > button { justify-self: start; }
+.my-pet-page label { display: grid; gap: 5px; }
+.my-pet-page form, .pet-pack-preview { display: grid; gap: 10px; }
+.pet-page-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.pet-pack-stage { width: 192px; height: 208px; margin: auto; position: relative; }
+.pet-pack-stage .sprite-animator { width: 100%; height: 100%; background-repeat: no-repeat; }
+.pet-pack-preview, .pet-pack-card, .pet-import-review { border: 1px solid rgb(164 121 86 / 18%); border-radius: 14px; padding: 12px; background: rgb(255 255 255 / 68%); }
+.pet-pack-list { display: grid; gap: 10px; }
+.pet-pack-card { display: flex; align-items: flex-start; gap: 10px; }
+.pet-pack-card img { object-fit: contain; flex: none; }
+.pet-pack-card small { display: block; }
+.pet-import-review pre { max-height: 200px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: .8rem; }
+.pet-pack-warning { border-left: 3px solid currentColor; padding: 8px; }
+.pet-static-fallback { object-fit: contain; }
+@media (forced-colors: active) {
+  .my-pet-entry, .pet-pack-preview, .pet-pack-card, .pet-import-review { border-color: ButtonText; background: Canvas; color: CanvasText; }
+  .my-pet-page :is(button, input, select) { border-color: ButtonText; background: ButtonFace; color: ButtonText; }
+  .my-pet-page button.primary { background: Highlight; color: HighlightText; }
+  .my-pet-page small, .pet-backup-note { color: CanvasText; }
 }

@@ -7,7 +7,7 @@ use yuanyuan_protocol::{
     IntentCompatibility, ResolvedResponseIntent, ResponseIntentKind, ResponsePriority, TaskState,
 };
 
-pub const COMPANION_EXPRESSION_SCHEMA_VERSION: u16 = 1;
+pub const COMPANION_EXPRESSION_SCHEMA_VERSION: u16 = 2;
 const MAX_ACTIVE_SIGNALS: usize = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -129,6 +129,7 @@ pub enum AccessibleExpressionState {
     Approaching,
     StayingClose,
     WaterReminderDue,
+    MealReminderDue,
     WorkReminderDue,
     TaskNeedsUser,
     ActivityReminderDue,
@@ -143,6 +144,32 @@ pub enum AccessibleExpressionState {
     FormalDecisionRequired,
     LearningInvitation,
     LearningSession,
+    RestingCare,
+    Working,
+    WorkingTransition,
+    WorkingFatigued,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkSceneStage {
+    #[default]
+    Fresh,
+    Transition,
+    Fatigued,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SceneAppearance {
+    None,
+    Spa,
+    Meal,
+    Hydration,
+    Warmup,
+    Study,
+    Night,
+    Work { stage: WorkSceneStage },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -192,11 +219,13 @@ pub enum ExpressionSignal {
     LearningInvitation,
     LearningSession,
     StrongWaterReminder,
+    DueMealReminder,
     DueWorkReminder,
     TaskWaitingUser {
         source: TaskSource,
     },
     ActivityReminder,
+    SceneRest,
     TaskOutcome {
         source: TaskSource,
         outcome: TaskOutcome,
@@ -238,6 +267,7 @@ pub struct CompanionExpressionSnapshot {
     pub task_source: Option<TaskSource>,
     pub grouped_count: u16,
     pub focus_deferred_count: u16,
+    pub scene_appearance: SceneAppearance,
     pub accessible_state: AccessibleExpressionState,
 }
 
@@ -262,6 +292,8 @@ pub struct CompanionExpressionDirector {
     focus_active: bool,
     quiet_active: bool,
     reduce_motion: bool,
+    focus_work_stage: WorkSceneStage,
+    task_work_stage: WorkSceneStage,
 }
 
 impl CompanionExpressionDirector {
@@ -308,6 +340,22 @@ impl CompanionExpressionDirector {
     pub fn set_focus_active(&mut self, active: bool) -> CompanionExpressionSnapshot {
         if self.focus_active != active {
             self.focus_active = active;
+            self.bump_revision();
+        }
+        self.snapshot()
+    }
+
+    pub fn set_focus_work_stage(&mut self, stage: WorkSceneStage) -> CompanionExpressionSnapshot {
+        if self.focus_work_stage != stage {
+            self.focus_work_stage = stage;
+            self.bump_revision();
+        }
+        self.snapshot()
+    }
+
+    pub fn set_task_work_stage(&mut self, stage: WorkSceneStage) -> CompanionExpressionSnapshot {
+        if self.task_work_stage != stage {
+            self.task_work_stage = stage;
             self.bump_revision();
         }
         self.snapshot()
@@ -362,7 +410,14 @@ impl CompanionExpressionDirector {
                         | ExpressionSignal::FocusFinishedRitual
                         | ExpressionSignal::ReunionRitual
                         | ExpressionSignal::LearningInvitation
-                ) || signal_rank(entry.signal) > signal_rank(ExpressionSignal::FocusFinishedRitual)
+                ) || (!matches!(
+                    entry.signal,
+                    ExpressionSignal::TaskWatch {
+                        state: TaskState::Queued | TaskState::Running,
+                        ..
+                    } | ExpressionSignal::TaskWatchLongRunning { .. }
+                ) && signal_rank(entry.signal)
+                    > signal_rank(ExpressionSignal::FocusFinishedRitual))
             })
     }
 
@@ -445,6 +500,18 @@ impl CompanionExpressionDirector {
                 None,
                 AccessibleExpressionState::WaterReminderDue,
             ),
+            ExpressionSignal::DueMealReminder => expression_plan(
+                ExpressionTier::N2,
+                ExpressionIntent::NeedsAttention,
+                CompanionPose::Alert,
+                &[CompanionProp::TaskCard],
+                Some(ExpressionLabel::ReminderDue),
+                AttentionMode::RingOnce,
+                true,
+                false,
+                None,
+                AccessibleExpressionState::MealReminderDue,
+            ),
             ExpressionSignal::DueWorkReminder => expression_plan(
                 ExpressionTier::N2,
                 ExpressionIntent::NeedsAttention,
@@ -480,6 +547,18 @@ impl CompanionExpressionDirector {
                 false,
                 None,
                 AccessibleExpressionState::ActivityReminderDue,
+            ),
+            ExpressionSignal::SceneRest => expression_plan(
+                ExpressionTier::N1,
+                ExpressionIntent::QuietPresence,
+                CompanionPose::StayClose,
+                &[],
+                None,
+                AttentionMode::Silent,
+                false,
+                false,
+                None,
+                AccessibleExpressionState::RestingCare,
             ),
             ExpressionSignal::TaskOutcome { source, outcome }
             | ExpressionSignal::TaskOutcomeSummary {
@@ -521,6 +600,25 @@ impl CompanionExpressionDirector {
         plan.revision = self.revision;
         plan.motion = self.motion_mode();
         plan.grouped_count = self.grouped_count(signal);
+        plan.scene_appearance = match signal {
+            ExpressionSignal::StrongWaterReminder => SceneAppearance::Hydration,
+            ExpressionSignal::DueMealReminder => SceneAppearance::Meal,
+            ExpressionSignal::ActivityReminder => SceneAppearance::Warmup,
+            ExpressionSignal::LearningSession => SceneAppearance::Study,
+            ExpressionSignal::SceneRest => SceneAppearance::Spa,
+            ExpressionSignal::Sleep => SceneAppearance::Night,
+            ExpressionSignal::TaskWatch { state, .. }
+                if matches!(state, TaskState::Queued | TaskState::Running) =>
+            {
+                SceneAppearance::Work {
+                    stage: self.task_work_stage,
+                }
+            }
+            ExpressionSignal::TaskWatchLongRunning { .. } => SceneAppearance::Work {
+                stage: self.task_work_stage,
+            },
+            _ => SceneAppearance::None,
+        };
         plan
     }
 
@@ -528,7 +626,11 @@ impl CompanionExpressionDirector {
         let (pose, accessible_state) = if self.focus_active {
             (
                 CompanionPose::FocusCalm,
-                AccessibleExpressionState::FocusedQuietly,
+                match self.focus_work_stage {
+                    WorkSceneStage::Fresh => AccessibleExpressionState::Working,
+                    WorkSceneStage::Transition => AccessibleExpressionState::WorkingTransition,
+                    WorkSceneStage::Fatigued => AccessibleExpressionState::WorkingFatigued,
+                },
             )
         } else {
             (
@@ -551,6 +653,11 @@ impl CompanionExpressionDirector {
         plan.schema_version = COMPANION_EXPRESSION_SCHEMA_VERSION;
         plan.revision = self.revision;
         plan.motion = self.motion_mode();
+        if self.focus_active {
+            plan.scene_appearance = SceneAppearance::Work {
+                stage: self.focus_work_stage,
+            };
+        }
         plan
     }
 
@@ -588,10 +695,12 @@ impl CompanionExpressionDirector {
 fn signal_rank(signal: ExpressionSignal) -> u16 {
     match signal {
         ExpressionSignal::StrongWaterReminder => 800,
-        ExpressionSignal::DueWorkReminder => 700,
-        ExpressionSignal::TaskWaitingUser { .. } => 600,
-        ExpressionSignal::ActivityReminder => 500,
-        ExpressionSignal::BasicSupport { .. } => 550,
+        ExpressionSignal::DueMealReminder => 790,
+        ExpressionSignal::DueWorkReminder => 780,
+        ExpressionSignal::TaskWaitingUser { .. } => 770,
+        ExpressionSignal::BasicSupport { .. } => 720,
+        ExpressionSignal::ActivityReminder => 650,
+        ExpressionSignal::SceneRest => 400,
         ExpressionSignal::TaskOutcome { outcome, .. }
         | ExpressionSignal::TaskOutcomeSummary { outcome, .. } => match outcome {
             TaskOutcome::Failed => 420,
@@ -599,16 +708,16 @@ fn signal_rank(signal: ExpressionSignal) -> u16 {
             TaskOutcome::Cancelled => 400,
         },
         ExpressionSignal::UserResponse { response, .. } => match response.priority {
-            ResponsePriority::Background => 300,
-            ResponsePriority::Normal => 320,
-            ResponsePriority::Important => 340,
-            ResponsePriority::Formal => 360,
+            ResponsePriority::Background => 680,
+            ResponsePriority::Normal => 690,
+            ResponsePriority::Important => 700,
+            ResponsePriority::Formal => 710,
         },
         ExpressionSignal::FocusFinishedRitual => 250,
         ExpressionSignal::ReunionRitual => 240,
         ExpressionSignal::LearningInvitation => 230,
-        ExpressionSignal::LearningSession => 330,
-        ExpressionSignal::TaskWatch { .. } | ExpressionSignal::TaskWatchLongRunning { .. } => 200,
+        ExpressionSignal::LearningSession => 600,
+        ExpressionSignal::TaskWatch { .. } | ExpressionSignal::TaskWatchLongRunning { .. } => 500,
         ExpressionSignal::Sleep => 100,
     }
 }
@@ -621,11 +730,11 @@ fn is_suppressed_during_focus(signal: ExpressionSignal) -> bool {
             | ExpressionSignal::ReunionRitual
             | ExpressionSignal::LearningInvitation
             | ExpressionSignal::LearningSession
-            | ExpressionSignal::ActivityReminder
             | ExpressionSignal::TaskOutcome { .. }
             | ExpressionSignal::TaskOutcomeSummary { .. }
             | ExpressionSignal::TaskWatch { .. }
             | ExpressionSignal::TaskWatchLongRunning { .. }
+            | ExpressionSignal::SceneRest
             | ExpressionSignal::Sleep
     )
 }
@@ -906,6 +1015,7 @@ fn expression_plan(
         task_source,
         grouped_count: 1,
         focus_deferred_count: 0,
+        scene_appearance: SceneAppearance::None,
         accessible_state,
     }
 }
@@ -1322,9 +1432,9 @@ mod tests {
             .upsert(ExpressionKey::new(), ExpressionSignal::ActivityReminder)
             .unwrap();
         let focused = director.set_focus_active(true);
-        assert_eq!(focused.tier, ExpressionTier::N0);
-        assert_eq!(focused.pose, CompanionPose::FocusCalm);
-        assert_eq!(focused.focus_deferred_count, 2);
+        assert_eq!(focused.tier, ExpressionTier::N2);
+        assert_eq!(focused.pose, CompanionPose::Approach);
+        assert_eq!(focused.focus_deferred_count, 1);
 
         let waiting_key = ExpressionKey::new();
         let waiting = director
@@ -1519,5 +1629,127 @@ mod tests {
             .upsert(key, ExpressionSignal::StrongWaterReminder)
             .unwrap();
         assert_eq!(repeated, first);
+    }
+
+    #[test]
+    fn semantic_scene_priority_and_restore_are_backend_authoritative() {
+        let mut director = CompanionExpressionDirector::default();
+        let sleep = ExpressionKey::new();
+        let rest = ExpressionKey::new();
+        let task = ExpressionKey::new();
+        let waiting = ExpressionKey::new();
+        let work = ExpressionKey::new();
+        let meal = ExpressionKey::new();
+        let water = ExpressionKey::new();
+
+        director.upsert(sleep, ExpressionSignal::Sleep).unwrap();
+        assert_eq!(director.snapshot().scene_appearance, SceneAppearance::Night);
+        director.upsert(rest, ExpressionSignal::SceneRest).unwrap();
+        assert_eq!(director.snapshot().scene_appearance, SceneAppearance::Spa);
+        director
+            .upsert(
+                task,
+                ExpressionSignal::TaskWatch {
+                    source: TaskSource::Codex,
+                    state: TaskState::Running,
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            director.snapshot().scene_appearance,
+            SceneAppearance::Work {
+                stage: WorkSceneStage::Fresh
+            }
+        );
+        director
+            .upsert(
+                waiting,
+                ExpressionSignal::TaskWaitingUser {
+                    source: TaskSource::Codex,
+                },
+            )
+            .unwrap();
+        assert_eq!(director.snapshot().scene_appearance, SceneAppearance::None);
+        director
+            .upsert(work, ExpressionSignal::DueWorkReminder)
+            .unwrap();
+        director
+            .upsert(meal, ExpressionSignal::DueMealReminder)
+            .unwrap();
+        director
+            .upsert(water, ExpressionSignal::StrongWaterReminder)
+            .unwrap();
+        assert_eq!(
+            director.snapshot().scene_appearance,
+            SceneAppearance::Hydration
+        );
+        director.remove(water);
+        assert_eq!(director.snapshot().scene_appearance, SceneAppearance::Meal);
+        director.remove(meal);
+        assert_eq!(
+            director.snapshot().accessible_state,
+            AccessibleExpressionState::WorkReminderDue
+        );
+        director.remove(work);
+        assert_eq!(
+            director.snapshot().accessible_state,
+            AccessibleExpressionState::TaskNeedsUser
+        );
+        director.remove(waiting);
+        assert!(matches!(
+            director.snapshot().scene_appearance,
+            SceneAppearance::Work { .. }
+        ));
+    }
+
+    #[test]
+    fn focus_work_stage_survives_activity_and_waiting_user_preemption() {
+        let mut director = CompanionExpressionDirector::default();
+        director.set_focus_active(true);
+        director.set_focus_work_stage(WorkSceneStage::Transition);
+        assert_eq!(
+            director.snapshot().scene_appearance,
+            SceneAppearance::Work {
+                stage: WorkSceneStage::Transition
+            }
+        );
+
+        let activity = ExpressionKey::new();
+        director
+            .upsert(activity, ExpressionSignal::ActivityReminder)
+            .unwrap();
+        assert_eq!(
+            director.snapshot().scene_appearance,
+            SceneAppearance::Warmup
+        );
+        director.remove(activity);
+        assert_eq!(
+            director.snapshot().scene_appearance,
+            SceneAppearance::Work {
+                stage: WorkSceneStage::Transition
+            }
+        );
+
+        let waiting = ExpressionKey::new();
+        director
+            .upsert(
+                waiting,
+                ExpressionSignal::TaskWaitingUser {
+                    source: TaskSource::ClaudeCode,
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            director.snapshot().accessible_state,
+            AccessibleExpressionState::TaskNeedsUser
+        );
+        director.set_focus_work_stage(WorkSceneStage::Fatigued);
+        director.remove(waiting);
+        assert_eq!(
+            director.snapshot().scene_appearance,
+            SceneAppearance::Work {
+                stage: WorkSceneStage::Fatigued
+            }
+        );
     }
 }

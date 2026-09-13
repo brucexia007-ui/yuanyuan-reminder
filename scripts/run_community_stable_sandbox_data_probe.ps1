@@ -78,6 +78,8 @@ public static class YuanyuanInstalledE2EWindowProbe {
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetClassName(IntPtr hWnd, StringBuilder value, int maxCount);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr hWnd, StringBuilder value, int maxCount);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetMenuString(IntPtr hMenu, uint item, StringBuilder value, int maxCount, uint flags);
     [DllImport("user32.dll")]
     private static extern int GetMenuItemCount(IntPtr hMenu);
@@ -100,6 +102,12 @@ public static class YuanyuanInstalledE2EWindowProbe {
     public static string WindowClass(IntPtr hWnd) {
         var value = new StringBuilder(256);
         GetClassName(hWnd, value, value.Capacity);
+        return value.ToString();
+    }
+
+    public static string WindowTitle(IntPtr hWnd) {
+        var value = new StringBuilder(512);
+        GetWindowText(hWnd, value, value.Capacity);
         return value.ToString();
     }
 
@@ -238,6 +246,79 @@ function Find-AppElement(
     $null
 }
 
+function Find-PetElement([int]$ProcessId) {
+    $matches = [System.Collections.Generic.List[object]]::new()
+    foreach ($handle in @([YuanyuanInstalledE2EWindowProbe]::VisibleWindows($ProcessId))) {
+        try {
+            if ([YuanyuanInstalledE2EWindowProbe]::WindowClass($handle) -eq "#32768") {
+                continue
+            }
+            $node = [System.Windows.Automation.AutomationElement]::FromHandle($handle)
+            $bounds = $node.Current.BoundingRectangle
+            # The pet is the only compact top-level Tauri surface. Panel and
+            # learning windows are deliberately larger; native popup menus are
+            # excluded above. This locator stays stable while the pet's
+            # accessible name changes with its semantic scene.
+            if ($bounds.Width -lt 20 -or $bounds.Height -lt 20) { continue }
+            [void]$matches.Add([pscustomobject]@{
+                element = $node
+                titlePriority = if (
+                    [YuanyuanInstalledE2EWindowProbe]::WindowTitle($handle) -eq "圆圆"
+                ) { 0 } else { 1 }
+                area = [double]$bounds.Width * [double]$bounds.Height
+            })
+        }
+        catch {}
+    }
+    $candidate = $matches | Sort-Object titlePriority, area | Select-Object -First 1
+    if ($null -eq $candidate) { return $null }
+    $candidate.element
+}
+
+function Wait-PetElement(
+    [System.Diagnostics.Process]$Process,
+    [int]$TimeoutSeconds = 20
+) {
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $Process.Refresh()
+        if ($Process.HasExited) { throw "candidate exited before pet UI appeared" }
+        $element = Find-PetElement $Process.Id
+        if ($null -ne $element) { return $element }
+        Start-Sleep -Milliseconds 100
+    }
+    throw "candidate pet UI element did not appear"
+}
+
+function Find-PetSemanticElement([int]$ProcessId) {
+    foreach ($node in @(Get-AppAccessibleNodes $ProcessId)) {
+        try {
+            $currentName = [string]$node.Current.Name
+            $isPetAccessibleName =
+                $currentName -eq "圆圆桌面宠物" -or
+                $currentName -match "^(圆圆(?:起身|正在|伸了|退到|听见|把|穿好|发现|暂时|叼来|在一旁|精神|工作|显得)|专注结束，圆圆|任务运行较久，圆圆)"
+            if ($isPetAccessibleName -and $node.Current.IsEnabled) { return $node }
+        }
+        catch {}
+    }
+    $null
+}
+
+function Wait-PetFrontendReady(
+    [System.Diagnostics.Process]$Process,
+    [int]$TimeoutSeconds = 20
+) {
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $Process.Refresh()
+        if ($Process.HasExited) { throw "candidate exited before pet frontend became ready" }
+        $element = Find-PetSemanticElement $Process.Id
+        if ($null -ne $element) { return $element }
+        Start-Sleep -Milliseconds 100
+    }
+    throw "candidate pet frontend did not become ready"
+}
+
 function Wait-AppElement(
     [System.Diagnostics.Process]$Process,
     [string]$Name,
@@ -346,25 +427,68 @@ function Wait-NativeMenu([System.Diagnostics.Process]$Process, [int]$TimeoutSeco
 
 function Invoke-PetMenuItem(
     [System.Diagnostics.Process]$Process,
-    [string]$Name
+    [string]$Name,
+    [IntPtr]$PetWindowHandle = [IntPtr]::Zero
 ) {
-    $pet = Wait-AppElement $Process "圆圆桌面宠物" $true $false 20
+    [void](Wait-PetFrontendReady $Process 20)
+    $pet = if ($PetWindowHandle -eq [IntPtr]::Zero) {
+        Wait-PetElement $Process 20
+    }
+    else {
+        [System.Windows.Automation.AutomationElement]::FromHandle($PetWindowHandle)
+    }
     $bounds = $pet.Current.BoundingRectangle
     $handle = Get-ElementWindowHandle $pet
-    if ($handle -ne [IntPtr]::Zero) {
-        [void][YuanyuanInstalledE2EWindowProbe]::SetForegroundWindow(
-            [YuanyuanInstalledE2EWindowProbe]::RootWindow($handle)
-        )
-    }
-    [YuanyuanInstalledE2EWindowProbe]::RightClick(
-        [int]($bounds.X + ($bounds.Width / 2)),
-        [int]($bounds.Y + ($bounds.Height / 2))
+    $windowDiagnostics = @(
+        foreach ($visibleHandle in @([YuanyuanInstalledE2EWindowProbe]::VisibleWindows($Process.Id))) {
+            $visibleRect = New-Object YuanyuanInstalledE2EWindowProbe+Rect
+            [void][YuanyuanInstalledE2EWindowProbe]::GetWindowRect(
+                $visibleHandle,
+                [ref]$visibleRect
+            )
+            [ordered]@{
+                handle = [long]$visibleHandle
+                title = [YuanyuanInstalledE2EWindowProbe]::WindowTitle($visibleHandle)
+                class = [YuanyuanInstalledE2EWindowProbe]::WindowClass($visibleHandle)
+                width = $visibleRect.Right - $visibleRect.Left
+                height = $visibleRect.Bottom - $visibleRect.Top
+            }
+        }
     )
-    $menuHandle = Wait-NativeMenu $Process
+    Write-ProbeProgress ("pet-menu:target={0}:windows={1}" -f
+        [long]$handle,
+        (ConvertTo-Json @($windowDiagnostics) -Compress))
+    if ($handle -eq [IntPtr]::Zero) { throw "pet element has no native window" }
+    [void][YuanyuanInstalledE2EWindowProbe]::SetForegroundWindow(
+        [YuanyuanInstalledE2EWindowProbe]::RootWindow($handle)
+    )
+    Start-Sleep -Milliseconds 250
+    $menuHandle = [IntPtr]::Zero
+    $targets = @(
+        @(0.50, 0.50),
+        @(0.50, 0.65),
+        @(0.50, 0.35)
+    )
+    for ($attempt = 0; $attempt -lt $targets.Count; $attempt += 1) {
+        $target = $targets[$attempt]
+        [YuanyuanInstalledE2EWindowProbe]::RightClick(
+            [int]($bounds.X + ($bounds.Width * $target[0])),
+            [int]($bounds.Y + ($bounds.Height * $target[1]))
+        )
+        try {
+            $menuHandle = Wait-NativeMenu $Process 3
+            break
+        }
+        catch {
+            if ($attempt -eq $targets.Count - 1) { throw }
+            Start-Sleep -Milliseconds 300
+        }
+    }
     if (-not [YuanyuanInstalledE2EWindowProbe]::ClickPopupMenuItem($menuHandle, $Name)) {
         $available = [YuanyuanInstalledE2EWindowProbe]::PopupMenuItems($menuHandle) -join " | "
         throw "candidate native pet menu item is missing: $Name; available: $available"
     }
+    $handle
 }
 
 function Get-WindowRectRecord([IntPtr]$Handle) {
@@ -403,15 +527,36 @@ function Invoke-PanelDrag([System.Diagnostics.Process]$Process) {
     [ordered]@{ before = $before; after = $after; moved = $moved }
 }
 
-function Wait-PetHidden([System.Diagnostics.Process]$Process, [int]$TimeoutSeconds = 10) {
+function Wait-PetHidden(
+    [System.Diagnostics.Process]$Process,
+    [IntPtr]$PetWindowHandle,
+    [int]$TimeoutSeconds = 10
+) {
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     while ([DateTime]::UtcNow -lt $deadline) {
-        if ($null -eq (Find-AppElement $Process.Id "圆圆桌面宠物" $true $false)) {
+        $visibleHandles = @([YuanyuanInstalledE2EWindowProbe]::VisibleWindows($Process.Id))
+        if ($PetWindowHandle -notin $visibleHandles) {
             return $true
         }
         Start-Sleep -Milliseconds 100
     }
     $false
+}
+
+function Wait-PetVisible(
+    [System.Diagnostics.Process]$Process,
+    [IntPtr]$PetWindowHandle,
+    [int]$TimeoutSeconds = 10
+) {
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $visibleHandles = @([YuanyuanInstalledE2EWindowProbe]::VisibleWindows($Process.Id))
+        if ($PetWindowHandle -in $visibleHandles) {
+            return [System.Windows.Automation.AutomationElement]::FromHandle($PetWindowHandle)
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    throw "candidate pet window did not become visible"
 }
 
 function Find-ManualBackupRestoreButton([System.Diagnostics.Process]$Process) {
@@ -765,22 +910,22 @@ try {
 
         Write-ProbeProgress "functional:first-launch:start"
         $candidateProcess = Start-InstalledCandidate $applicationPath $webView2RuntimeRoot
-        [void](Wait-AppElement $candidateProcess "圆圆桌面宠物" $true $false 30)
+        [void](Wait-PetElement $candidateProcess 30)
         $functional.scenarios.installAndLaunch = $true
         [void](Wait-AppElement $candidateProcess ([string]$seed.title) $false $false 45)
         $functional.scenarios.reminderDelivery = $true
         Write-ProbeProgress "functional:reminder-delivery:passed"
 
         Write-ProbeProgress "functional:panel-drag:start"
-        Invoke-PetMenuItem $candidateProcess "打开今日任务"
+        $petWindowHandle = Invoke-PetMenuItem $candidateProcess "打开今日任务"
         [void](Wait-AppElement $candidateProcess "今天" $true $false 20)
         $functional.panelDragEvidence = Invoke-PanelDrag $candidateProcess
         $functional.scenarios.panelDrag = $true
         Write-ProbeProgress "functional:panel-drag:passed"
 
         Write-ProbeProgress "functional:pet-hide-restore:start"
-        Invoke-PetMenuItem $candidateProcess "隐藏圆圆"
-        if (-not (Wait-PetHidden $candidateProcess 10)) {
+        [void](Invoke-PetMenuItem $candidateProcess "隐藏圆圆" $petWindowHandle)
+        if (-not (Wait-PetHidden $candidateProcess $petWindowHandle 10)) {
             throw "pet remained visible after the installed hide command"
         }
         $restorePet = Wait-AppElement $candidateProcess "显示并叫醒圆圆" $true $true 20
@@ -800,7 +945,7 @@ try {
         $restorePet = Wait-VisibleAppElement $candidateProcess "显示并叫醒圆圆" 20
         Click-AccessibleElement $restorePet
         [void](Wait-AppElement $candidateProcess "圆圆已经显示并醒来了。" $false $false 20)
-        [void](Wait-AppElement $candidateProcess "圆圆桌面宠物" $true $false 20)
+        [void](Wait-PetVisible $candidateProcess $petWindowHandle 20)
         $functional.scenarios.hideAndRestorePet = $true
         Write-ProbeProgress "functional:pet-hide-restore:passed"
 
@@ -837,13 +982,17 @@ try {
 
         Write-ProbeProgress "functional:restart-persistence:start"
         $candidateProcess = Start-InstalledCandidate $applicationPath $webView2RuntimeRoot
-        [void](Wait-AppElement $candidateProcess "圆圆桌面宠物" $true $false 30)
-        Invoke-PetMenuItem $candidateProcess "打开今日任务"
+        $petElement = Wait-PetElement $candidateProcess 30
+        $petWindowHandle = Get-ElementWindowHandle $petElement
+        if ($petWindowHandle -eq [IntPtr]::Zero) {
+            throw "restarted pet has no native window"
+        }
+        [void](Invoke-PetMenuItem $candidateProcess "打开今日任务" $petWindowHandle)
         [void](Wait-AppElement $candidateProcess ([string]$mutation.title) $false $false 20)
         $functional.scenarios.restartPersistence = $true
         Write-ProbeProgress "functional:restart-persistence:passed"
         Write-ProbeProgress "functional:backup-restore:start"
-        Invoke-PetMenuItem $candidateProcess "设置"
+        [void](Invoke-PetMenuItem $candidateProcess "设置" $petWindowHandle)
         [void](Wait-AppElement $candidateProcess "设置" $true $false 20)
         $restoreBackup = Find-ManualBackupRestoreButton $candidateProcess
         Invoke-AccessibleElement $restoreBackup
@@ -867,7 +1016,7 @@ try {
         }
 
         $candidateProcess = Start-InstalledCandidate $applicationPath $webView2RuntimeRoot
-        [void](Wait-AppElement $candidateProcess "圆圆桌面宠物" $true $false 30)
+        [void](Wait-PetElement $candidateProcess 30)
         Invoke-PetMenuItem $candidateProcess "打开今日任务"
         [void](Wait-AppElement $candidateProcess ([string]$seed.title) $false $false 20)
         if ($null -ne (Find-AppElement $candidateProcess.Id ([string]$mutation.title) $false $false)) {

@@ -17,7 +17,7 @@ use windows_sys::Win32::{
 };
 
 use crate::connector_discovery::{
-    is_codex_desktop_managed_path, ConnectorInstallationChannel, ConnectorKind,
+    is_codex_windows_app_package_path, ConnectorInstallationChannel, ConnectorKind,
 };
 use crate::windows_artifact_trust::{
     file_identity_at, open_ordinary_artifact, verify_authenticode, AuthenticodeEvidence,
@@ -309,7 +309,7 @@ fn distribution_attested(kind: ConnectorKind, candidate: &ToolArtifactCandidate)
     match kind {
         ConnectorKind::Codex => {
             candidate.channel == ConnectorInstallationChannel::WindowsDesktopApp
-                && is_codex_desktop_managed_path(&candidate.path)
+                && is_codex_windows_app_package_path(&candidate.path)
         }
         ConnectorKind::ClaudeCode => matches!(
             candidate.channel,
@@ -673,7 +673,7 @@ mod tests {
     impl AuthenticodeVerifier for FixedVerifier {
         fn verify(&self, _file: &File, path: &Path) -> AuthenticodeEvidence {
             match path.file_stem().and_then(|stem| stem.to_str()) {
-                Some("openai") => verified(OPENAI_WINDOWS_PUBLISHER),
+                Some("openai" | "codex") => verified(OPENAI_WINDOWS_PUBLISHER),
                 Some("anthropic") => verified(ANTHROPIC_WINDOWS_PUBLISHER),
                 Some("other") => verified("Other Publisher"),
                 Some("unavailable") => AuthenticodeEvidence::Unavailable,
@@ -730,7 +730,10 @@ mod tests {
     #[test]
     fn exact_publishers_and_distribution_are_required() {
         let root = temp_root();
-        let codex = artifact(&root, r"AppData\Local\OpenAI\Codex\bin\openai.exe");
+        let codex = artifact(
+            &root,
+            r"Program Files\WindowsApps\OpenAI.Codex_26.727.6591.0_x64__2p2nqsd0c76g0\app\resources\codex.exe",
+        );
         let review = review_detected_artifacts_with(
             ConnectorKind::Codex,
             true,
@@ -921,7 +924,10 @@ mod tests {
     #[test]
     fn valid_signature_without_the_required_second_factor_still_requires_review() {
         let root = temp_root();
-        let codex = artifact(&root, r"AppData\Local\OpenAI\Codex\bin\openai.exe");
+        let codex = artifact(
+            &root,
+            r"Program Files\WindowsApps\OpenAI.Codex_26.727.6591.0_x64__2p2nqsd0c76g0\app\resources\codex.exe",
+        );
         let review = review_detected_artifacts_with(
             ConnectorKind::Codex,
             true,
@@ -1214,11 +1220,11 @@ mod tests {
     }
 
     #[test]
-    fn installed_desktop_codex_passes_the_real_offline_windows_signature_adapter_when_present() {
+    fn installed_store_codex_passes_the_real_offline_windows_signature_adapter_when_present() {
         let candidate = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
             .map(|directory| directory.join("codex.exe"))
             .find(|path| {
-                is_codex_desktop_managed_path(path) && open_ordinary_artifact(path).is_ok()
+                is_codex_windows_app_package_path(path) && open_ordinary_artifact(path).is_ok()
             });
         let Some(path) = candidate else {
             return;
@@ -1241,11 +1247,11 @@ mod tests {
     }
 
     #[test]
-    fn installed_desktop_codex_trust_adapter_tolerates_parallel_verification_when_present() {
+    fn installed_store_codex_trust_adapter_tolerates_parallel_verification_when_present() {
         let candidate = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
             .map(|directory| directory.join("codex.exe"))
             .find(|path| {
-                is_codex_desktop_managed_path(path) && open_ordinary_artifact(path).is_ok()
+                is_codex_windows_app_package_path(path) && open_ordinary_artifact(path).is_ok()
             });
         let Some(path) = candidate else {
             return;

@@ -1,3 +1,4 @@
+import { petText } from "./petProfile";
 import type { AppSettings, PetIntent } from "../types";
 
 const outcomeKinds = new Set(["success", "snoozed", "skipped"]);
@@ -23,14 +24,14 @@ export function intentTextSurface(intent: PetIntent): IntentTextSurface {
 export function motionOnlyAccessibleLabel(intent: PetIntent): string | null {
   switch (intent.kind) {
     case "success":
-      return "记录完成；圆圆高兴地跳了一下";
+      return petText("记录完成；{pet}高兴地跳了一下");
     case "snoozed":
-      return "提醒已延后；圆圆安静等候";
+      return petText("提醒已延后；{pet}安静等候");
     case "skipped":
-      return "提醒已跳过；圆圆把任务牌收起";
+      return petText("提醒已跳过；{pet}把任务牌收起");
     case "care":
-      if (intent.animation === "eating-food") return "圆圆正在吃猫粮";
-      if (intent.animation === "drinking-water") return "圆圆正在喝水";
+      if (intent.animation === "eating-food") return petText("{pet}正在吃猫粮");
+      if (intent.animation === "drinking-water") return petText("{pet}正在喝水");
       return null;
     default:
       return null;

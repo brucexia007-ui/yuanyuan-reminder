@@ -14,269 +14,1460 @@
   "lifeRows": 21,
   "learningSpritesheet": "/assets/pet/learning-atlas.webp",
   "learningRows": 4,
+  "sceneSpritesheet": "/assets/pet/scene-atlas.webp",
+  "sceneRows": 18,
   "animations": {
     "idle": {
       "row": 0,
-      "frames": [0, 1, 2, 3, 4, 5],
-      "durations": [450, 120, 120, 180, 180, 550],
-      "loopStart": 0
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "durations": [
+        450,
+        120,
+        120,
+        180,
+        180,
+        550
+      ],
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "running-right": {
       "row": 1,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [110, 110, 110, 110, 110, 110, 110, 180],
-      "loopStart": 0
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        180
+      ],
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "running-left": {
       "row": 2,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [110, 110, 110, 110, 110, 110, 110, 180],
-      "loopStart": 0
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        110,
+        180
+      ],
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "waving": {
       "row": 3,
-      "frames": [0, 1, 2, 3],
-      "durations": [160, 150, 150, 260],
-      "loopStart": 0
+      "frames": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "durations": [
+        160,
+        150,
+        150,
+        260
+      ],
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "jumping": {
       "row": 4,
-      "frames": [0, 1, 2, 3, 4],
-      "durations": [140, 130, 130, 140, 260],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "durations": [
+        140,
+        130,
+        130,
+        140,
+        260
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "activity-jumping": {
       "row": 4,
-      "frames": [0, 1, 2, 3, 4, 3, 2, 1],
-      "durations": [150, 115, 105, 110, 150, 110, 105, 125],
-      "loopStart": 0
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        3,
+        2,
+        1
+      ],
+      "durations": [
+        150,
+        115,
+        105,
+        110,
+        150,
+        110,
+        105,
+        125
+      ],
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "failed": {
       "row": 5,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [180, 180, 180, 180, 180, 180, 180, 320],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        180,
+        180,
+        180,
+        180,
+        180,
+        180,
+        180,
+        320
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "waiting": {
       "row": 6,
-      "frames": [0, 1, 2, 3, 4, 5],
-      "durations": [190, 180, 180, 180, 190, 320],
-      "loopStart": 0
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "durations": [
+        190,
+        180,
+        180,
+        180,
+        190,
+        320
+      ],
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "running": {
       "row": 7,
-      "frames": [0, 1, 2, 3, 4, 5],
-      "durations": [150, 150, 150, 150, 150, 240],
-      "loopStart": 0
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        240
+      ],
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "review": {
       "row": 8,
-      "frames": [0, 1, 2, 3, 4, 5],
-      "durations": [180, 180, 180, 180, 180, 300],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "durations": [
+        180,
+        180,
+        180,
+        180,
+        180,
+        300
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "sleep-enter": {
       "sheet": "sleep",
       "row": 0,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [120, 120, 120, 120, 120, 120, 120, 180],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        180
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "sleeping": {
       "sheet": "sleep",
       "row": 1,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [280, 280, 280, 280, 280, 280, 280, 360],
-      "loopStart": 0
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        280,
+        280,
+        280,
+        280,
+        280,
+        280,
+        280,
+        360
+      ],
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "wake-up": {
       "sheet": "sleep",
       "row": 2,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [100, 100, 100, 100, 100, 100, 100, 180],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        100,
+        180
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "grooming": {
       "sheet": "life",
       "row": 0,
-      "frames": [0, 1, 2, 3, 4, 5, 4, 3, 4, 5, 6, 7],
-      "durations": [400, 300, 300, 260, 260, 320, 260, 260, 260, 320, 320, 440],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        4,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        400,
+        300,
+        300,
+        260,
+        260,
+        320,
+        260,
+        260,
+        260,
+        320,
+        320,
+        440
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "grooming-chest": {
       "sheet": "life",
       "row": 1,
-      "frames": [0, 1, 2, 3, 4, 5, 4, 5, 6, 7],
-      "durations": [360, 300, 280, 320, 320, 360, 300, 360, 340, 480],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        360,
+        300,
+        280,
+        320,
+        320,
+        360,
+        300,
+        360,
+        340,
+        480
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "grooming-flank": {
       "sheet": "life",
       "row": 2,
-      "frames": [0, 1, 2, 3, 4, 5, 4, 5, 6, 7],
-      "durations": [360, 300, 280, 340, 360, 420, 340, 420, 360, 500],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        360,
+        300,
+        280,
+        340,
+        360,
+        420,
+        340,
+        420,
+        360,
+        500
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "stretching": {
       "sheet": "life",
       "row": 3,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [220, 180, 160, 220, 360, 180, 180, 320],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        220,
+        180,
+        160,
+        220,
+        360,
+        180,
+        180,
+        320
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "yawning": {
       "sheet": "life",
       "row": 4,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [240, 220, 180, 180, 320, 180, 200, 360],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        240,
+        220,
+        180,
+        180,
+        320,
+        180,
+        200,
+        360
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "meowing": {
       "sheet": "life",
       "row": 5,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [260, 160, 180, 240, 220, 180, 200, 360],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        260,
+        160,
+        180,
+        240,
+        220,
+        180,
+        200,
+        360
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "belly-up": {
       "sheet": "life",
       "row": 6,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [220, 200, 200, 220, 240, 240, 280, 450],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        220,
+        200,
+        200,
+        220,
+        240,
+        240,
+        280,
+        450
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "belly-down": {
       "sheet": "life",
       "row": 6,
-      "frames": [7, 6, 5, 4, 3, 2, 1, 0],
-      "durations": [220, 200, 200, 220, 220, 200, 200, 320],
-      "loopStart": null
+      "frames": [
+        7,
+        6,
+        5,
+        4,
+        3,
+        2,
+        1,
+        0
+      ],
+      "durations": [
+        220,
+        200,
+        200,
+        220,
+        220,
+        200,
+        200,
+        320
+      ],
+      "loopStart": null,
+      "staticFrame": 7
     },
     "focus-calm": {
       "sheet": "life",
       "row": 7,
-      "frames": [4, 5, 6, 7, 6, 5],
-      "durations": [900, 700, 260, 1100, 260, 700],
-      "loopStart": 0
+      "frames": [
+        4,
+        5,
+        6,
+        7,
+        6,
+        5
+      ],
+      "durations": [
+        900,
+        700,
+        260,
+        1100,
+        260,
+        700
+      ],
+      "loopStart": 0,
+      "staticFrame": 4
     },
     "eating-food": {
       "sheet": "life",
       "row": 8,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [320, 280, 260, 260, 280, 300, 520, 320],
-      "loopStart": 1
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        320,
+        280,
+        260,
+        260,
+        280,
+        300,
+        520,
+        320
+      ],
+      "loopStart": 1,
+      "staticFrame": 0
     },
     "drinking-water": {
       "sheet": "life",
       "row": 9,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [340, 280, 240, 240, 240, 260, 300, 340],
-      "loopStart": 1
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        340,
+        280,
+        240,
+        240,
+        240,
+        260,
+        300,
+        340
+      ],
+      "loopStart": 1,
+      "staticFrame": 0
     },
     "treat-follow": {
       "sheet": "life",
       "row": 10,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [400, 400, 400, 400, 400, 400, 400, 400],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        400,
+        400,
+        400,
+        400,
+        400,
+        400,
+        400,
+        400
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "wand-play": {
       "sheet": "life",
       "row": 11,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [95, 85, 80, 75, 75, 80, 90, 100],
-      "loopStart": 0
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        95,
+        85,
+        80,
+        75,
+        75,
+        80,
+        90,
+        100
+      ],
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "pet-nuzzle": {
       "sheet": "life",
       "row": 12,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [110, 95, 85, 80, 80, 90, 100, 120],
-      "loopStart": 0
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        110,
+        95,
+        85,
+        80,
+        80,
+        90,
+        100,
+        120
+      ],
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "ball-bat": {
       "sheet": "life",
       "row": 13,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [180, 140, 140, 180, 140, 140, 180, 260],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        180,
+        140,
+        140,
+        180,
+        140,
+        140,
+        180,
+        260
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "wand-reach": {
       "sheet": "life",
       "row": 14,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [160, 160, 160, 160, 160, 160, 160, 160],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        160,
+        160,
+        160,
+        160,
+        160,
+        160,
+        160,
+        160
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "wand-swipe": {
       "sheet": "life",
       "row": 15,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [120, 120, 120, 120, 120, 120, 120, 120],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        120
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "wand-return": {
       "sheet": "life",
       "row": 16,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [145, 145, 145, 145, 145, 145, 145, 145],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        145,
+        145,
+        145,
+        145,
+        145,
+        145,
+        145,
+        145
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "ball-pickup": {
       "sheet": "life",
       "row": 17,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [180, 160, 160, 180, 180, 180, 200, 280],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        180,
+        160,
+        160,
+        180,
+        180,
+        180,
+        200,
+        280
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "ball-carry": {
       "sheet": "life",
       "row": 18,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [230, 220, 230, 220, 230, 220, 230, 220],
-      "loopStart": 0
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        230,
+        220,
+        230,
+        220,
+        230,
+        220,
+        230,
+        220
+      ],
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "ball-drop": {
       "sheet": "life",
       "row": 19,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [180, 160, 160, 180, 180, 200, 220, 420],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        180,
+        160,
+        160,
+        180,
+        180,
+        200,
+        220,
+        420
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "alert-glass-paws": {
       "sheet": "life",
       "row": 20,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [190, 150, 145, 190, 170, 150, 145, 210],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        190,
+        150,
+        145,
+        190,
+        170,
+        150,
+        145,
+        210
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "learning-study-sit": {
       "sheet": "learning",
       "row": 0,
-      "frames": [0, 1, 2, 4, 5, 6, 7],
-      "durations": [720, 520, 420, 240, 560, 680, 760],
-      "loopStart": 0
+      "frames": [
+        0,
+        1,
+        2,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        720,
+        520,
+        420,
+        240,
+        560,
+        680,
+        760
+      ],
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "learning-study-curious": {
       "sheet": "learning",
       "row": 1,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [180, 160, 170, 220, 240, 180, 170, 220],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        180,
+        160,
+        170,
+        220,
+        240,
+        180,
+        170,
+        220
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "learning-press-correct": {
       "sheet": "learning",
       "row": 2,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [150, 120, 110, 105, 100, 190, 125, 180],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        120,
+        110,
+        105,
+        100,
+        190,
+        125,
+        180
+      ],
+      "loopStart": null,
+      "staticFrame": 0
     },
     "learning-press-wrong": {
       "sheet": "learning",
       "row": 3,
-      "frames": [0, 1, 2, 3, 4, 5, 6, 7],
-      "durations": [150, 120, 110, 105, 100, 190, 125, 180],
-      "loopStart": null
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        120,
+        110,
+        105,
+        100,
+        190,
+        125,
+        180
+      ],
+      "loopStart": null,
+      "staticFrame": 0
+    },
+    "spa-enter": {
+      "sheet": "scene",
+      "row": 0,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loopStart": null,
+      "staticFrame": 7
+    },
+    "spa-loop": {
+      "sheet": "scene",
+      "row": 1,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        320,
+        320,
+        320,
+        320,
+        320,
+        320,
+        320,
+        320
+      ],
+      "loopStart": 0,
+      "staticFrame": 3
+    },
+    "spa-exit": {
+      "sheet": "scene",
+      "row": 2,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loopStart": null,
+      "staticFrame": 7
+    },
+    "meal-alert": {
+      "sheet": "scene",
+      "row": 3,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loopStart": null,
+      "staticFrame": 7
+    },
+    "meal-wait": {
+      "sheet": "scene",
+      "row": 4,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        280,
+        280,
+        280,
+        280,
+        280,
+        280,
+        280,
+        280
+      ],
+      "loopStart": 0,
+      "staticFrame": 2
+    },
+    "hydration-alert": {
+      "sheet": "scene",
+      "row": 5,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loopStart": null,
+      "staticFrame": 7
+    },
+    "hydration-wait": {
+      "sheet": "scene",
+      "row": 6,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        280,
+        280,
+        280,
+        280,
+        280,
+        280,
+        280,
+        280
+      ],
+      "loopStart": 0,
+      "staticFrame": 2
+    },
+    "work-focus-loop": {
+      "sheet": "scene",
+      "row": 7,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        300,
+        300,
+        300,
+        300,
+        300,
+        300,
+        300,
+        300
+      ],
+      "loopStart": 0,
+      "staticFrame": 2
+    },
+    "work-fatigue-enter": {
+      "sheet": "scene",
+      "row": 8,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loopStart": null,
+      "staticFrame": 7
+    },
+    "work-fatigue-loop": {
+      "sheet": "scene",
+      "row": 9,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360
+      ],
+      "loopStart": 0,
+      "staticFrame": 3
+    },
+    "work-recover": {
+      "sheet": "scene",
+      "row": 10,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loopStart": null,
+      "staticFrame": 7
+    },
+    "warmup-alert": {
+      "sheet": "scene",
+      "row": 11,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loopStart": null,
+      "staticFrame": 7
+    },
+    "warmup-loop": {
+      "sheet": "scene",
+      "row": 12,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        250,
+        250,
+        250,
+        250,
+        250,
+        250,
+        250,
+        250
+      ],
+      "loopStart": 0,
+      "staticFrame": 3
+    },
+    "study-focus-loop": {
+      "sheet": "scene",
+      "row": 13,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        320,
+        320,
+        320,
+        320,
+        320,
+        320,
+        320,
+        320
+      ],
+      "loopStart": 0,
+      "staticFrame": 2
+    },
+    "study-curious": {
+      "sheet": "scene",
+      "row": 14,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loopStart": null,
+      "staticFrame": 7
+    },
+    "night-enter": {
+      "sheet": "scene",
+      "row": 15,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loopStart": null,
+      "staticFrame": 7
+    },
+    "night-loop": {
+      "sheet": "scene",
+      "row": 16,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        380,
+        380,
+        380,
+        380,
+        380,
+        380,
+        380,
+        380
+      ],
+      "loopStart": 0,
+      "staticFrame": 3
+    },
+    "night-exit": {
+      "sheet": "scene",
+      "row": 17,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loopStart": null,
+      "staticFrame": 7
     }
   }
 }

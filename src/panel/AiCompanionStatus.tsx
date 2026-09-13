@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { petText, usePetProfile } from "../pet/petProfile";
 
 import {
   clearAiDiagnostics,
@@ -22,7 +23,7 @@ const statusCopy: Record<
   },
   starting: {
     label: "正在醒来",
-    description: "圆圆正在检查智能陪伴组件，请稍候。",
+    get description() { return petText("{pet}正在检查智能陪伴组件，请稍候。"); },
   },
   running: {
     label: "运行正常",
@@ -30,11 +31,11 @@ const statusCopy: Record<
   },
   backing_off: {
     label: "稍后重试",
-    description: "组件刚才没有正常启动，圆圆会短暂等待后再试。",
+    get description() { return petText("组件刚才没有正常启动，{pet}会短暂等待后再试。"); },
   },
   circuit_open: {
     label: "已暂停重试",
-    description: "组件连续启动失败，圆圆已停止自动重试，提醒功能不受影响。",
+    get description() { return petText("组件连续启动失败，{pet}已停止自动重试，提醒功能不受影响。"); },
   },
   stopped: {
     label: "已经停止",
@@ -83,6 +84,7 @@ export function AiCompanionStatusCard({
 }: {
   onNotice: (notice: string) => void;
 }) {
+  usePetProfile();
   const [diagnostics, setDiagnostics] =
     useState<AiSupervisorDiagnostics | null>(developmentPreview);
   const [retrying, setRetrying] = useState(false);
@@ -320,7 +322,7 @@ export function AiCompanionStatusCard({
               const accepted = await retryAiAfterFailure();
               onNotice(
                 accepted
-                  ? "圆圆正在重新检查智能陪伴组件。"
+                  ? petText("{pet}正在重新检查智能陪伴组件。")
                   : "组件当前不需要手动恢复。",
               );
               await refresh();

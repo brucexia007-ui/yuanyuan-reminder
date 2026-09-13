@@ -39,13 +39,33 @@ export type LearningAnimationName =
   | "learning-study-curious"
   | "learning-press-correct"
   | "learning-press-wrong";
+export type SceneAnimationName =
+  | "spa-enter"
+  | "spa-loop"
+  | "spa-exit"
+  | "meal-alert"
+  | "meal-wait"
+  | "hydration-alert"
+  | "hydration-wait"
+  | "work-focus-loop"
+  | "work-fatigue-enter"
+  | "work-fatigue-loop"
+  | "work-recover"
+  | "warmup-alert"
+  | "warmup-loop"
+  | "study-focus-loop"
+  | "study-curious"
+  | "night-enter"
+  | "night-loop"
+  | "night-exit";
 export type AnimationName =
   | StandardAnimationName
   | SleepAnimationName
   | LifeAnimationName
-  | LearningAnimationName;
+  | LearningAnimationName
+  | SceneAnimationName;
 
-export type SpriteSheetName = "standard" | "sleep" | "life" | "learning";
+export type SpriteSheetName = "standard" | "sleep" | "life" | "learning" | "scene";
 
 export interface AnimationDefinition {
   sheet?: SpriteSheetName;
@@ -53,6 +73,7 @@ export interface AnimationDefinition {
   frames: number[];
   durations: number[];
   loopStart: number | null;
+  staticFrame: number;
 }
 
 export interface PetManifest {
@@ -68,7 +89,87 @@ export interface PetManifest {
   lifeRows: number;
   learningSpritesheet: string;
   learningRows: number;
+  sceneSpritesheet: string;
+  sceneRows: number;
   animations: Record<AnimationName, AnimationDefinition>;
+}
+
+type RawAnimationDefinition = Omit<AnimationDefinition, "staticFrame"> & {
+  staticFrame?: number;
+};
+
+const SCENE_ROWS = [
+  "spa-enter",
+  "spa-loop",
+  "spa-exit",
+  "meal-alert",
+  "meal-wait",
+  "hydration-alert",
+  "hydration-wait",
+  "work-focus-loop",
+  "work-fatigue-enter",
+  "work-fatigue-loop",
+  "work-recover",
+  "warmup-alert",
+  "warmup-loop",
+  "study-focus-loop",
+  "study-curious",
+  "night-enter",
+  "night-loop",
+  "night-exit",
+] as const satisfies readonly SceneAnimationName[];
+
+export function hasValidSceneCapability(candidate: Partial<PetManifest>): boolean {
+  if (
+    candidate.columns !== 8 ||
+    candidate.sceneRows !== SCENE_ROWS.length ||
+    typeof candidate.sceneSpritesheet !== "string" ||
+    !candidate.sceneSpritesheet.startsWith("/assets/pet/") ||
+    !candidate.animations
+  ) {
+    return false;
+  }
+  const animations = candidate.animations as Partial<
+    Record<AnimationName, RawAnimationDefinition>
+  >;
+  return SCENE_ROWS.every((name, rowIndex) => {
+    const definition = animations[name];
+    return Boolean(
+      definition &&
+        definition.sheet === "scene" &&
+        definition.row === rowIndex &&
+        definition.frames.length > 0 &&
+        definition.frames.length === definition.durations.length &&
+        definition.frames.every(
+          (frame) => Number.isInteger(frame) && frame >= 0 && frame < 8,
+        ) &&
+        definition.durations.every(
+          (duration) => Number.isFinite(duration) && duration > 0,
+        ) &&
+        Number.isInteger(definition.staticFrame) &&
+        definition.staticFrame !== undefined &&
+        definition.staticFrame >= 0 &&
+        definition.staticFrame < 8 &&
+        (definition.loopStart === null ||
+          (Number.isInteger(definition.loopStart) &&
+            definition.loopStart >= 0 &&
+            definition.loopStart < definition.frames.length)),
+    );
+  });
+}
+
+function normalizeAnimations(
+  animations: Record<AnimationName, RawAnimationDefinition>,
+): Record<AnimationName, AnimationDefinition> {
+  return Object.fromEntries(
+    Object.entries(animations).map(([name, definition]) => [
+      name,
+      {
+        ...definition,
+        staticFrame: definition.staticFrame ?? definition.frames[0] ?? 0,
+      },
+    ]),
+  ) as Record<AnimationName, AnimationDefinition>;
 }
 
 export const fallbackManifest: PetManifest = {
@@ -84,7 +185,9 @@ export const fallbackManifest: PetManifest = {
   lifeRows: 21,
   learningSpritesheet: "/assets/pet/learning-atlas.webp",
   learningRows: 4,
-  animations: {
+  sceneSpritesheet: "/assets/pet/scene-atlas.webp",
+  sceneRows: 18,
+  animations: normalizeAnimations({
     idle: {
       row: 0,
       frames: [0, 1, 2, 3, 4, 5],
@@ -230,8 +333,42 @@ export const fallbackManifest: PetManifest = {
       durations: [150, 120, 110, 105, 100, 190, 125, 180],
       loopStart: null,
     },
-  },
+    "spa-enter": sceneRow(0, false, 7),
+    "spa-loop": sceneRow(1, true, 3, 320),
+    "spa-exit": sceneRow(2, false, 7),
+    "meal-alert": sceneRow(3, false, 7),
+    "meal-wait": sceneRow(4, true, 2, 280),
+    "hydration-alert": sceneRow(5, false, 7),
+    "hydration-wait": sceneRow(6, true, 2, 280),
+    "work-focus-loop": sceneRow(7, true, 2, 300),
+    "work-fatigue-enter": sceneRow(8, false, 7),
+    "work-fatigue-loop": sceneRow(9, true, 3, 360),
+    "work-recover": sceneRow(10, false, 7),
+    "warmup-alert": sceneRow(11, false, 7),
+    "warmup-loop": sceneRow(12, true, 3, 250),
+    "study-focus-loop": sceneRow(13, true, 2, 320),
+    "study-curious": sceneRow(14, false, 7),
+    "night-enter": sceneRow(15, false, 7),
+    "night-loop": sceneRow(16, true, 3, 380),
+    "night-exit": sceneRow(17, false, 7),
+  }),
 };
+
+function sceneRow(
+  rowIndex: number,
+  loop: boolean,
+  staticFrame: number,
+  duration = 150,
+): AnimationDefinition {
+  return {
+    sheet: "scene",
+    row: rowIndex,
+    frames: Array.from({ length: 8 }, (_, index) => index),
+    durations: Array.from({ length: 8 }, () => duration),
+    loopStart: loop ? 0 : null,
+    staticFrame,
+  };
+}
 
 function lifeRow(rowIndex: number, durations: number[]): AnimationDefinition {
   return {
@@ -240,6 +377,7 @@ function lifeRow(rowIndex: number, durations: number[]): AnimationDefinition {
     frames: Array.from({ length: 8 }, (_, index) => index),
     durations,
     loopStart: null,
+    staticFrame: 0,
   };
 }
 
@@ -254,6 +392,7 @@ function lifeRowWithFrames(
     frames,
     durations,
     loopStart: null,
+    staticFrame: frames[0] ?? 0,
   };
 }
 
@@ -270,6 +409,7 @@ function row(
       index === count - 1 ? lastDuration : duration,
     ),
     loopStart: 0,
+    staticFrame: 0,
   };
 }
 
@@ -279,7 +419,18 @@ export function loadPetManifest(): Promise<PetManifest> {
   manifestPromise ??= fetch("/assets/pet/pet-manifest.json")
     .then(async (response) => {
       if (!response.ok) throw new Error(`pet manifest ${response.status}`);
-      return (await response.json()) as PetManifest;
+      const candidate = (await response.json()) as Partial<PetManifest>;
+      if (!hasValidSceneCapability(candidate)) {
+        throw new Error("pet manifest scene capability mismatch");
+      }
+      return {
+        ...fallbackManifest,
+        ...candidate,
+        animations: normalizeAnimations({
+          ...fallbackManifest.animations,
+          ...candidate.animations,
+        }),
+      } as PetManifest;
     })
     .catch(() => fallbackManifest);
   return manifestPromise;

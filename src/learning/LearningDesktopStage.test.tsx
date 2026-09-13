@@ -57,6 +57,7 @@ import type {
   LearningSessionSnapshot,
 } from "../types";
 import { LearningDesktopStage } from "./LearningDesktopStage";
+import { acceptPetSnapshot, builtinPet, getPetSnapshot } from "../pet/petProfile";
 
 const session: LearningSessionSnapshot = {
   schemaVersion: 1,
@@ -150,6 +151,7 @@ function sprite(): HTMLElement {
 
 describe("desktop learning pet feedback", () => {
   beforeEach(() => {
+    acceptPetSnapshot({ ...getPetSnapshot(), revision: getPetSnapshot().revision + 1, effectivePackId: builtinPet.packId, selectedPackId: builtinPet.packId, nickname: "圆圆", capabilities: builtinPet.capabilities, manifest: builtinPet.manifest, staticOnly: false });
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-12T08:00:00Z"));
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -200,6 +202,19 @@ describe("desktop learning pet feedback", () => {
     await finishQuestionWriting();
 
     expect(document.activeElement).toBe(choice("correct"));
+  });
+
+  it.each([true, false])("settles in-flight answer feedback when switching to a pack with learning=%s", async (learning) => {
+    backend.answerLearningQuestion.mockResolvedValue(answerResult(true));
+    await act(async () => root.render(<LearningDesktopStage session={session} settings={{ animationMode: "always", animationSpeed: 1 }} onSessionChange={vi.fn()} onClose={vi.fn()} />));
+    await flushPromises(); await finishQuestionWriting();
+    await act(async () => choice("correct").click()); await flushPromises();
+    expect(sprite().dataset.animation).toBe("learning-press-correct");
+    await act(async () => acceptPetSnapshot({ ...getPetSnapshot(), revision: getPetSnapshot().revision + 1, selectedPackId: "next-pet", effectivePackId: "next-pet", capabilities: { learning, scene: false } }));
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("回答正确，真棒");
+    await advanceTimers(1000);
+    expect(container.querySelector(".desktop-learning-complete")).not.toBeNull();
+    expect(backend.answerLearningQuestion).toHaveBeenCalledTimes(1);
   });
 
   it("presses the green button only at the contact frame for a correct answer", async () => {
@@ -309,6 +324,32 @@ describe("desktop learning pet feedback", () => {
       "session-1",
     );
     expect(onSessionChange).toHaveBeenCalledWith(next);
+  });
+
+  it.each([
+    ["a higher priority presentation is active", "当前有优先展示的提醒或活动，请处理完后再试"],
+    ["a learning session is already active or resumable", "上一轮还未结束，请先继续或结束上一轮"],
+    ["learning startup cleanup failed; a higher priority presentation is active", "学习启动后的状态清理未完成，请重新打开学习页核对上一轮后再试"],
+  ])("keeps the completed board usable when the next round is denied: %s", async (failure, message) => {
+    const completed = { ...session, status: "completed" as const, completedCount: 1, endedAtUnixMs: 31_000 };
+    const next = { ...session, sessionId: "session-2", sessionKind: "mistakes" as const };
+    backend.startManualLearningSession.mockRejectedValueOnce(new Error(`validation error: ${failure}`)).mockResolvedValue(next);
+    const onSessionChange = vi.fn();
+    await act(async () => root.render(
+      <LearningDesktopStage session={completed} settings={{ animationMode: "always", animationSpeed: 1 }} onSessionChange={onSessionChange} onClose={vi.fn()} />,
+    ));
+    await flushPromises();
+    const correction = () => [...container.querySelectorAll<HTMLButtonElement>("button")].find((item) => item.textContent?.includes("订正本轮错题"))!;
+    await act(async () => correction().click());
+    await flushPromises();
+    expect(container.textContent).toContain(message);
+    expect(container.textContent).not.toContain("validation error");
+    expect(onSessionChange).not.toHaveBeenCalled();
+    expect(correction().disabled).toBe(false);
+    await act(async () => correction().click());
+    await flushPromises();
+    expect(onSessionChange).toHaveBeenCalledWith(next);
+    expect(backend.answerLearningQuestion).not.toHaveBeenCalled();
   });
 
   it("releases the completed presentation only when the completion board closes", async () => {

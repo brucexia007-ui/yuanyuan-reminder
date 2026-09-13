@@ -30,6 +30,7 @@ pub fn reconcile_local_context(
     app: &AppHandle,
     reminder_owner: Option<PresentationOwner>,
     focus_active: bool,
+    scene_rest_active: bool,
     now_unix_ms: i64,
 ) -> AppResult<PresentationTransition> {
     debug_assert!(reminder_owner.is_none_or(PresentationOwner::is_reminder));
@@ -58,6 +59,12 @@ pub fn reconcile_local_context(
                 arbiter.acquire(owner, now_unix_ms, None, None),
             );
         }
+        if scene_rest_active {
+            record_result(
+                &mut transition,
+                arbiter.acquire(PresentationOwner::SceneRest, now_unix_ms, None, None),
+            );
+        }
         transition
     })
 }
@@ -65,19 +72,115 @@ pub fn reconcile_local_context(
 pub fn reconcile_task_watch(
     app: &AppHandle,
     active: bool,
+    attention: bool,
+    focus_active: bool,
+    scene_rest_active: bool,
     now_unix_ms: i64,
 ) -> AppResult<PresentationTransition> {
     mutate(app, |arbiter| {
         let mut transition = PresentationTransition::default();
+        let desired = active.then_some(if attention {
+            PresentationOwner::TaskWatchAttention
+        } else {
+            PresentationOwner::TaskWatch
+        });
+        for owner in [
+            PresentationOwner::TaskWatch,
+            PresentationOwner::TaskWatchAttention,
+        ] {
+            if Some(owner) != desired {
+                arbiter.release_owner(owner, now_unix_ms);
+            }
+        }
+        if focus_active {
+            record_result(
+                &mut transition,
+                arbiter.acquire(PresentationOwner::Focus, now_unix_ms, None, None),
+            );
+        }
         if active {
             record_result(
                 &mut transition,
-                arbiter.acquire(PresentationOwner::TaskWatch, now_unix_ms, None, None),
+                arbiter.acquire(
+                    desired.expect("active task has an owner"),
+                    now_unix_ms,
+                    None,
+                    None,
+                ),
             );
-        } else {
-            arbiter.release_owner(PresentationOwner::TaskWatch, now_unix_ms);
+        }
+        if scene_rest_active {
+            record_result(
+                &mut transition,
+                arbiter.acquire(PresentationOwner::SceneRest, now_unix_ms, None, None),
+            );
         }
         transition
+    })
+}
+
+pub fn acquire_scene_rest(
+    app: &AppHandle,
+    now_unix_ms: i64,
+    expires_at_unix_ms: i64,
+) -> AppResult<bool> {
+    mutate(app, |arbiter| {
+        arbiter
+            .acquire(
+                PresentationOwner::SceneRest,
+                now_unix_ms,
+                Some(expires_at_unix_ms),
+                None,
+            )
+            .granted_lease()
+            .is_some()
+    })
+}
+
+pub fn release_scene_rest(app: &AppHandle, now_unix_ms: i64) -> AppResult<bool> {
+    mutate(app, |arbiter| {
+        arbiter.release_owner(PresentationOwner::SceneRest, now_unix_ms)
+    })
+}
+
+pub fn acquire_user_interaction(
+    app: &AppHandle,
+    now_unix_ms: i64,
+    expires_at_unix_ms: i64,
+) -> AppResult<Option<crate::presentation_arbiter::PresentationLease>> {
+    mutate(app, |arbiter| {
+        arbiter.release_owner(PresentationOwner::UserInteraction, now_unix_ms);
+        arbiter
+            .acquire(
+                PresentationOwner::UserInteraction,
+                now_unix_ms,
+                Some(expires_at_unix_ms),
+                None,
+            )
+            .granted_lease()
+            .cloned()
+    })
+}
+
+pub fn release_user_interaction(
+    app: &AppHandle,
+    lease_id: &str,
+    lease_revision: u64,
+    now_unix_ms: i64,
+) -> AppResult<bool> {
+    mutate(app, |arbiter| {
+        arbiter.release_matching_owner(
+            PresentationOwner::UserInteraction,
+            lease_id,
+            lease_revision,
+            now_unix_ms,
+        )
+    })
+}
+
+pub fn cancel_user_interaction(app: &AppHandle, now_unix_ms: i64) -> AppResult<bool> {
+    mutate(app, |arbiter| {
+        arbiter.release_owner(PresentationOwner::UserInteraction, now_unix_ms)
     })
 }
 
@@ -129,6 +232,11 @@ pub fn acquire_learning_session(
 }
 
 #[cfg(feature = "learning")]
+pub fn mark_learning_completed(app: &AppHandle, session_id: &str) -> AppResult<bool> {
+    mutate(app, |arbiter| arbiter.mark_learning_completed(session_id))
+}
+
+#[cfg(feature = "learning")]
 pub fn finish_learning_session(app: &AppHandle, now_unix_ms: i64) -> AppResult<bool> {
     mutate(app, |arbiter| arbiter.finish_learning(now_unix_ms))
 }
@@ -165,6 +273,8 @@ fn mutate<T>(
         let mut arbiter = state.presentation_arbiter.lock();
         let previous_revision = arbiter.revision();
         let result = operation(&mut arbiter);
+        #[cfg(feature = "learning")]
+        arbiter.reconcile_completed_learning(chrono::Utc::now().timestamp_millis());
         (
             result,
             arbiter.lease_state(),

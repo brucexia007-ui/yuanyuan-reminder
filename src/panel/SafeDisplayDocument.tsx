@@ -1,4 +1,5 @@
 import { createElement } from "react";
+import { petText } from "../pet/petProfile";
 
 import "./safeDisplayDocument.css";
 
@@ -308,7 +309,7 @@ export function SafeDisplayDocument({
   if (!parsed) return null;
 
   return (
-    <article className="safe-document" aria-label={parsed.title ?? "圆圆展示的信息"}>
+    <article className="safe-document" aria-label={parsed.title ?? petText("{pet}展示的信息")}>
       <header className="safe-document__header">
         {parsed.title && <h2>{parsed.title}</h2>}
         <div className="safe-document__provenance" aria-label="内容来源和可信度">

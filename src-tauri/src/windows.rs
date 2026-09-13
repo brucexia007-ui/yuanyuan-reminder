@@ -1,5 +1,5 @@
 use tauri::{
-    menu::{CheckMenuItem, ContextMenu, Menu, MenuItem, PredefinedMenuItem},
+    menu::{CheckMenuItem, ContextMenu, Menu, MenuItem, PredefinedMenuItem, Submenu},
     AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition,
 };
 
@@ -9,9 +9,93 @@ use crate::{
     state::AppState,
 };
 
-pub const PET_LEARNING_QUICK_START_LABEL: &str = "显示课程快捷按键";
-
 const PET_SLEEP_TOGGLE_LABEL: &str = "立即睡觉/叫醒圆圆";
+
+#[derive(Default)]
+pub struct PanelDialogState(parking_lot::Mutex<PanelDialogElevation>);
+
+#[derive(Default)]
+struct PanelDialogElevation {
+    depth: usize,
+    original_topmost: bool,
+}
+
+impl PanelDialogElevation {
+    fn enter(
+        &mut self,
+        read: impl FnOnce() -> AppResult<bool>,
+        elevate: impl FnOnce() -> AppResult<()>,
+    ) -> AppResult<()> {
+        if self.depth == 0 {
+            let original = read()?;
+            elevate()?;
+            self.original_topmost = original;
+        }
+        self.depth += 1;
+        Ok(())
+    }
+
+    fn leave(&mut self) -> Option<bool> {
+        if self.depth == 0 {
+            return None;
+        }
+        self.depth -= 1;
+        (self.depth == 0).then_some(self.original_topmost)
+    }
+}
+
+/// An owned native picker must be above the separate topmost pet window,
+/// including its transparent learning hit region. Elevate only its panel
+/// owner for the dialog lifetime; never change saved pet settings or leases.
+pub struct PanelDialogScope {
+    app: AppHandle,
+    panel: tauri::WebviewWindow,
+}
+
+impl PanelDialogScope {
+    pub fn enter(app: &AppHandle) -> AppResult<Self> {
+        let panel = app
+            .get_webview_window("panel")
+            .ok_or_else(|| AppError::Window("panel window is unavailable".into()))?;
+        app.state::<PanelDialogState>().0.lock().enter(
+            || {
+                panel
+                    .is_always_on_top()
+                    .map_err(|e| AppError::Window(e.to_string()))
+            },
+            || {
+                panel
+                    .set_always_on_top(true)
+                    .map_err(|e| AppError::Window(e.to_string()))
+            },
+        )?;
+        Ok(Self {
+            app: app.clone(),
+            panel,
+        })
+    }
+}
+
+impl Drop for PanelDialogScope {
+    fn drop(&mut self) {
+        // Serialize restoration with another dialog opening at the same time.
+        let state = self.app.state::<PanelDialogState>();
+        let mut elevation = state.0.lock();
+        if let Some(original) = elevation.leave() {
+            if let Err(error) = self.panel.set_always_on_top(original) {
+                tracing::warn!(error = %error, "native dialog panel order could not be restored");
+            }
+        }
+    }
+}
+
+fn learning_quick_start_menu_label(visible: bool) -> &'static str {
+    if visible {
+        "关闭快捷按键"
+    } else {
+        "显示快捷按键"
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct DisplayBounds {
@@ -106,12 +190,23 @@ pub fn wake_display() {
 #[cfg(not(windows))]
 pub fn wake_display() {}
 
-pub fn show_task_panel(app: &AppHandle, route: &str) -> AppResult<()> {
-    let route_allowed = matches!(
+fn panel_route_allowed(route: &str) -> bool {
+    matches!(
         route,
-        "today" | "taskwatch" | "focus" | "care" | "history" | "manage" | "add" | "settings"
-    ) || (cfg!(feature = "learning") && route == "learning");
-    if !route_allowed {
+        "today"
+            | "taskwatch"
+            | "focus"
+            | "care"
+            | "history"
+            | "manage"
+            | "add"
+            | "settings"
+            | "mypet"
+    ) || (cfg!(feature = "learning") && route == "learning")
+}
+
+pub fn show_task_panel(app: &AppHandle, route: &str) -> AppResult<()> {
+    if !panel_route_allowed(route) {
         return Err(AppError::Validation("panel route is unsupported".into()));
     }
     let panel = app
@@ -230,8 +325,32 @@ pub fn show_pet_context_menu(app: &AppHandle) -> AppResult<()> {
         .map_err(|error| AppError::Window(error.to_string()))?;
     let pause = MenuItem::with_id(app, "pet-pause", "暂停提醒 30 分钟", true, None::<&str>)
         .map_err(|error| AppError::Window(error.to_string()))?;
-    let sleep = MenuItem::with_id(app, "pet-sleep", PET_SLEEP_TOGGLE_LABEL, true, None::<&str>)
+    let pet_name = crate::pet_commands::current_name(app);
+    let sleep_label = PET_SLEEP_TOGGLE_LABEL.replace("圆圆", &pet_name);
+    let sleep = MenuItem::with_id(app, "pet-sleep", sleep_label, true, None::<&str>)
         .map_err(|error| AppError::Window(error.to_string()))?;
+    let scene_rest_active = app.state::<AppState>().scene_rest.lock().is_some();
+    let rest_5 = MenuItem::with_id(app, "pet-rest-5", "5 分钟", true, None::<&str>)
+        .map_err(|error| AppError::Window(error.to_string()))?;
+    let rest_10 = MenuItem::with_id(app, "pet-rest-10", "10 分钟", true, None::<&str>)
+        .map_err(|error| AppError::Window(error.to_string()))?;
+    let rest_20 = MenuItem::with_id(app, "pet-rest-20", "20 分钟", true, None::<&str>)
+        .map_err(|error| AppError::Window(error.to_string()))?;
+    let rest_stop = MenuItem::with_id(
+        app,
+        "pet-rest-stop",
+        "提前结束",
+        scene_rest_active,
+        None::<&str>,
+    )
+    .map_err(|error| AppError::Window(error.to_string()))?;
+    let rest = Submenu::with_items(
+        app,
+        "休息一下",
+        true,
+        &[&rest_5, &rest_10, &rest_20, &rest_stop],
+    )
+    .map_err(|error| AppError::Window(error.to_string()))?;
     let always = CheckMenuItem::with_id(
         app,
         "pet-always-on-top",
@@ -253,7 +372,7 @@ pub fn show_pet_context_menu(app: &AppHandle) -> AppResult<()> {
     let learning_quick_start = CheckMenuItem::with_id(
         app,
         "pet-learning-quick-start-visible",
-        PET_LEARNING_QUICK_START_LABEL,
+        learning_quick_start_menu_label(settings.learning_quick_start_visible),
         true,
         settings.learning_quick_start_visible,
         None::<&str>,
@@ -261,8 +380,16 @@ pub fn show_pet_context_menu(app: &AppHandle) -> AppResult<()> {
     .map_err(|error| AppError::Window(error.to_string()))?;
     let settings_item = MenuItem::with_id(app, "pet-settings", "设置", true, None::<&str>)
         .map_err(|error| AppError::Window(error.to_string()))?;
-    let hide = MenuItem::with_id(app, "pet-hide", "隐藏圆圆", true, None::<&str>)
+    let my_pet = MenuItem::with_id(app, "pet-my-pet", "我的宠物", true, None::<&str>)
         .map_err(|error| AppError::Window(error.to_string()))?;
+    let hide = MenuItem::with_id(
+        app,
+        "pet-hide",
+        format!("隐藏{pet_name}"),
+        true,
+        None::<&str>,
+    )
+    .map_err(|error| AppError::Window(error.to_string()))?;
     let quit = MenuItem::with_id(app, "pet-quit", "退出圆圆提醒工具", true, None::<&str>)
         .map_err(|error| AppError::Window(error.to_string()))?;
     let separator =
@@ -276,11 +403,13 @@ pub fn show_pet_context_menu(app: &AppHandle) -> AppResult<()> {
             &add,
             &pause,
             &sleep,
+            &rest,
             &separator,
             &always,
             &click_through,
             &learning_quick_start,
             &settings_item,
+            &my_pet,
             &hide,
             &quit,
         ],
@@ -292,14 +421,78 @@ pub fn show_pet_context_menu(app: &AppHandle) -> AppResult<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn dialog_scope_restores_original_panel_order_only_after_last_close() {
+        for original in [false, true] {
+            let mut state = super::PanelDialogElevation::default();
+            state.enter(|| Ok(original), || Ok(())).unwrap();
+            state
+                .enter(
+                    || panic!("nested scope cannot replace the baseline"),
+                    || panic!("already elevated"),
+                )
+                .unwrap();
+            assert_eq!(state.leave(), None);
+            assert_eq!(state.leave(), Some(original));
+            assert_eq!(state.leave(), None);
+            state.enter(|| Ok(!original), || Ok(())).unwrap();
+            assert_eq!(state.leave(), Some(!original));
+        }
+    }
+
+    #[test]
+    fn failed_dialog_elevation_does_not_leave_a_phantom_scope() {
+        let mut state = super::PanelDialogElevation::default();
+        assert!(state
+            .enter(
+                || Err(super::AppError::Window("missing".into())),
+                || panic!("no window")
+            )
+            .is_err());
+        assert_eq!(state.leave(), None);
+        assert!(state
+            .enter(
+                || Ok(false),
+                || Err(super::AppError::Window("closed".into()))
+            )
+            .is_err());
+        assert_eq!(state.leave(), None);
+        state.enter(|| Ok(false), || Ok(())).unwrap();
+        assert_eq!(state.leave(), Some(false));
+    }
+
+    #[test]
+    fn my_pet_native_route_is_available_with_or_without_learning() {
+        for route in [
+            "today",
+            "taskwatch",
+            "focus",
+            "care",
+            "history",
+            "manage",
+            "add",
+            "settings",
+            "mypet",
+        ] {
+            assert!(super::panel_route_allowed(route), "{route}");
+        }
+        assert_eq!(
+            super::panel_route_allowed("learning"),
+            cfg!(feature = "learning")
+        );
+        for route in ["", "my-pet", "http://example.invalid", "../mypet"] {
+            assert!(!super::panel_route_allowed(route));
+        }
+    }
     use super::{
-        logical_size_in_physical, visible_position, DisplayBounds, PET_LEARNING_QUICK_START_LABEL,
+        learning_quick_start_menu_label, logical_size_in_physical, visible_position, DisplayBounds,
         PET_SLEEP_TOGGLE_LABEL,
     };
 
     #[test]
-    fn learning_quick_start_menu_uses_a_clear_visibility_label() {
-        assert_eq!(PET_LEARNING_QUICK_START_LABEL, "显示课程快捷按键");
+    fn learning_quick_start_menu_uses_the_action_for_the_saved_visibility() {
+        assert_eq!(learning_quick_start_menu_label(true), "关闭快捷按键");
+        assert_eq!(learning_quick_start_menu_label(false), "显示快捷按键");
     }
 
     #[test]

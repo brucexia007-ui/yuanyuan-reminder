@@ -24,14 +24,28 @@ export function alertPetHeight(petWidth: number): number {
   return Math.round((alertPetWidth(petWidth) * 208) / 192);
 }
 
+/** The approved warmup seated endpoint is 124px tall; idle is 198px.
+ * Scale the entire action uniformly, reserving a separate lane for the card. */
+export function warmupStageLayout(petWidth: number) {
+  const spriteWidth = Math.round(petWidth * 198 / 124);
+  const spriteHeight = Math.round(spriteWidth * 208 / 192);
+  return {
+    width: Math.max(ALERT_STAGE_WIDTH, spriteWidth + 40),
+    height: Math.max(ALERT_STAGE_HEIGHT, spriteHeight + 140),
+    spriteWidth,
+    spriteHeight,
+  };
+}
+
 export function alertStagePosition(
   currentPosition: PixelPoint,
   currentSize: PixelSize,
   scaleFactor: number,
   workArea?: AlertStageBounds,
+  stageSize: PixelSize = { width: ALERT_STAGE_WIDTH, height: ALERT_STAGE_HEIGHT },
 ): PixelPoint {
-  const targetWidth = Math.round(ALERT_STAGE_WIDTH * scaleFactor);
-  const targetHeight = Math.round(ALERT_STAGE_HEIGHT * scaleFactor);
+  const targetWidth = Math.round(stageSize.width * scaleFactor);
+  const targetHeight = Math.round(stageSize.height * scaleFactor);
   const originalRight = currentPosition.x + currentSize.width;
   const originalBottom = currentPosition.y + currentSize.height;
   let x = originalRight - targetWidth;

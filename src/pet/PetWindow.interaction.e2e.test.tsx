@@ -13,11 +13,13 @@ import type {
 
 const backend = vi.hoisted(() => ({
   completeOccurrence: vi.fn(),
+  finishPetInteraction: vi.fn(async () => true),
   getBasicSupportState: vi.fn(),
   getCompanionExpressionSnapshot: vi.fn(),
   getFocusState: vi.fn(),
   getPetActivitySnapshot: vi.fn(),
   getSettings: vi.fn(),
+  getRuntimeCapabilities: vi.fn(),
   listToday: vi.fn(),
   onBackendEvent: vi.fn(),
   setPetSize: vi.fn(),
@@ -51,6 +53,8 @@ import { PetWindow } from "./PetWindow";
 
 const settings: AppSettings = {
   animationMode: "always",
+  sceneWardrobeMode: "full",
+  petProfile: { schemaVersion: 1, selectedPackId: "builtin:yuanyuan", nicknames: {} },
   companionIntensity: "everyday",
   companionLabelMode: "adaptive",
   animationSpeed: 1,
@@ -76,7 +80,7 @@ const settings: AppSettings = {
 };
 
 const expression: CompanionExpressionSnapshot = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   revision: 1,
   tier: "n0",
   intent: "quiet_presence",
@@ -91,6 +95,7 @@ const expression: CompanionExpressionSnapshot = {
   groupedCount: 0,
   focusDeferredCount: 0,
   accessibleState: "quiet_presence",
+  sceneAppearance: { kind: "none" },
 };
 
 const activity: PetActivitySnapshot = {
@@ -114,6 +119,7 @@ describe("PetWindow interaction bubble E2E", () => {
   let container: HTMLDivElement;
   let root: Root;
   let handlers: Map<string, (payload: unknown) => void>;
+  let interactionRevision: number;
 
   const flush = async () => {
     await act(async () => {
@@ -123,7 +129,7 @@ describe("PetWindow interaction bubble E2E", () => {
 
   const startInteraction = async (id: string, kind: string) => {
     await act(async () =>
-      handlers.get("pet-interaction-started")?.({ id, kind }),
+      handlers.get("pet-interaction-started")?.({ id, kind, leaseRevision: ++interactionRevision, expiresAtUnixMs: Date.now() + 30_000 }),
     );
     await flush();
     return container.querySelector<HTMLElement>(
@@ -138,7 +144,9 @@ describe("PetWindow interaction bubble E2E", () => {
       value: vi.fn(() => ({ matches: false })),
     });
     handlers = new Map();
+    interactionRevision = 1;
     backend.getSettings.mockResolvedValue(structuredClone(settings));
+    backend.getRuntimeCapabilities.mockResolvedValue({ learning: { available: true } });
     backend.getFocusState.mockResolvedValue({ session: null });
     backend.listToday.mockResolvedValue(structuredClone(today));
     backend.getCompanionExpressionSnapshot.mockResolvedValue(

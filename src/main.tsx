@@ -1,4 +1,5 @@
-import { lazy, StrictMode, Suspense } from "react";
+import { lazy, StrictMode, Suspense, useEffect } from "react";
+import { startPetProfileSync, usePetProfile } from "./pet/petProfile";
 import { createRoot } from "react-dom/client";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { PetWindow } from "./pet/PetWindow";
@@ -40,6 +41,13 @@ const DevConnectorDisconnectLab = import.meta.env.DEV
   : null;
 
 function Root() {
+  usePetProfile();
+  useEffect(() => {
+    let cancelled = false;
+    let dispose: (() => void) | undefined;
+    void startPetProfileSync().then((cleanup) => { if (cancelled) cleanup(); else dispose = cleanup; });
+    return () => { cancelled = true; dispose?.(); };
+  }, []);
   const label =
     "__TAURI_INTERNALS__" in window
       ? getCurrentWindow().label

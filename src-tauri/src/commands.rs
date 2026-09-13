@@ -76,6 +76,22 @@ mod learning_command_concurrency_tests {
     use super::*;
 
     #[test]
+    fn import_dialog_uses_the_effective_pet_name_without_changing_content() {
+        assert_eq!(
+            learning_import_dialog_title("x"),
+            "选择交给x复习的词表或原生学习数据"
+        );
+        assert_eq!(
+            learning_import_dialog_title("小月亮🐱"),
+            "选择交给小月亮🐱复习的词表或原生学习数据"
+        );
+        assert_eq!(
+            learning_import_dialog_title("圆圆"),
+            "选择交给圆圆复习的词表或原生学习数据"
+        );
+    }
+
+    #[test]
     fn cancelled_file_dialog_resolves_without_an_error() {
         let (sender, receiver) = tokio::sync::oneshot::channel();
         sender.send(None).unwrap();
@@ -113,6 +129,11 @@ pub fn get_runtime_capabilities(state: State<'_, AppState>) -> crate::models::Ru
 }
 
 #[cfg(all(feature = "learning", windows))]
+fn learning_import_dialog_title(pet_name: &str) -> String {
+    format!("选择交给{pet_name}复习的词表或原生学习数据")
+}
+
+#[cfg(all(feature = "learning", windows))]
 #[tauri::command]
 pub async fn preview_learning_import(
     app: AppHandle,
@@ -122,16 +143,21 @@ pub async fn preview_learning_import(
         let mut picker = app
             .dialog()
             .file()
-            .set_title("选择交给圆圆复习的词表或原生学习数据")
+            .set_title(learning_import_dialog_title(
+                &crate::pet_commands::current_name(&app),
+            ))
             .add_filter("圆圆学习数据", &["csv", "json"]);
         if let Some(panel) = app.get_webview_window("panel").as_ref() {
             picker = picker.set_parent(panel);
         }
         let (selection_tx, selection_rx) = tokio::sync::oneshot::channel();
+        let dialog_scope = windows::PanelDialogScope::enter(&app)?;
         picker.pick_file(move |selected| {
             let _ = selection_tx.send(selected);
         });
-        let Some(selected) = receive_learning_file_selection(selection_rx, "import").await? else {
+        let selected = receive_learning_file_selection(selection_rx, "import").await?;
+        drop(dialog_scope);
+        let Some(selected) = selected else {
             return Ok(crate::learning::LearningImportPreview::cancelled());
         };
         let path = learning_file_path(selected, "import")?;
@@ -272,6 +298,79 @@ pub fn update_learning_settings(
 }
 
 #[cfg(feature = "learning")]
+fn finish_created_learning_start(
+    acquire: impl FnOnce() -> AppResult<()>,
+    present: impl FnOnce() -> AppResult<crate::learning::LearningSessionSnapshot>,
+    abandon: impl FnOnce() -> AppResult<()>,
+    release: impl FnOnce() -> AppResult<()>,
+) -> AppResult<crate::learning::LearningSessionSnapshot> {
+    match acquire().and_then(|_| present()) {
+        Ok(session) => Ok(session),
+        Err(start_error) => {
+            // Only the exact unpresented revision belongs to this attempt.
+            // A stale cleanup must not release a newer, already resumed lease.
+            abandon().map_err(|cleanup_error| {
+                AppError::Window(format!(
+                "learning startup cleanup failed ({cleanup_error}); startup error: {start_error}"
+            ))
+            })?;
+            // Acquisition can mutate the arbiter before event delivery fails.
+            // Release even when acquisition returned an error, scoped to its session.
+            release().map_err(|cleanup_error| {
+                AppError::Window(format!(
+                "learning startup cleanup failed ({cleanup_error}); startup error: {start_error}"
+            ))
+            })?;
+            Err(start_error)
+        }
+    }
+}
+
+#[cfg(feature = "learning")]
+fn present_created_learning_session(
+    app: &AppHandle,
+    state: &AppState,
+    created: &crate::learning::LearningSessionSnapshot,
+    acquire: impl FnOnce() -> AppResult<()>,
+) -> AppResult<crate::learning::LearningSessionSnapshot> {
+    finish_created_learning_start(
+        acquire,
+        || {
+            state.learning.lock().present_session(
+                &created.session_id,
+                created.state_revision,
+                Utc::now().timestamp_millis(),
+            )
+        },
+        || {
+            state
+                .learning
+                .lock()
+                .abandon_session(
+                    &created.session_id,
+                    created.state_revision,
+                    "presentation_denied",
+                    Utc::now().timestamp_millis(),
+                )
+                .map(|_| ())
+        },
+        || {
+            #[cfg(windows)]
+            crate::companion_runtime::set_learning_session_active(
+                app,
+                false,
+                Some(&created.session_id),
+            )?;
+            Ok(())
+        },
+    )
+}
+
+#[cfg(all(test, feature = "learning"))]
+#[path = "learning_session_start_tests.rs"]
+mod learning_session_start_tests;
+
+#[cfg(feature = "learning")]
 #[tauri::command]
 pub fn start_manual_learning_session(
     app: AppHandle,
@@ -287,17 +386,15 @@ pub fn start_manual_learning_session(
         source_session_id.as_deref(),
         now_unix_ms,
     )?;
-    #[cfg(windows)]
-    if let Err(error) =
-        crate::companion_runtime::set_learning_session_active(&app, true, Some(&session.session_id))
-    {
-        return Err(error);
-    }
-    let session = state.learning.lock().present_session(
-        &session.session_id,
-        session.state_revision,
-        Utc::now().timestamp_millis(),
-    )?;
+    let session = present_created_learning_session(&app, &state, &session, || {
+        #[cfg(windows)]
+        crate::companion_runtime::set_learning_session_active(
+            &app,
+            true,
+            Some(&session.session_id),
+        )?;
+        Ok(())
+    })?;
     let _ = app.emit("learning-session-updated", &session);
     Ok(session)
 }
@@ -335,7 +432,7 @@ pub fn get_current_learning_question(
 #[cfg(feature = "learning")]
 #[tauri::command]
 pub fn answer_learning_question(
-    _app: AppHandle,
+    app: AppHandle,
     session_id: String,
     question_id: String,
     selected_option_id: String,
@@ -351,13 +448,21 @@ pub fn answer_learning_question(
         response_ms,
         Utc::now().timestamp_millis(),
     )?;
+    if result.session.status == "completed" {
+        // Persisted answers must still be returned if presentation delivery
+        // fails; otherwise retrying the UI could obscure a successful answer.
+        if let Err(error) = crate::presentation_runtime::mark_learning_completed(&app, &session_id)
+        {
+            tracing::warn!(error = %error, "completed learning presentation could not be retained");
+        }
+    }
     Ok(result)
 }
 
 #[cfg(feature = "learning")]
 #[tauri::command]
 pub fn rate_learning_card(
-    _app: AppHandle,
+    app: AppHandle,
     session_id: String,
     card_id: String,
     rating: crate::learning::LearningRating,
@@ -371,6 +476,12 @@ pub fn rate_learning_card(
         expected_revision,
         Utc::now().timestamp_millis(),
     )?;
+    if result.session.status == "completed" {
+        if let Err(error) = crate::presentation_runtime::mark_learning_completed(&app, &session_id)
+        {
+            tracing::warn!(error = %error, "completed learning presentation could not be retained");
+        }
+    }
     Ok(result)
 }
 
@@ -511,18 +622,14 @@ pub fn accept_learning_invitation(
         .learning
         .lock()
         .accept_invitation(&invitation_id, now_unix_ms)?;
-    #[cfg(windows)]
-    if let Err(error) = crate::companion_runtime::transition_learning_invitation_to_session(
-        &app,
-        &session.session_id,
-    ) {
-        return Err(error);
-    }
-    let session = state.learning.lock().present_session(
-        &session.session_id,
-        session.state_revision,
-        Utc::now().timestamp_millis(),
-    )?;
+    let session = present_created_learning_session(&app, &state, &session, || {
+        #[cfg(windows)]
+        crate::companion_runtime::transition_learning_invitation_to_session(
+            &app,
+            &session.session_id,
+        )?;
+        Ok(())
+    })?;
     let _ = app.emit("learning-session-updated", &session);
     Ok(session)
 }
@@ -630,10 +737,13 @@ pub async fn export_learning_data(
         picker = picker.set_parent(panel);
     }
     let (selection_tx, selection_rx) = tokio::sync::oneshot::channel();
+    let dialog_scope = windows::PanelDialogScope::enter(&app)?;
     picker.save_file(move |selected| {
         let _ = selection_tx.send(selected);
     });
-    let Some(selected) = receive_learning_file_selection(selection_rx, "export").await? else {
+    let selected = receive_learning_file_selection(selection_rx, "export").await?;
+    drop(dialog_scope);
+    let Some(selected) = selected else {
         return Ok(crate::learning::LearningExportResult::cancelled(format));
     };
     let path = learning_file_path(selected, "export")?;
@@ -808,61 +918,64 @@ pub fn create_backup(app: AppHandle, state: State<'_, AppState>) -> AppResult<Ba
 }
 
 #[tauri::command]
-pub fn restore_backup(
-    app: AppHandle,
-    file_name: String,
-    state: State<'_, AppState>,
-) -> AppResult<()> {
-    let (mut settings, activity_active_seconds, focus_state, pet_care) = {
-        let mut repository = state.repository.lock();
-        let backup_dir = backup_directory(&app)?;
-        #[cfg(feature = "learning")]
-        {
-            let mut learning = state.learning.lock();
-            backups::restore_unified_backup(
-                &mut repository,
-                &mut learning,
-                &backup_dir,
-                &file_name,
+pub async fn restore_backup(app: AppHandle, file_name: String) -> AppResult<()> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        crate::pet_commands::during_backup_restore(&app, || {
+            let (mut settings, activity_active_seconds, focus_state, pet_care) = {
+                let mut repository = state.repository.lock();
+                let backup_dir = backup_directory(&app)?;
+                #[cfg(feature = "learning")]
+                {
+                    let mut learning = state.learning.lock();
+                    backups::restore_unified_backup(
+                        &mut repository,
+                        &mut learning,
+                        &backup_dir,
+                        &file_name,
+                    )?;
+                }
+                #[cfg(not(feature = "learning"))]
+                backups::restore_backup(&mut repository, &backup_dir, &file_name)?;
+                (
+                    repository.get_settings()?,
+                    repository.activity_active_seconds()?,
+                    repository.get_focus_state()?,
+                    repository.get_pet_care()?,
+                )
+            };
+            sync_autostart(&app, settings.autostart)?;
+            windows::apply_settings(&app, &mut settings)?;
+            state.repository.lock().save_settings(&settings)?;
+            state
+                .activity_tracker
+                .lock()
+                .replace_active_seconds(activity_active_seconds);
+            app.emit("settings-updated", &settings)
+                .map_err(|error| AppError::Window(error.to_string()))?;
+            app.emit("focus-updated", &focus_state)
+                .map_err(|error| AppError::Window(error.to_string()))?;
+            #[cfg(windows)]
+            crate::companion_runtime::set_focus_active(
+                &app,
+                focus_state
+                    .session
+                    .as_ref()
+                    .is_some_and(|session| session.phase == "focus"),
             )?;
-        }
-        #[cfg(not(feature = "learning"))]
-        backups::restore_backup(&mut repository, &backup_dir, &file_name)?;
-        (
-            repository.get_settings()?,
-            repository.activity_active_seconds()?,
-            repository.get_focus_state()?,
-            repository.get_pet_care()?,
-        )
-    };
-    sync_autostart(&app, settings.autostart)?;
-    windows::apply_settings(&app, &mut settings)?;
-    state.repository.lock().save_settings(&settings)?;
-    state
-        .activity_tracker
-        .lock()
-        .replace_active_seconds(activity_active_seconds);
-    app.emit("settings-updated", &settings)
-        .map_err(|error| AppError::Window(error.to_string()))?;
-    app.emit("focus-updated", &focus_state)
-        .map_err(|error| AppError::Window(error.to_string()))?;
-    #[cfg(windows)]
-    crate::companion_runtime::set_focus_active(
-        &app,
-        focus_state
-            .session
-            .as_ref()
-            .is_some_and(|session| session.phase == "focus"),
-    )?;
-    #[cfg(windows)]
-    crate::companion_runtime::sync_local_occurrences(&app)?;
-    app.emit("pet-care-updated", &pet_care)
-        .map_err(|error| AppError::Window(error.to_string()))?;
-    for event in ["reminders-updated", "occurrence-updated", "backups-updated"] {
-        app.emit(event, ())
-            .map_err(|error| AppError::Window(error.to_string()))?;
-    }
-    Ok(())
+            #[cfg(windows)]
+            crate::companion_runtime::sync_local_occurrences(&app)?;
+            app.emit("pet-care-updated", &pet_care)
+                .map_err(|error| AppError::Window(error.to_string()))?;
+            for event in ["reminders-updated", "occurrence-updated", "backups-updated"] {
+                app.emit(event, ())
+                    .map_err(|error| AppError::Window(error.to_string()))?;
+            }
+            Ok(())
+        })
+    })
+    .await
+    .map_err(|_| AppError::Validation("备份恢复未完成，请重试。".into()))?
 }
 
 fn backup_directory(app: &AppHandle) -> AppResult<std::path::PathBuf> {
@@ -886,9 +999,11 @@ pub fn complete_occurrence(
     id: String,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    let is_water = {
+    let (category, reminder_id, is_water) = {
         let mut repository = state.repository.lock();
-        repository.complete_occurrence(&id)?
+        let (category, reminder_id) = repository.occurrence_category_and_reminder_id(&id)?;
+        let is_water = repository.complete_occurrence(&id)?;
+        (category, reminder_id, is_water)
     };
     #[cfg(windows)]
     crate::companion_runtime::sync_local_occurrences(&app)?;
@@ -896,11 +1011,19 @@ pub fn complete_occurrence(
         .map_err(|error| AppError::Window(error.to_string()))?;
     app.emit(
         "pet-intent-resolved",
-        serde_json::json!({ "occurrenceId": id }),
+        serde_json::json!({
+            "occurrenceId": id,
+            "category": category,
+            "action": "complete",
+        }),
     )
     .map_err(|error| AppError::Window(error.to_string()))?;
     if is_water {
         emit_waiting_activity(&app);
+    }
+    #[cfg(windows)]
+    if reminder_id == crate::repository::SYSTEM_ACTIVITY_REMINDER_ID {
+        crate::companion_runtime::mark_work_recovered(&app, Utc::now().timestamp_millis())?;
     }
     Ok(())
 }
@@ -912,37 +1035,47 @@ pub fn snooze_occurrence(
     minutes: Option<u32>,
     state: State<'_, AppState>,
 ) -> AppResult<()> {
-    state.repository.lock().update_occurrence(
-        &id,
-        "snoozed",
-        Some(minutes.unwrap_or(10).clamp(1, 240)),
-    )?;
-    #[cfg(windows)]
-    crate::companion_runtime::sync_local_occurrences(&app)?;
-    app.emit("occurrence-updated", ())
-        .map_err(|error| AppError::Window(error.to_string()))?;
-    app.emit(
-        "pet-intent",
-        PetIntent::motion_only("snoozed", 110, "waiting", "today", Some(id), 7),
-    )
-    .map_err(|error| AppError::Window(error.to_string()))
-}
-
-#[tauri::command]
-pub fn skip_occurrence(app: AppHandle, id: String, state: State<'_, AppState>) -> AppResult<()> {
-    let is_water = {
+    let category = {
         let repository = state.repository.lock();
-        let is_water = repository.occurrence_is_water(&id)?;
-        repository.update_occurrence(&id, "skipped", None)?;
-        is_water
+        let (category, _) = repository.occurrence_category_and_reminder_id(&id)?;
+        repository.update_occurrence(&id, "snoozed", Some(minutes.unwrap_or(10).clamp(1, 240)))?;
+        category
     };
     #[cfg(windows)]
     crate::companion_runtime::sync_local_occurrences(&app)?;
     app.emit("occurrence-updated", ())
         .map_err(|error| AppError::Window(error.to_string()))?;
     app.emit(
-        "pet-intent",
-        PetIntent::motion_only("skipped", 110, "review", "today", Some(id), 7),
+        "pet-intent-resolved",
+        serde_json::json!({
+            "occurrenceId": id,
+            "category": category,
+            "action": "snooze",
+        }),
+    )
+    .map_err(|error| AppError::Window(error.to_string()))
+}
+
+#[tauri::command]
+pub fn skip_occurrence(app: AppHandle, id: String, state: State<'_, AppState>) -> AppResult<()> {
+    let (category, is_water) = {
+        let repository = state.repository.lock();
+        let (category, _) = repository.occurrence_category_and_reminder_id(&id)?;
+        let is_water = category == "water";
+        repository.update_occurrence(&id, "skipped", None)?;
+        (category, is_water)
+    };
+    #[cfg(windows)]
+    crate::companion_runtime::sync_local_occurrences(&app)?;
+    app.emit("occurrence-updated", ())
+        .map_err(|error| AppError::Window(error.to_string()))?;
+    app.emit(
+        "pet-intent-resolved",
+        serde_json::json!({
+            "occurrenceId": id,
+            "category": category,
+            "action": "skip",
+        }),
     )
     .map_err(|error| AppError::Window(error.to_string()))?;
     if is_water {
@@ -995,6 +1128,42 @@ pub fn get_basic_support_state(
 }
 
 #[tauri::command]
+pub fn get_scene_rest_state(state: State<'_, AppState>) -> Option<crate::models::SceneRestSession> {
+    state.scene_rest.lock().clone()
+}
+
+#[tauri::command]
+pub fn start_scene_rest(
+    app: AppHandle,
+    duration_minutes: u32,
+) -> AppResult<crate::models::SceneRestSession> {
+    #[cfg(windows)]
+    {
+        crate::companion_runtime::start_scene_rest(&app, duration_minutes)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (app, duration_minutes);
+        Err(AppError::Validation(
+            "scene rest is unavailable on this platform".into(),
+        ))
+    }
+}
+
+#[tauri::command]
+pub fn stop_scene_rest(app: AppHandle) -> AppResult<bool> {
+    #[cfg(windows)]
+    {
+        crate::companion_runtime::stop_scene_rest(&app)
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = app;
+        Ok(false)
+    }
+}
+
+#[tauri::command]
 pub fn start_basic_support(
     app: AppHandle,
     path: String,
@@ -1026,54 +1195,150 @@ pub fn stop_basic_support(app: AppHandle) -> AppResult<bool> {
     }
 }
 
+fn pet_interaction_spec(kind: &str) -> AppResult<(&'static str, i64, bool)> {
+    Ok(match kind {
+        "food" => ("eating-food", 8, false),
+        "water" => ("drinking-water", 8, false),
+        "treat" => ("treat-follow", 30, true),
+        "wand" => ("wand-reach", 30, true),
+        "pet" => ("pet-nuzzle", 30, true),
+        "ball" => ("idle", 30, true),
+        _ => return Err(AppError::Validation("unsupported pet interaction".into())),
+    })
+}
+
+#[cfg(test)]
+mod pet_interaction_tests {
+    use super::pet_interaction_spec;
+
+    #[test]
+    fn tools_share_the_full_thirty_second_lease_and_care_keeps_eight_seconds() {
+        for kind in ["treat", "wand", "pet", "ball"] {
+            let (_, seconds, interactive) = pet_interaction_spec(kind).unwrap();
+            assert_eq!(seconds, 30);
+            assert!(interactive);
+        }
+        for kind in ["food", "water"] {
+            let (_, seconds, interactive) = pet_interaction_spec(kind).unwrap();
+            assert_eq!(seconds, 8);
+            assert!(!interactive);
+        }
+        assert!(pet_interaction_spec("unknown").is_err());
+    }
+
+    #[test]
+    fn started_event_carries_the_owner_revision_and_absolute_deadline() {
+        let event = crate::models::PetInteractionStarted {
+            id: "interaction-lease".into(),
+            kind: "ball".into(),
+            lease_revision: 42,
+            expires_at_unix_ms: 1_789_000_030_000,
+        };
+        assert_eq!(
+            serde_json::to_value(event).unwrap(),
+            serde_json::json!({
+                "id": "interaction-lease",
+                "kind": "ball",
+                "leaseRevision": 42,
+                "expiresAtUnixMs": 1_789_000_030_000_i64,
+            })
+        );
+    }
+}
+
 #[tauri::command]
 pub fn start_pet_interaction(
     app: AppHandle,
     kind: String,
     state: State<'_, AppState>,
 ) -> AppResult<PetCareSnapshot> {
-    if state
-        .repository
-        .lock()
-        .get_focus_state()?
-        .session
-        .is_some_and(|session| session.phase == "focus")
-    {
-        return Err(AppError::Validation(
-            "专注期间圆圆会乖乖陪伴，结束后再一起玩吧。".into(),
-        ));
-    }
+    let (animation, seconds, interactive) = pet_interaction_spec(&kind)?;
+    let now_unix_ms = Utc::now().timestamp_millis();
+    let lease = crate::presentation_runtime::acquire_user_interaction(
+        &app,
+        now_unix_ms,
+        now_unix_ms + seconds * 1_000,
+    )?
+    .ok_or_else(|| AppError::Validation("当前有需要先处理的提醒。".into()))?;
     #[cfg(windows)]
-    crate::companion_runtime::stop_basic_support(&app)?;
-    let snapshot = state.repository.lock().record_pet_interaction(&kind)?;
-    let (animation, seconds, interactive) = match kind.as_str() {
-        "food" => ("eating-food", 8, false),
-        "water" => ("drinking-water", 8, false),
-        "treat" => ("treat-follow", 14, true),
-        "wand" => ("wand-reach", 14, true),
-        "pet" => ("pet-nuzzle", 14, true),
-        "ball" => ("idle", 18, true),
-        _ => return Err(AppError::Validation("unsupported pet interaction".into())),
+    if let Err(error) = crate::companion_runtime::stop_basic_support(&app) {
+        let _ = crate::presentation_runtime::release_user_interaction(
+            &app,
+            &lease.lease_id,
+            lease.revision,
+            Utc::now().timestamp_millis(),
+        );
+        return Err(error);
+    }
+    let snapshot = match state.repository.lock().record_pet_interaction(&kind) {
+        Ok(snapshot) => snapshot,
+        Err(error) => {
+            let _ = crate::presentation_runtime::release_user_interaction(
+                &app,
+                &lease.lease_id,
+                lease.revision,
+                Utc::now().timestamp_millis(),
+            );
+            return Err(error);
+        }
     };
-    if interactive {
+    let event_result = if interactive {
         app.emit(
             "pet-interaction-started",
             PetInteractionStarted {
-                id: uuid::Uuid::new_v4().to_string(),
+                id: lease.lease_id.clone(),
                 kind: kind.clone(),
+                lease_revision: lease.revision,
+                expires_at_unix_ms: now_unix_ms + seconds * 1_000,
             },
         )
-        .map_err(|error| AppError::Window(error.to_string()))?;
     } else {
         app.emit(
             "pet-intent",
             PetIntent::motion_only("care", 45, animation, "care", None, seconds),
         )
-        .map_err(|error| AppError::Window(error.to_string()))?;
+    };
+    if let Err(error) = event_result.and_then(|_| app.emit("pet-care-updated", &snapshot)) {
+        let _ = crate::presentation_runtime::release_user_interaction(
+            &app,
+            &lease.lease_id,
+            lease.revision,
+            Utc::now().timestamp_millis(),
+        );
+        return Err(AppError::Window(error.to_string()));
     }
-    app.emit("pet-care-updated", &snapshot)
-        .map_err(|error| AppError::Window(error.to_string()))?;
+    let app_for_release = app.clone();
+    let lease_id = lease.lease_id;
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(
+            u64::try_from(seconds).unwrap_or(18),
+        ))
+        .await;
+        let _ = finish_pet_interaction(app_for_release, lease_id, lease.revision);
+    });
     Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn finish_pet_interaction(
+    app: AppHandle,
+    lease_id: String,
+    lease_revision: u64,
+) -> AppResult<bool> {
+    // A late renderer callback must never release a newer interaction, reminder,
+    // focus or learning lease. The owner, ID and revision must all match.
+    let released = crate::presentation_runtime::release_user_interaction(
+        &app,
+        &lease_id,
+        lease_revision,
+        Utc::now().timestamp_millis(),
+    )?;
+    #[cfg(windows)]
+    {
+        crate::companion_runtime::sync_local_occurrences(&app)?;
+        crate::companion_runtime::sync_external_tasks(&app, Utc::now().timestamp_millis())?;
+    }
+    Ok(released)
 }
 
 #[tauri::command]
@@ -1084,7 +1349,10 @@ pub fn start_focus(
     state: State<'_, AppState>,
 ) -> AppResult<FocusState> {
     #[cfg(windows)]
-    crate::companion_runtime::stop_basic_support(&app)?;
+    {
+        crate::companion_runtime::stop_basic_support(&app)?;
+        crate::companion_runtime::stop_scene_rest(&app)?;
+    }
     let focus_state = state
         .repository
         .lock()
@@ -1829,7 +2097,10 @@ pub async fn export_ai_diagnostics(app: AppHandle) -> AppResult<DiagnosticExport
     if let Some(panel) = app.get_webview_window("panel").as_ref() {
         picker = picker.set_parent(panel);
     }
-    let Some(selected) = picker.blocking_save_file() else {
+    let dialog_scope = windows::PanelDialogScope::enter(&app)?;
+    let selected = picker.blocking_save_file();
+    drop(dialog_scope);
+    let Some(selected) = selected else {
         return Ok(DiagnosticExportResult {
             status: "cancelled".to_owned(),
             file_name: None,

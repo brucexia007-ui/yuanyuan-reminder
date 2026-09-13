@@ -56,7 +56,13 @@ try {
 New-Item -ItemType Directory -Path $outputRoot | Out-Null
 $gitExecutable = (Get-Command git.exe -ErrorAction Stop).Source
 function Read-GitValue([string[]]$Arguments) {
-    $value = & $gitExecutable -C $projectRoot @Arguments 2>$null
+    # The host probe may run elevated while the working tree belongs to the
+    # interactive test account. Trust only this explicit repository for this
+    # invocation instead of mutating the user's global safe.directory list.
+    $value = & $gitExecutable `
+        -c "safe.directory=$($projectRoot.Replace('\', '/'))" `
+        -C $projectRoot `
+        @Arguments 2>$null
     if ($LASTEXITCODE -ne 0) { throw "git source metadata query failed: $($Arguments -join ' ')" }
     ([string]($value -join "`n")).Trim()
 }

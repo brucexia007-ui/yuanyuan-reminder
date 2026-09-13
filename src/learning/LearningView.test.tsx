@@ -393,6 +393,46 @@ describe("learning micro-session", () => {
     expect(container.textContent).not.toContain("validation error");
   });
 
+  it.each([
+    ["a higher priority presentation is active", "当前有优先展示的提醒或活动，请处理完后再试"],
+    ["a learning session is already active or resumable", "上一轮还未结束，请先继续或结束上一轮"],
+    ["learning startup cleanup failed (disk failure); startup error: a higher priority presentation is active", "学习启动后的状态清理未完成，请重新打开学习页核对上一轮后再试"],
+  ])("explains a rejected learning start and refreshes the actual state: %s", async (failure, message) => {
+    backend.startManualLearningSession.mockRejectedValueOnce(new Error(`validation error: ${failure}`));
+    await act(async () => root.render(<LearningView />));
+    await flush();
+    await act(async () => button("开始一轮 · 1 个 · 约 2 分钟").click());
+    await flush();
+    expect(container.textContent).toContain(`现在还不能开始：${message}`);
+    expect(container.textContent).not.toContain("validation error");
+    expect(backend.getLearningHome).toHaveBeenCalledTimes(2);
+    expect(button("开始一轮 · 1 个 · 约 2 分钟").disabled).toBe(false);
+    await act(async () => button("开始一轮 · 1 个 · 约 2 分钟").click());
+    await flush();
+    expect(backend.startManualLearningSession).toHaveBeenCalledTimes(2);
+    expect(container.textContent).toContain("address");
+  });
+
+  it("refreshes and offers an existing unpresented round after a rejected start", async () => {
+    const pending = { ...structuredClone(session), status: "created" as const, stateRevision: 1, currentItemId: null };
+    backend.getLearningHome.mockResolvedValueOnce(structuredClone(home)).mockResolvedValue({
+      ...structuredClone(home), activeSession: pending,
+    });
+    backend.startManualLearningSession.mockRejectedValueOnce(new Error("validation error: a learning session is already active or resumable"));
+    backend.resumeLearningSession.mockResolvedValue(structuredClone(session));
+    await act(async () => root.render(<LearningView />));
+    await flush();
+    await act(async () => button("开始一轮 · 1 个 · 约 2 分钟").click());
+    await flush();
+    expect(container.textContent).toContain("上一轮还未结束，请先继续或结束上一轮");
+    await act(async () => button("继续上一轮").click());
+    await flush();
+    expect(backend.resumeLearningSession).toHaveBeenCalledWith("session-1", 1);
+    expect(container.textContent).toContain("address");
+    expect(backend.abandonLearningSession).not.toHaveBeenCalled();
+    expect(backend.answerLearningQuestion).not.toHaveBeenCalled();
+  });
+
   it("submits one objective choice and shows the result through the blackboard controls", async () => {
     backend.answerLearningQuestion.mockResolvedValue({
       schemaVersion: 1,

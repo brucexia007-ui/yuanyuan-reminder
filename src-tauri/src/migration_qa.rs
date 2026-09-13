@@ -20,12 +20,9 @@ use crate::{
 };
 
 const V132_SCHEMA_VERSION: u32 = 6;
-const CURRENT_SCHEMA_VERSION: u32 = if cfg!(feature = "learning") { 12 } else { 11 };
-const CURRENT_MIGRATION_CHECK_DETAIL: &str = if cfg!(feature = "learning") {
-    "production Repository::open migrated the copy to unified schema version 12"
-} else {
-    "production Repository::open migrated the copy to compatibility schema version 11"
-};
+const CURRENT_SCHEMA_VERSION: u32 = 13;
+const CURRENT_MIGRATION_CHECK_DETAIL: &str =
+    "production Repository::open migrated the copy to unified schema version 13";
 const MAX_FIXTURE_BYTES: u64 = 512 * 1024 * 1024;
 
 #[derive(Debug, Serialize)]

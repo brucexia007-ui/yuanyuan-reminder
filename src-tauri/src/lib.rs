@@ -48,6 +48,8 @@ mod logging;
 pub mod migration_qa;
 mod models;
 mod notifications;
+mod pet_commands;
+mod pet_packs;
 mod presentation_arbiter;
 mod presentation_runtime;
 mod repository;
@@ -116,6 +118,39 @@ pub fn run() {
         // the configured windows. Manage the complete core state before that work
         // begins so command extraction never races the setup callback.
         .manage(app_state)
+        .manage(pet_commands::PetRuntime::default())
+        .manage(windows::PanelDialogState::default())
+        .register_asynchronous_uri_scheme_protocol("petasset", |context, request, responder| {
+            let app = context.app_handle().clone();
+            tauri::async_runtime::spawn_blocking(move || {
+                let path = request.uri().path();
+                let response = if request.method() == "GET" {
+                    pet_commands::resource(&app, path)
+                } else {
+                    Err(pet_packs::invalid("unsupported method"))
+                };
+                let (status, bytes) = match response {
+                    Ok(bytes) => (200, bytes),
+                    Err(_) => (404, Vec::new()),
+                };
+                responder.respond(
+                    tauri::http::Response::builder()
+                        .status(status)
+                        .header(
+                            "Content-Type",
+                            if path.ends_with(".png") {
+                                "image/png"
+                            } else {
+                                "image/webp"
+                            },
+                        )
+                        .header("X-Content-Type-Options", "nosniff")
+                        .header("Cache-Control", "no-store")
+                        .body(bytes)
+                        .unwrap(),
+                );
+            });
+        })
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             let _ = windows::show_task_panel(app, "today");
         }))
@@ -146,6 +181,16 @@ pub fn run() {
         })
         .on_menu_event(|app, event| tray::handle_menu_event(app, event.id().as_ref()))
         .invoke_handler(tauri::generate_handler![
+            pet_commands::get_pet_catalog,
+            pet_commands::get_pet_profile,
+            pet_commands::preview_pet_pack_import,
+            pet_commands::commit_pet_pack_import,
+            pet_commands::cancel_pet_pack_import,
+            pet_commands::activate_pet_pack,
+            pet_commands::set_pet_nickname,
+            pet_commands::remove_pet_pack,
+            pet_commands::reset_pet_profile,
+            pet_commands::report_pet_resource_failure,
             commands::get_runtime_capabilities,
             #[cfg(feature = "learning")]
             commands::preview_learning_import,
@@ -221,7 +266,11 @@ pub fn run() {
             commands::get_basic_support_state,
             commands::start_basic_support,
             commands::stop_basic_support,
+            commands::get_scene_rest_state,
+            commands::start_scene_rest,
+            commands::stop_scene_rest,
             commands::start_pet_interaction,
+            commands::finish_pet_interaction,
             commands::start_focus,
             commands::cancel_focus,
             commands::get_settings,
@@ -353,6 +402,7 @@ fn setup(app: &mut tauri::App) -> AppResult<()> {
     }
 
     tray::create(app)?;
+    pet_commands::refresh_after_restore(app.handle());
     scheduler::spawn(app.handle().clone());
     cursor_direction::spawn(app.handle().clone());
 

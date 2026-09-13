@@ -13,11 +13,13 @@ import type {
 
 const backend = vi.hoisted(() => ({
   completeOccurrence: vi.fn(),
+  finishPetInteraction: vi.fn(async () => true),
   getBasicSupportState: vi.fn(),
   getCompanionExpressionSnapshot: vi.fn(),
   getFocusState: vi.fn(),
   getPetActivitySnapshot: vi.fn(),
   getSettings: vi.fn(),
+  getRuntimeCapabilities: vi.fn(),
   listToday: vi.fn(),
   onBackendEvent: vi.fn(),
   setPetSize: vi.fn(),
@@ -64,6 +66,8 @@ import {
 
 const settings: AppSettings = {
   animationMode: "always",
+  sceneWardrobeMode: "full",
+  petProfile: { schemaVersion: 1, selectedPackId: "builtin:yuanyuan", nicknames: {} },
   companionIntensity: "everyday",
   companionLabelMode: "adaptive",
   animationSpeed: 1,
@@ -91,7 +95,7 @@ const settings: AppSettings = {
 const expression = (
   overrides: Partial<CompanionExpressionSnapshot> = {},
 ): CompanionExpressionSnapshot => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   revision: 1,
   tier: "n3",
   intent: "needs_attention",
@@ -106,6 +110,7 @@ const expression = (
   groupedCount: 1,
   focusDeferredCount: 0,
   accessibleState: "work_reminder_due",
+  sceneAppearance: { kind: "none" },
   ...overrides,
 });
 
@@ -166,6 +171,7 @@ describe("PetWindow manual sleep presentation", () => {
     });
     handlers = new Map();
     backend.getSettings.mockResolvedValue(structuredClone(settings));
+    backend.getRuntimeCapabilities.mockResolvedValue({ learning: { available: false } });
     backend.getFocusState.mockResolvedValue({ session: null });
     backend.listToday.mockResolvedValue(structuredClone(today));
     backend.getCompanionExpressionSnapshot.mockResolvedValue(expression());

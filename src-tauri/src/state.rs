@@ -1,13 +1,28 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     sync::atomic::{AtomicBool, AtomicU64, Ordering},
     time::Instant,
 };
 
+#[derive(Debug, Default)]
+pub struct WorkTimingState {
+    pub task_started_at_unix_ms: HashMap<[u8; 16], i64>,
+    pub recovered_at_unix_ms: i64,
+}
+
+impl WorkTimingState {
+    pub fn mark_recovered(&mut self, now_unix_ms: i64) {
+        self.recovered_at_unix_ms = now_unix_ms.max(self.recovered_at_unix_ms);
+        for started_at in self.task_started_at_unix_ms.values_mut() {
+            *started_at = (*started_at).max(self.recovered_at_unix_ms);
+        }
+    }
+}
+
 use parking_lot::Mutex;
 use tracing_appender::non_blocking::WorkerGuard;
 
-use crate::models::BasicSupportSession;
+use crate::models::{BasicSupportSession, SceneRestSession};
 use crate::presentation_arbiter::PresentationArbiter;
 use crate::repository::Repository;
 
@@ -185,6 +200,8 @@ pub struct AppState {
     pub manual_sleep_active: AtomicBool,
     pub quitting: AtomicBool,
     pub basic_support: Mutex<Option<BasicSupportSession>>,
+    pub scene_rest: Mutex<Option<SceneRestSession>>,
+    pub work_timing: Mutex<WorkTimingState>,
     pub presentation_arbiter: Mutex<PresentationArbiter>,
     #[cfg(feature = "learning")]
     pub learning: Mutex<LearningRuntime>,
@@ -218,6 +235,8 @@ impl AppState {
             manual_sleep_active: AtomicBool::new(false),
             quitting: AtomicBool::new(false),
             basic_support: Mutex::new(None),
+            scene_rest: Mutex::new(None),
+            work_timing: Mutex::new(WorkTimingState::default()),
             presentation_arbiter: Mutex::new(PresentationArbiter::default()),
             #[cfg(feature = "learning")]
             learning: Mutex::new(LearningRuntime::default()),
@@ -314,6 +333,34 @@ mod tests {
         assert_eq!(tracker.take_persistence_update(), Some(180));
         assert!(!tracker.advance(1, Some(ACTIVITY_BREAK_RESET_SECONDS), true, true, 60,));
         assert_eq!(tracker.take_persistence_update(), Some(0));
+    }
+
+    #[test]
+    fn real_rest_rebases_every_in_memory_task_timer_and_restart_clears_it() {
+        let first_task = [1; 16];
+        let second_task = [2; 16];
+        let mut timing = WorkTimingState::default();
+        timing.task_started_at_unix_ms.insert(first_task, 1_000);
+        timing.task_started_at_unix_ms.insert(second_task, 1_500);
+
+        timing.mark_recovered(5_000);
+        assert_eq!(timing.recovered_at_unix_ms, 5_000);
+        assert_eq!(timing.task_started_at_unix_ms[&first_task], 5_000);
+        assert_eq!(timing.task_started_at_unix_ms[&second_task], 5_000);
+
+        // A stale recovery observation must not move the baseline backwards.
+        timing.mark_recovered(4_000);
+        assert_eq!(timing.recovered_at_unix_ms, 5_000);
+        assert!(timing
+            .task_started_at_unix_ms
+            .values()
+            .all(|started_at| *started_at == 5_000));
+
+        // This state is intentionally process-only; constructing the next
+        // application state starts with no task history or recovery timestamp.
+        let restarted = WorkTimingState::default();
+        assert!(restarted.task_started_at_unix_ms.is_empty());
+        assert_eq!(restarted.recovered_at_unix_ms, 0);
     }
 
     #[cfg(feature = "learning")]

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { fallbackManifest, lookDirections } from "./manifest";
+import {
+  fallbackManifest,
+  hasValidSceneCapability,
+  lookDirections,
+  type PetManifest,
+} from "./manifest";
 
 describe("圆圆动画清单", () => {
   it("包含完整标准动作、16 个视线方向和三段睡眠动作", () => {
@@ -168,6 +173,17 @@ describe("圆圆动画清单", () => {
     expect(fallbackManifest.animations["learning-study-curious"].loopStart).toBeNull();
     expect(fallbackManifest.animations["learning-press-correct"].loopStart).toBeNull();
     expect(fallbackManifest.animations["learning-press-wrong"].loopStart).toBeNull();
+  });
+
+  it("启动能力检查拒绝缺失稳定帧或错行的情境清单", () => {
+    expect(hasValidSceneCapability(fallbackManifest)).toBe(true);
+    const missingStaticFrame = structuredClone(fallbackManifest) as PetManifest;
+    delete (missingStaticFrame.animations["meal-alert"] as { staticFrame?: number })
+      .staticFrame;
+    expect(hasValidSceneCapability(missingStaticFrame)).toBe(false);
+    const wrongRow = structuredClone(fallbackManifest);
+    wrongRow.animations["night-exit"].row = 12;
+    expect(hasValidSceneCapability(wrongRow)).toBe(false);
   });
 
   it("keeps the complete grooming routine around eleven seconds", () => {

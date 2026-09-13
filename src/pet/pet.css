@@ -166,6 +166,10 @@
     infinite;
 }
 
+.activity-alert.supported-warmup .sprite-animator {
+  animation: none;
+}
+
 .pet-system-card.alert-banner.activity-banner {
   border-color: rgb(121 157 112 / 24%);
   background:
@@ -453,6 +457,48 @@
   filter: drop-shadow(0 4px 8px rgb(84 65 52 / 14%));
   transform-origin: center bottom;
   transition: transform 65ms linear;
+}
+
+.scene-work-props {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  pointer-events: none;
+}
+
+.scene-work-laptop {
+  position: absolute;
+  right: 4px;
+  bottom: 9px;
+  width: 61px;
+  height: 39px;
+  border: 3px solid #62564d;
+  border-radius: 5px;
+  background: linear-gradient(145deg, #b9d0c7, #829e96);
+  box-shadow: 0 7px 0 -2px #62564d;
+}
+
+.scene-work-coffee {
+  position: absolute;
+  right: 63px;
+  bottom: 8px;
+  width: 17px;
+  height: 20px;
+  border: 3px solid #80634f;
+  border-radius: 3px 3px 7px 7px;
+  background: #f2e2c5;
+}
+
+.scene-work-coffee::after {
+  position: absolute;
+  top: 3px;
+  right: -9px;
+  width: 8px;
+  height: 9px;
+  border: 3px solid #80634f;
+  border-left: 0;
+  border-radius: 0 7px 7px 0;
+  content: "";
 }
 
 .companion-prop-stage {

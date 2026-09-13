@@ -650,7 +650,7 @@ mod tests {
             .unwrap()
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, if cfg!(feature = "learning") { 12 } else { 11 });
+        assert_eq!(version, 13);
 
         drop(repository);
         let _ = fs::remove_dir_all(root);

@@ -248,7 +248,7 @@ impl Repository {
             }
         }
         if let Some(category) = category {
-            if !["water", "work", "personal"].contains(&category) {
+            if !["water", "meal", "work", "personal"].contains(&category) {
                 return Err(AppError::Validation("unsupported history category".into()));
             }
         }
@@ -584,17 +584,18 @@ impl Repository {
         Ok(Some(occurrence))
     }
 
-    pub fn occurrence_is_water(&self, id: &str) -> AppResult<bool> {
-        Ok(self.conn.query_row(
-            "SELECT EXISTS(
-                SELECT 1
-                FROM occurrences o
-                JOIN reminders r ON r.id = o.reminder_id
-                WHERE o.id = ?1 AND r.category = 'water'
-             )",
-            [id],
-            |row| row.get(0),
-        )?)
+    pub fn occurrence_category_and_reminder_id(&self, id: &str) -> AppResult<(String, String)> {
+        self.conn
+            .query_row(
+                "SELECT r.category, o.reminder_id
+                 FROM occurrences o
+                 JOIN reminders r ON r.id = o.reminder_id
+                 WHERE o.id = ?1",
+                [id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?
+            .ok_or_else(|| AppError::Validation("occurrence does not exist".into()))
     }
 
     pub fn activity_active_seconds(&self) -> AppResult<u64> {
@@ -1013,6 +1014,11 @@ impl Repository {
             .as_object()
             .ok_or_else(|| AppError::Validation("settings patch must be an object".into()))?;
         for (key, item) in patch {
+            if key == "petProfile" {
+                return Err(AppError::Validation(
+                    "请在‘我的宠物’中修改形象和昵称。".into(),
+                ));
+            }
             target.insert(key.clone(), item.clone());
         }
         let settings: AppSettings = serde_json::from_value(value)?;
@@ -1071,9 +1077,23 @@ impl Repository {
     }
 
     pub fn save_settings(&self, settings: &AppSettings) -> AppResult<()> {
+        // Window/autostart commands may hold an older settings snapshot.
+        let mut settings = settings.clone();
+        settings.pet_profile = self.get_settings()?.pet_profile;
         self.conn.execute(
             "UPDATE settings SET data_json = ?1, updated_at = ?2 WHERE id = 1",
-            params![serde_json::to_string(settings)?, Utc::now().to_rfc3339()],
+            params![serde_json::to_string(&settings)?, Utc::now().to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    pub fn save_pet_profile(&self, profile: &crate::pet_packs::PetProfile) -> AppResult<()> {
+        profile.validate()?;
+        let mut settings = self.get_settings()?;
+        settings.pet_profile = profile.clone();
+        self.conn.execute(
+            "UPDATE settings SET data_json = ?1, updated_at = ?2 WHERE id = 1",
+            params![serde_json::to_string(&settings)?, Utc::now().to_rfc3339()],
         )?;
         Ok(())
     }
@@ -1508,7 +1528,7 @@ impl Repository {
 
 fn apply_migrations(connection: &Connection) -> AppResult<()> {
     let schema_version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    let maximum_schema_version = if cfg!(feature = "learning") { 12 } else { 11 };
+    let maximum_schema_version = 13;
     if schema_version > maximum_schema_version {
         return Err(AppError::Validation(format!(
             "database schema version {schema_version} is newer than supported version {maximum_schema_version}"
@@ -1584,6 +1604,20 @@ fn apply_migrations(connection: &Connection) -> AppResult<()> {
             include_str!("../migrations/012_learning_invitation_attention.sql"),
         )?;
     }
+    if schema_version < 13 {
+        execute_migration(
+            connection,
+            include_str!("../migrations/013_meal_reminder_category.sql"),
+        )?;
+        let foreign_key_violation: Option<String> = connection
+            .query_row("PRAGMA foreign_key_check", [], |row| row.get(0))
+            .optional()?;
+        if foreign_key_violation.is_some() {
+            return Err(AppError::Validation(
+                "meal reminder migration failed foreign key validation".into(),
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -1596,6 +1630,7 @@ fn execute_migration(connection: &Connection, sql: &str) -> AppResult<()> {
         if !connection.is_autocommit() {
             let _ = connection.execute_batch("ROLLBACK");
         }
+        let _ = connection.execute_batch("PRAGMA foreign_keys = ON");
         return Err(error.into());
     }
     Ok(())
@@ -1617,7 +1652,7 @@ fn validate_connection(connection: &Connection) -> AppResult<()> {
         )));
     }
     let schema_version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
-    let maximum_schema_version = if cfg!(feature = "learning") { 12 } else { 11 };
+    let maximum_schema_version = 13;
     if !(1..=maximum_schema_version).contains(&schema_version) {
         return Err(AppError::Validation(format!(
             "unsupported backup schema version {schema_version}"
@@ -1745,7 +1780,7 @@ fn validate_input(input: &CreateReminderInput) -> AppResult<()> {
             "title must contain between 1 and 120 characters".into(),
         ));
     }
-    if !["water", "work", "personal"].contains(&input.category.as_str()) {
+    if !["water", "meal", "work", "personal"].contains(&input.category.as_str()) {
         return Err(AppError::Validation("unsupported reminder category".into()));
     }
     if !["once", "interval", "daily", "weekly"].contains(&input.schedule_kind.as_str()) {
@@ -1784,6 +1819,9 @@ fn validate_input(input: &CreateReminderInput) -> AppResult<()> {
 fn validate_settings(settings: &AppSettings) -> AppResult<()> {
     if !["always", "system", "off"].contains(&settings.animation_mode.as_str()) {
         return Err(AppError::Validation("invalid animation mode".into()));
+    }
+    if !["off", "reminders_only", "full"].contains(&settings.scene_wardrobe_mode.as_str()) {
+        return Err(AppError::Validation("invalid scene wardrobe mode".into()));
     }
     if !["quiet", "everyday", "close"].contains(&settings.companion_intensity.as_str()) {
         return Err(AppError::Validation("invalid companion intensity".into()));
@@ -1982,7 +2020,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "learning")]
     fn apply_main_migrations_through_v11(connection: &Connection) {
         for migration in [
             include_str!("../migrations/001_initial.sql"),
@@ -2052,7 +2089,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, if cfg!(feature = "learning") { 12 } else { 11 });
+        assert_eq!(version, 13);
         let reminder = repository.get_reminder("v1-3-2-sentinel").unwrap().unwrap();
         assert_eq!(reminder.title, "保留的旧提醒");
         assert!(reminder.archived_at.is_none());
@@ -2110,7 +2147,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, if cfg!(feature = "learning") { 12 } else { 11 });
+        assert_eq!(version, 13);
         assert_eq!(
             repository
                 .get_reminder("v1-4-sentinel")
@@ -2625,7 +2662,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, if cfg!(feature = "learning") { 12 } else { 11 });
+        assert_eq!(version, 13);
         drop(repository);
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
@@ -3111,7 +3148,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, if cfg!(feature = "learning") { 12 } else { 11 });
+        assert_eq!(version, 13);
         let water = repository.get_reminder(&water_id).unwrap().unwrap();
         assert_eq!(water.system_kind.as_deref(), Some("water"));
         assert!(water.archived_at.is_none());
@@ -3190,7 +3227,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(after, if cfg!(feature = "learning") { 12 } else { 11 });
+        assert_eq!(after, 13);
         let columns = repository
             .conn
             .prepare("PRAGMA table_info(task_watch_attention_deferrals)")
@@ -3625,7 +3662,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 12);
+        assert_eq!(version, 13);
         let ids = repository
             .conn
             .prepare("SELECT id FROM companion_proactive_attention ORDER BY id")
@@ -3727,6 +3764,150 @@ mod tests {
     }
 
     #[test]
+    fn migration_thirteen_preserves_reminders_occurrences_and_foreign_keys() {
+        let path = std::env::temp_dir().join(format!(
+            "yuanyuan-reminder-v13-meal-{}.sqlite3",
+            Uuid::new_v4()
+        ));
+        let connection = Connection::open(&path).unwrap();
+        apply_main_migrations_through_v11(&connection);
+        #[cfg(feature = "learning")]
+        connection
+            .execute_batch(include_str!(
+                "../migrations/012_learning_invitation_attention.sql"
+            ))
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO reminders(
+                    id, title, category, schedule_kind, schedule_json, timezone,
+                    enabled, next_due_at, last_fired_at, created_at, updated_at,
+                    archived_at, system_kind
+                 ) VALUES(
+                    'preserved-reminder', '保留记录', 'personal', 'once',
+                    '{\"title\":\"保留记录\",\"category\":\"personal\",\"scheduleKind\":\"once\",\"atLocal\":\"2035-02-01T09:00\"}',
+                    'Asia/Shanghai', 1, '2035-02-01T01:00:00Z', NULL,
+                    '2026-02-01T00:00:00Z', '2026-02-01T00:00:00Z', NULL, NULL
+                 )",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO occurrences(
+                    id, reminder_id, scheduled_at, status, acted_at, snoozed_until,
+                    notification_id, created_at, resolution_reason
+                 ) VALUES(
+                    'preserved-occurrence', 'preserved-reminder',
+                    '2035-02-01T01:00:00Z', 'completed', '2035-02-01T01:01:00Z',
+                    NULL, 42, '2035-02-01T01:00:00Z', 'user_completed'
+                 )",
+                [],
+            )
+            .unwrap();
+        drop(connection);
+
+        let repository = Repository::open(&path).unwrap();
+        let version: u32 = repository
+            .conn
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, 13);
+        let preserved: (String, String, Option<i64>) = repository
+            .conn
+            .query_row(
+                "SELECT r.title, o.status, o.notification_id
+                 FROM reminders r JOIN occurrences o ON o.reminder_id = r.id
+                 WHERE r.id = 'preserved-reminder'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(preserved, ("保留记录".into(), "completed".into(), Some(42)));
+        let foreign_key_rows: i64 = repository
+            .conn
+            .query_row("SELECT COUNT(*) FROM pragma_foreign_key_check", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(foreign_key_rows, 0);
+
+        let meal = repository
+            .create_reminder(CreateReminderInput {
+                title: "午餐".into(),
+                category: "meal".into(),
+                schedule_kind: "weekly".into(),
+                at_local: Some("2035-02-02T12:30".into()),
+                every_minutes: None,
+                active_start_local: None,
+                active_end_local: None,
+                weekdays: Some(vec![1, 3, 5]),
+            })
+            .unwrap();
+        assert_eq!(meal.category, "meal");
+
+        drop(repository);
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-wal"));
+        let _ = std::fs::remove_file(path.with_extension("sqlite3-shm"));
+    }
+
+    #[test]
+    fn failed_meal_migration_rolls_back_to_the_previous_schema() {
+        let connection = Connection::open_in_memory().unwrap();
+        apply_main_migrations_through_v11(&connection);
+        #[cfg(feature = "learning")]
+        connection
+            .execute_batch(include_str!(
+                "../migrations/012_learning_invitation_attention.sql"
+            ))
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO reminders(
+                    id, title, category, schedule_kind, schedule_json, timezone,
+                    enabled, created_at, updated_at
+                 ) VALUES(
+                    'rollback-reminder', '回滚保留', 'personal', 'interval',
+                    '{\"title\":\"回滚保留\",\"category\":\"personal\",\"scheduleKind\":\"interval\",\"intervalMinutes\":60}',
+                    'Asia/Shanghai', 1, '2026-02-01T00:00:00Z', '2026-02-01T00:00:00Z'
+                 )",
+                [],
+            )
+            .unwrap();
+        let broken = include_str!("../migrations/013_meal_reminder_category.sql").replace(
+            "DROP TABLE occurrences_v12;",
+            "SELECT definitely_missing_sql_function();\nDROP TABLE occurrences_v12;",
+        );
+        assert!(execute_migration(&connection, &broken).is_err());
+        let version: u32 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, if cfg!(feature = "learning") { 12 } else { 11 });
+        let title: String = connection
+            .query_row(
+                "SELECT title FROM reminders WHERE id = 'rollback-reminder'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(title, "回滚保留");
+        let renamed_tables: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master
+                 WHERE type = 'table' AND name IN ('reminders_v12', 'occurrences_v12')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(renamed_tables, 0);
+        let foreign_keys_enabled: i64 = connection
+            .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(foreign_keys_enabled, 1);
+    }
+
+    #[test]
     fn real_upgrade_fixture_is_healthy_when_provided() {
         let Ok(source_path) = std::env::var("YUANYUAN_UPGRADE_FIXTURE") else {
             return;
@@ -3752,7 +3933,7 @@ mod tests {
             .conn
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, if cfg!(feature = "learning") { 12 } else { 11 });
+        assert_eq!(version, 13);
         repository.get_settings().unwrap();
         repository.list_today(false).unwrap();
         repository.get_pet_care().unwrap();

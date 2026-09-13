@@ -1,19 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AppSettings } from "../types";
+import { usePetProfile, reportPetResourceFailure, resolvePetManifest, type PetPackSummary } from "./petProfile";
 import {
   fallbackManifest,
-  loadPetManifest,
   type AnimationName,
   type PetManifest,
   type SpriteSheetName,
 } from "./manifest";
 
 interface SpriteAnimatorProps {
+  previewPack?: PetPackSummary;
   animation: AnimationName;
+  fallbackAnimation?: AnimationName;
   lookFrame?: number | null;
   frameOverride?: number | null;
   mirrored?: boolean;
   offsetX?: number;
+  settleAtStaticFrame?: boolean;
   settings: Pick<AppSettings, "animationMode" | "animationSpeed">;
   onComplete?: (animation: AnimationName) => void;
   onFrameChange?: (animation: AnimationName, frameIndex: number) => void;
@@ -26,31 +29,61 @@ function shouldAnimate(mode: AppSettings["animationMode"]): boolean {
     || !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
+export function definitionForSceneAvailability(
+  manifest: PetManifest,
+  animation: AnimationName,
+  fallbackAnimation: AnimationName,
+  sceneSheetAvailable: boolean,
+) {
+  const requested =
+    manifest.animations[animation] ?? fallbackManifest.animations.idle;
+  return requested.sheet === "scene" && !sceneSheetAvailable
+    ? (manifest.animations[fallbackAnimation] ?? fallbackManifest.animations.idle)
+    : requested;
+}
+
 export function SpriteAnimator({
+  previewPack,
   animation,
+  fallbackAnimation = "idle",
   lookFrame = null,
   frameOverride = null,
   mirrored = false,
   offsetX = 0,
+  settleAtStaticFrame = false,
   settings,
   onComplete,
   onFrameChange,
 }: SpriteAnimatorProps) {
-  const [manifest, setManifest] = useState<PetManifest>(fallbackManifest);
+  const profile = usePetProfile();
+  const manifest = useMemo(() => previewPack ? resolvePetManifest(previewPack.manifest, previewPack.capabilities) : profile.manifest, [previewPack, profile.manifest]);
   const [frameIndex, setFrameIndex] = useState(0);
+  const [completed, setCompleted] = useState(false);
   const [sleepSheetAvailable, setSleepSheetAvailable] = useState(true);
   const [lifeSheetAvailable, setLifeSheetAvailable] = useState(true);
   const [learningSheetAvailable, setLearningSheetAvailable] = useState(true);
+  const [sceneSheetAvailable, setSceneSheetAvailable] = useState(true);
 
   useEffect(() => {
-    void loadPetManifest().then(setManifest);
-  }, []);
+    setSleepSheetAvailable(true); setLifeSheetAvailable(true);
+    setLearningSheetAvailable(true); setSceneSheetAvailable(true);
+  }, [manifest]);
 
-  const definition = manifest.animations[animation];
-  const animate = shouldAnimate(settings.animationMode);
+  const requestedDefinition =
+    manifest.animations[animation] ?? fallbackManifest.animations.idle;
+  const definition = definitionForSceneAvailability(
+    manifest,
+    animation,
+    fallbackAnimation,
+    sceneSheetAvailable,
+  );
+  // Work focus stays in the pack's resting pose so it cannot distract the user.
+  const animate = animation !== "work-focus-loop"
+    && shouldAnimate(settings.animationMode) && (Boolean(previewPack) || !profile.staticOnly);
 
   useEffect(() => {
     setFrameIndex(0);
+    setCompleted(false);
     onFrameChange?.(animation, 0);
     if (
       lookFrame !== null ||
@@ -58,6 +91,7 @@ export function SpriteAnimator({
       !animate ||
       definition.frames.length <= 1
     ) {
+      if (settleAtStaticFrame) setCompleted(true);
       return;
     }
 
@@ -76,10 +110,11 @@ export function SpriteAnimator({
             schedule(next);
             return;
           }
-          if (definition.loopStart !== null) {
+          if (definition.loopStart !== null && !settleAtStaticFrame) {
             setFrameIndex(definition.loopStart);
             schedule(definition.loopStart);
           } else {
+            setCompleted(true);
             onComplete?.(animation);
           }
         },
@@ -101,6 +136,7 @@ export function SpriteAnimator({
     onComplete,
     onFrameChange,
     settings.animationSpeed,
+    settleAtStaticFrame,
   ]);
 
   const frame = useMemo(() => {
@@ -131,7 +167,9 @@ export function SpriteAnimator({
               ? manifest.lifeRows
               : requestedSheet === "learning"
                 ? manifest.learningRows
-              : manifest.rows,
+                : requestedSheet === "scene"
+                  ? manifest.sceneRows
+                  : manifest.rows,
         sheet: requestedSheet,
       };
     }
@@ -143,7 +181,9 @@ export function SpriteAnimator({
           ? lifeSheetAvailable
           : requestedSheet === "learning"
             ? learningSheetAvailable
-            : true;
+            : requestedSheet === "scene"
+              ? sceneSheetAvailable
+              : true;
     const sheet: SpriteSheetName = sheetAvailable ? requestedSheet : "standard";
     if (sheet === "standard" && requestedSheet !== "standard") {
       return {
@@ -155,7 +195,10 @@ export function SpriteAnimator({
       };
     }
     return {
-      column: definition.frames[Math.min(frameIndex, definition.frames.length - 1)],
+      column:
+        (!animate || (completed && settleAtStaticFrame)) && definition.staticFrame !== undefined
+          ? definition.staticFrame
+          : definition.frames[Math.min(frameIndex, definition.frames.length - 1)],
       row: definition.row,
       columns: manifest.columns,
       rows:
@@ -165,17 +208,23 @@ export function SpriteAnimator({
             ? manifest.lifeRows
             : requestedSheet === "learning"
               ? manifest.learningRows
-              : manifest.rows,
+              : requestedSheet === "scene"
+                ? manifest.sceneRows
+                : manifest.rows,
       sheet,
     };
   }, [
     definition,
+    animate,
+    completed,
+    settleAtStaticFrame,
     frameOverride,
     frameIndex,
     lifeSheetAvailable,
     learningSheetAvailable,
     lookFrame,
     manifest,
+    sceneSheetAvailable,
     sleepSheetAvailable,
   ]);
 
@@ -186,38 +235,59 @@ export function SpriteAnimator({
         ? manifest.lifeSpritesheet
         : frame.sheet === "learning"
           ? manifest.learningSpritesheet
-          : manifest.spritesheet;
+          : frame.sheet === "scene"
+            ? manifest.sceneSpritesheet
+            : manifest.spritesheet;
   const x = (frame.column / (frame.columns - 1)) * 100;
   const y = frame.rows <= 1 ? 0 : (frame.row / (frame.rows - 1)) * 100;
 
   useEffect(() => {
-    const requestedSheet = definition.sheet ?? "standard";
-    if (requestedSheet === "standard") return;
+    const requestedSheet = requestedDefinition.sheet ?? "standard";
+    if (requestedSheet === "standard" && (previewPack || profile.effectivePackId === "builtin:yuanyuan")) return;
+    let cancelled = false;
     const probe = new Image();
     const updateAvailability = (available: boolean) => {
       if (requestedSheet === "sleep") setSleepSheetAvailable(available);
       else if (requestedSheet === "life") setLifeSheetAvailable(available);
-      else setLearningSheetAvailable(available);
+      else if (requestedSheet === "learning") setLearningSheetAvailable(available);
+      else setSceneSheetAvailable(available);
     };
-    probe.onload = () => updateAvailability(true);
-    probe.onerror = () => updateAvailability(false);
+    probe.onload = () => { if (!cancelled) updateAvailability(true); };
+    probe.onerror = () => {
+      if (cancelled) return;
+      updateAvailability(false);
+      if (!previewPack) void reportPetResourceFailure(requestedSheet, profile).catch(() => {});
+    };
     probe.src =
       requestedSheet === "sleep"
         ? manifest.sleepSpritesheet
         : requestedSheet === "life"
           ? manifest.lifeSpritesheet
-          : manifest.learningSpritesheet;
+          : requestedSheet === "standard"
+            ? manifest.spritesheet
+          : requestedSheet === "learning"
+            ? manifest.learningSpritesheet
+            : manifest.sceneSpritesheet;
+    return () => { cancelled = true; probe.onload = probe.onerror = null; };
   }, [
-    definition.sheet,
+    requestedDefinition.sheet,
     manifest.lifeSpritesheet,
     manifest.learningSpritesheet,
+    manifest.sceneSpritesheet,
     manifest.sleepSpritesheet,
+    manifest.spritesheet,
+    previewPack,
+    profile.effectivePackId,
+    profile.revision,
   ]);
+
+  if (!previewPack && profile.staticOnly) return <img className="sprite-animator pet-static-fallback" src={profile.fallbackImage} alt="" aria-hidden="true" onError={() => { void reportPetResourceFailure("fallback", profile).catch(() => {}); }} />;
 
   return (
     <div
       className="sprite-animator"
       data-animation={animation}
+      data-rendered-animation={definition === requestedDefinition ? animation : fallbackAnimation}
       data-mirrored={mirrored ? "true" : "false"}
       aria-hidden="true"
       style={{

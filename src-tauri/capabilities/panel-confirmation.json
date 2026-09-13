@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "panel-confirmation",
+  "description": "仅管理面板可显示破坏性操作的原生确认框，不开放文件读写或文件选择权限",
+  "windows": ["panel"],
+  "permissions": ["dialog:allow-message"]
+}

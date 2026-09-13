@@ -83,6 +83,12 @@ fn run_tick(app: &AppHandle) {
                 .is_some_and(|session| session.phase == "break"),
             now,
         );
+        #[cfg(windows)]
+        if let Err(error) =
+            crate::companion_runtime::refresh_focus_work_stage(app, now.timestamp_millis())
+        {
+            tracing::warn!(error = %error, "focus work stage could not be refreshed");
+        }
     }
 
     let Ok(due) = due else {
@@ -147,7 +153,7 @@ fn run_tick(app: &AppHandle) {
             tracing::warn!(error = %error, "OS notification unavailable; in-app reminder remains active");
         }
         let _ = app.emit("reminder-due", &item.occurrence);
-        let is_water = item.occurrence.category == "water";
+        let category = item.occurrence.category.as_str();
         let _ = app.emit(
             "pet-intent",
             PetIntent {
@@ -156,10 +162,10 @@ fn run_tick(app: &AppHandle) {
                 priority: 100,
                 animation: "alert-glass-paws".into(),
                 route: "today".into(),
-                title: if is_water {
-                    "喝水提醒".into()
-                } else {
-                    "事项提醒".into()
+                title: match category {
+                    "water" => "喝水提醒".into(),
+                    "meal" => "吃饭提醒".into(),
+                    _ => "事项提醒".into(),
                 },
                 message: item.occurrence.reminder_title,
                 occurrence_id: Some(item.occurrence.id),
@@ -192,10 +198,18 @@ fn update_activity_tracking(
         .is_some_and(|until| until.with_timezone(&Utc) > now);
     let support_active = state.basic_support.lock().is_some();
     let in_active_window = is_time_in_window(start, end, Local::now().time());
+    let idle_seconds = system_idle_seconds();
+    #[cfg(windows)]
+    if idle_seconds.is_some_and(|seconds| seconds >= crate::state::ACTIVITY_BREAK_RESET_SECONDS) {
+        state
+            .work_timing
+            .lock()
+            .mark_recovered(now.timestamp_millis());
+    }
     let (should_trigger, persistence_update) = {
         let mut tracker = state.activity_tracker.lock();
         let should_trigger = tracker.tick(
-            system_idle_seconds(),
+            idle_seconds,
             settings.activity_enabled && !paused && !break_active && !support_active,
             in_active_window,
             settings.activity_interval_minutes,
