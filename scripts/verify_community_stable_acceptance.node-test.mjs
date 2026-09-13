@@ -7,12 +7,15 @@ import {
   COMMUNITY_STABLE_PROMOTION_PATHS,
   validateCommunityStableAcceptance,
 } from "./community_stable_acceptance_contract.mjs";
+import { communityProductFromBrand } from "./community_release_contract.mjs";
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
+const brand = JSON.parse(await readFile(path.join(projectRoot, "product-brand.json"), "utf8"));
+const expectedProduct = communityProductFromBrand(brand);
 const authority = {
   schemaVersion: 1,
-  productName: "圆圆提醒",
-  identifier: "com.yuanyuan.reminder",
+  productName: expectedProduct.name,
+  identifier: expectedProduct.identifier,
   version: "1.5.2",
   releaseTrain: "unified-product",
   channel: "stable",
@@ -22,8 +25,8 @@ const acceptance = {
   schemaVersion: 1,
   status: "accepted",
   product: {
-    name: "圆圆提醒",
-    identifier: "com.yuanyuan.reminder",
+    name: expectedProduct.name,
+    identifier: expectedProduct.identifier,
     version: "1.5.2",
   },
   candidate: {
@@ -34,6 +37,7 @@ const acceptance = {
     endurance24h: {
       status: "passed",
       reportSha256: "B".repeat(64),
+      sourceBindingSha256: "9".repeat(64),
       observedSeconds: 86_401,
       activeCoverageSeconds: 72_001,
       suspendResumeObserved: true,
@@ -48,9 +52,13 @@ const acceptance = {
       installerSha256,
       scenarios: {
         installAndLaunch: true,
+        snoozeThirtyMinutes: true,
+        missedReminderNotify: true,
+        missedReminderSkipOld: true,
         reminderDelivery: true,
         hideAndRestorePet: true,
         panelDrag: true,
+        automaticBackup: true,
         backupAndRestore: true,
         restartPersistence: true,
         uninstallKeepsDataByDefault: true,
@@ -71,6 +79,7 @@ const acceptance = {
     learningRuntime: {
       status: "passed",
       reportSha256: "F".repeat(64),
+      sourceBindingSha256: "9".repeat(64),
       tauriImportPassed: true,
       cancellationPassed: true,
       importedCards: 20_000,
@@ -88,6 +97,7 @@ const acceptance = {
 };
 const options = {
   authority,
+  expectedProduct,
   releaseCommit: "b".repeat(40),
   changedPaths: COMMUNITY_STABLE_PROMOTION_PATHS,
   now: new Date("2026-08-27T04:00:00.000Z"),
@@ -98,12 +108,25 @@ test("accepts only complete stability and functionality evidence without signing
   assert.doesNotMatch(JSON.stringify(acceptance), /sign|certificate|publisher/iu);
 });
 
+test("final acceptance rejects cross-candidate 24-hour and learning evidence", () => {
+  const invalid = structuredClone(acceptance);
+  invalid.checks.learningRuntime.sourceBindingSha256 = "8".repeat(64);
+  assert.throws(
+    () => validateCommunityStableAcceptance(invalid, options),
+    /different source bindings/u,
+  );
+});
+
 test("rejects every missing core product acceptance result", () => {
   const mutations = [
     (value) => (value.checks.endurance24h.observedSeconds = 86_399),
     (value) => (value.checks.endurance24h.suspendResumeObserved = false),
+    (value) => (value.checks.installedCandidateE2e.scenarios.snoozeThirtyMinutes = false),
+    (value) => (value.checks.installedCandidateE2e.scenarios.missedReminderNotify = false),
+    (value) => (value.checks.installedCandidateE2e.scenarios.missedReminderSkipOld = false),
     (value) => (value.checks.installedCandidateE2e.scenarios.hideAndRestorePet = false),
     (value) => (value.checks.installedCandidateE2e.scenarios.panelDrag = false),
+    (value) => (value.checks.installedCandidateE2e.scenarios.automaticBackup = false),
     (value) => (value.checks.legacyDataCompatibility.sourceUnchanged = false),
     (value) => (value.checks.learningRuntime.importedCards = 19_999),
     (value) => (value.checks.learningRuntime.answersApplied = 999),

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "profile": "yuanyuan-official-pet-assets-v2",
+  "assets": {
+    "public/assets/pet/spritesheet.webp": "f69c1a923a0868c241c829e73e9917c0bf2fe9c3db3af6e75091ea806e4c1f68",
+    "public/assets/pet/sleep-atlas.webp": "a8c3755ef28dbb4681c85494260efaf029b642ad042da9b7256367f5507384a2",
+    "public/assets/pet/life-atlas.webp": "2bafb0d65ec9377a8dfb58e6b11aab4c91f9ff3177e561f875a57aa142084462",
+    "public/assets/pet/learning-atlas.webp": "820864939285f49a5fc06acaca8a3dcff464817943aa72de656031e4af7d388d",
+    "public/assets/pet/fallback.png": "6204ac6100bc47fe038b79a8088c5f53a6492ab4fe534035a92eacd2fc2f6e3f",
+    "src-tauri/icons/32x32.png": "cc7ff22bda48b90d459f246e8d6f0323c4c942cac31eb0a78f9e2f2693a601b6",
+    "src-tauri/icons/128x128.png": "09a0590ebccb7731d2e50a80367d5974b398d7babd6a01d1779b920b965ce7b1",
+    "src-tauri/icons/128x128@2x.png": "645c33a986f51545ceaf2ce4a47c7aa791a14eed375e70c0ee27083685247813",
+    "src-tauri/icons/icon.ico": "28989426202326f2aeff35fa0a8e99d472d088848137f95ccf7d522e9a6b325e",
+    "ASSETS_LICENSE.md": "cb6d5c2e5029804815330e4e3db21ea99d8c85895762fa1f5f6668bd8023bd7e"
+  }
+}

@@ -10,6 +10,11 @@ import {
   readAndValidateStoreIdentity,
 } from "./verify_msix_store_identity.mjs";
 import { readAndValidateStorePublicUrlsReport } from "./verify_msix_store_public_urls.mjs";
+import {
+  applicationDisplayName,
+  brandPetText,
+  petDisplayName,
+} from "./product_brand_contract.mjs";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const submissionInputsPath = path.join(
@@ -31,7 +36,7 @@ const verifierPath = fileURLToPath(import.meta.url);
 export const STORE_SCREENSHOTS = [
   {
     path: "docs/release/store-assets/01-today.png",
-    caption: "今日喝水进度、待办事项与桌面上的圆圆",
+    caption: brandPetText("今日喝水进度、待办事项与桌面上的圆圆"),
   },
   {
     path: "docs/release/store-assets/02-focus.png",
@@ -49,8 +54,9 @@ export const STORE_SCREENSHOTS = [
 
 export const STORE_LISTING = {
   shortDescription: "一只完全本地运行的 Windows 桌面小猫，陪你喝水、专注、休息和安排提醒。",
-  description:
+  description: brandPetText(
     "圆圆提醒是一款完全本地运行的 Windows 桌面宠物与提醒工具。小猫会留在桌面陪伴你，在合适的时间提醒喝水、处理待办、专注工作和离屏休息。\n\n你可以创建一次性、间隔、每日和每周提醒，完成、稍后或跳过事项；也可以查看今天的喝水进度与历史记录。专注期间圆圆保持安静，离屏休息可由你主动请求 Windows 锁屏。\n\n应用支持托盘、自启动、Windows 通知、本地 SQLite 数据库、每日自动备份和手动恢复。日常使用不需要账户、云服务、遥测、广告或远程 AI，提醒和记录保存在当前 Windows 用户的本地目录。",
+  ),
   features: [
     "一次性、间隔、每日和每周提醒",
     "喝水、活动、专注与离屏休息",
@@ -60,13 +66,12 @@ export const STORE_LISTING = {
     "无需账户、云服务、遥测、广告或远程 AI",
   ],
   searchTerms: ["桌面宠物", "提醒", "喝水", "专注", "休息", "离线"],
-  copyright: "© 2026 Yuanyuan Reminder contributors。圆圆素材权利保留，详见素材许可。",
-  appLicenseTerms:
-    "程序代码采用 MIT License；圆圆照片、图集、图标和演示图片适用单独的圆圆素材许可，仅允许官方免费分发和个人非商业使用。",
+  copyright: `© 2026 ${applicationDisplayName} contributors。${petDisplayName}素材权利保留，详见素材许可。`,
+  appLicenseTerms: `程序代码采用 MIT License；${petDisplayName}照片、图集、图标和演示图片适用单独的${petDisplayName}素材许可，仅允许官方免费分发和个人非商业使用。`,
 };
 
 export const RUN_FULL_TRUST_JUSTIFICATION =
-  "Yuanyuan Reminder is a packaged classic Win32/Tauri desktop application that runs at medium integrity. runFullTrust is required to launch the classic executable and provide the system tray, local SQLite data and backups, startup registration, Windows notifications, and the user-initiated LockWorkStation break flow. The app does not request elevation, install a service or driver, bypass Windows authentication, or use this capability for remote access.";
+  `${applicationDisplayName} is a packaged classic Win32/Tauri desktop application that runs at medium integrity. runFullTrust is required to launch the classic executable and provide the system tray, local SQLite data and backups, startup registration, Windows notifications, and the user-initiated LockWorkStation break flow. The app does not request elevation, install a service or driver, bypass Windows authentication, or use this capability for remote access.`;
 
 const EXPECTED_URLS = {
   privacyPolicyUrl: "https://github.com/brucexia007-ui/yuanyuan-reminder/blob/main/PRIVACY.md",
@@ -275,7 +280,7 @@ export function validateStoreSubmissionInputs(
   if (
     document.product.identityFile !== "docs/release/MSIX_STORE_IDENTITY_V1.json" ||
     document.product.identitySha256 !== expectedIdentitySha256 ||
-    document.product.name !== "圆圆提醒" ||
+    document.product.name !== applicationDisplayName ||
     document.product.version !== "1.4.0.0" ||
     document.product.primaryLanguage !== "zh-CN" ||
     document.product.category !== "Productivity"
@@ -639,7 +644,10 @@ async function main() {
     storeManifestTemplateSha256: await hashFile(
       path.join(projectRoot, "src-tauri", "msix", "AppxManifest.store.xml"),
     ),
-    assetLicenseSha256: await hashFile(path.join(projectRoot, "ASSETS_LICENSE.md")),
+    assetLicenseSha256: await hashFile(path.join(
+      projectRoot,
+      JSON.parse(await readFile(path.join(projectRoot, "product-brand.json"), "utf8")).assets.licenseFile,
+    )),
     verifierSha256: await hashFile(verifierPath),
   };
   validateStoreSubmissionInputs(document, {

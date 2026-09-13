@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { verifyRuntimeBaselineSourceBinding } from "./verify_community_stable_runtime_baseline_candidate.mjs";
+
 export class CommunityStableLearningEvidenceError extends Error {}
 
 const SHA256 = /^[A-F0-9]{64}$/u;
@@ -17,6 +19,7 @@ const ENVELOPE_KEYS = [
   "buildVariant",
   "sourceCommit",
   "sourceDirty",
+  "sourceBindingSha256",
   "applicationSha256",
   "runtimeReportFile",
   "runtimeReportSha256",
@@ -105,6 +108,7 @@ export function validateCommunityStableLearningEvidence({
   runtime,
   authority,
   source,
+  sourceBinding = null,
   applicationSha256,
   runtimeReportSha256,
   allowDirty = false,
@@ -140,6 +144,23 @@ export function validateCommunityStableLearningEvidence({
   }
   if (source.dirty && !allowDirty) {
     fail("strict learning evidence requires a clean worktree");
+  }
+  if (allowDirty) {
+    if (envelope.sourceBindingSha256 !== null || sourceBinding !== null) {
+      fail("development learning evidence cannot claim a formal source binding");
+    }
+  } else {
+    if (
+      sourceBinding === null ||
+      !SHA256.test(envelope.sourceBindingSha256) ||
+      envelope.sourceBindingSha256 !== sourceBinding.sha256 ||
+      sourceBinding.commit !== source.commit ||
+      sourceBinding.applicationSha256 !== applicationSha256 ||
+      sourceBinding.dirty !== false ||
+      Date.parse(envelope.generatedAtUtc) < Date.parse(sourceBinding.capturedAt)
+    ) {
+      fail("formal learning evidence is not bound to the clean integrated-learning candidate");
+    }
   }
   if (
     !SHA256.test(envelope.applicationSha256) ||
@@ -225,10 +246,14 @@ export function validateCommunityStableLearningEvidence({
 
 function parseArguments(argv) {
   let report;
+  let binding;
   let allowDirty = false;
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === "--report" && argv[index + 1]) {
       report = resolve(argv[index + 1]);
+      index += 1;
+    } else if (argv[index] === "--binding" && argv[index + 1]) {
+      binding = resolve(argv[index + 1]);
       index += 1;
     } else if (argv[index] === "--allow-dirty") {
       allowDirty = true;
@@ -237,11 +262,13 @@ function parseArguments(argv) {
     }
   }
   if (!report) fail("--report is required");
-  return { report, allowDirty };
+  if (!allowDirty && !binding) fail("--binding is required for strict learning evidence");
+  if (allowDirty && binding) fail("--binding cannot be combined with --allow-dirty");
+  return { report, binding, allowDirty };
 }
 
-function main() {
-  const { report, allowDirty } = parseArguments(process.argv.slice(2));
+async function main() {
+  const { report, binding, allowDirty } = parseArguments(process.argv.slice(2));
   const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const envelopeBytes = readFileSync(report);
   const envelope = parseJson(envelopeBytes, "evidence envelope");
@@ -264,11 +291,27 @@ function main() {
     "release",
     "yuanyuan-reminder.exe",
   );
+  const verifiedBinding = binding
+    ? await verifyRuntimeBaselineSourceBinding({
+      bindingPath: binding,
+      testedCommit: source.commit,
+      observedAt: envelope.generatedAtUtc,
+    })
+    : null;
   validateCommunityStableLearningEvidence({
     envelope,
     runtime,
     authority,
     source,
+    sourceBinding: verifiedBinding
+      ? {
+        sha256: verifiedBinding.bindingSha256,
+        commit: verifiedBinding.binding.source.commit,
+        dirty: verifiedBinding.binding.source.dirty,
+        capturedAt: verifiedBinding.binding.capturedAt,
+        applicationSha256: verifiedBinding.binding.artifacts.application.sha256,
+      }
+      : null,
     applicationSha256: sha256(readFileSync(applicationPath)),
     runtimeReportSha256: sha256(runtimeBytes),
     allowDirty,
@@ -281,10 +324,8 @@ function main() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try {
-    main();
-  } catch (error) {
+  main().catch((error) => {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;
-  }
+  });
 }

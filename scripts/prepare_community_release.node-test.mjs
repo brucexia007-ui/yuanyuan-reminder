@@ -5,6 +5,7 @@ import test from "node:test";
 
 import {
   buildCommunityReleaseBundle,
+  communityProductFromBrand,
   validateCommunityStableAuthority,
   validateCommunityStablePolicy,
 } from "./community_release_contract.mjs";
@@ -14,19 +15,21 @@ const policyBytes = await readFile(
   path.join(projectRoot, "docs", "release", "COMMUNITY_STABLE_RELEASE_POLICY_V1.json"),
 );
 const policy = JSON.parse(policyBytes.toString("utf8"));
+const brand = JSON.parse(await readFile(path.join(projectRoot, "product-brand.json"), "utf8"));
+const expectedProduct = communityProductFromBrand(brand);
 const authority = {
   schemaVersion: 1,
-  productName: "圆圆提醒",
-  identifier: "com.yuanyuan.reminder",
+  productName: expectedProduct.name,
+  identifier: expectedProduct.identifier,
   version: "1.5.2",
   releaseTrain: "unified-product",
   channel: "stable",
 };
 
 test("freezes unsigned GitHub distribution as disclosed advisory, not a stability blocker", () => {
-  assert.equal(validateCommunityStablePolicy(policy), policy);
+  assert.equal(validateCommunityStablePolicy(policy, expectedProduct), policy);
   assert.equal(policy.artifactPolicy.codeSigningRequired, false);
-  assert.equal(validateCommunityStableAuthority(authority), authority);
+  assert.equal(validateCommunityStableAuthority(authority, expectedProduct), authority);
   assert.equal(
     policy.blockingCommands[0],
     "npm.cmd run release:community:authority",
@@ -40,17 +43,28 @@ test("freezes unsigned GitHub distribution as disclosed advisory, not a stabilit
     weakened.blockingQualityGates.indexOf("critical-e2e"),
     1,
   );
-  assert.throws(() => validateCommunityStablePolicy(weakened), /blockingQualityGates/u);
+  assert.throws(() => validateCommunityStablePolicy(weakened, expectedProduct), /blockingQualityGates/u);
 
   const hiddenWarning = structuredClone(policy);
   hiddenWarning.requiredWarnings[0] = "Unsigned build.";
-  assert.throws(() => validateCommunityStablePolicy(hiddenWarning), /requiredWarnings/u);
+  assert.throws(() => validateCommunityStablePolicy(hiddenWarning, expectedProduct), /requiredWarnings/u);
+
+  const wrongBrand = { ...expectedProduct, name: "Other Reminder" };
+  assert.throws(
+    () => validateCommunityStablePolicy(policy, wrongBrand),
+    /product identity/u,
+  );
+  assert.throws(
+    () => validateCommunityStableAuthority(authority, wrongBrand),
+    /stable unified product/u,
+  );
 });
 
 test("builds source-bound assets, checksums, and mandatory unsigned-download guidance", () => {
   const bundle = buildCommunityReleaseBundle({
     policy,
     authority,
+    expectedProduct,
     tag: "v1.5.2",
     sourceCommit: "a".repeat(40),
     policyBytes,
@@ -60,11 +74,12 @@ test("builds source-bound assets, checksums, and mandatory unsigned-download gui
   assert.deepEqual(
     bundle.artifacts.map((artifact) => artifact.fileName),
     [
-      "Yuanyuan-Reminder-1.5.2-x64-Portable.exe",
-      "Yuanyuan-Reminder-1.5.2-x64-Setup.exe",
+      `${expectedProduct.portableBaseName}_1.5.2_windows-x64-portable.exe`,
+      `${expectedProduct.installerBaseName}_1.5.2_x64-setup.exe`,
     ],
   );
-  assert.match(bundle.checksums, /^[0-9a-f]{64}  Yuanyuan-Reminder-/mu);
+  assert.match(bundle.checksums, /^[0-9a-f]{64}  /mu);
+  assert.match(bundle.checksums, new RegExp(expectedProduct.portableBaseName, "u"));
   assert.match(bundle.notes, /未知发布者/u);
   assert.match(bundle.notes, /Smart App Control/u);
   assert.match(bundle.notes, /SHA256SUMS\.txt/u);
@@ -77,6 +92,7 @@ test("rejects development builds, tag drift, and malformed source identity", () 
   const input = {
     policy,
     authority,
+    expectedProduct,
     tag: "v1.5.2",
     sourceCommit: "b".repeat(40),
     policyBytes,
@@ -88,7 +104,7 @@ test("rejects development builds, tag drift, and malformed source identity", () 
     /stable unified product/u,
   );
   assert.throws(
-    () => validateCommunityStableAuthority({ ...authority, channel: "development" }),
+    () => validateCommunityStableAuthority({ ...authority, channel: "development" }, expectedProduct),
     /stable unified product/u,
   );
   assert.throws(
@@ -113,9 +129,12 @@ test("keeps the GitHub workflow bound to a stable main tag and generated disclos
   assert.match(workflow, /merge-base --is-ancestor/u);
   assert.match(workflow, /COMMUNITY_SOURCE_COMMIT/u);
   assert.match(workflow, /release:community:acceptance/u);
+  assert.match(workflow, /release:community:artifact-binding/u);
+  assert.match(workflow, /COMMUNITY_PRODUCT_NAME/u);
   assert.match(workflow, /--release-commit\s+"\$env:COMMUNITY_SOURCE_COMMIT"/u);
   assert.match(workflow, /release build changed tracked source/u);
   assert.match(workflow, /release:community:prepare/u);
   assert.match(workflow, /--commit\s+"\$env:COMMUNITY_SOURCE_COMMIT"/u);
   assert.match(workflow, /--verify-tag --notes-file/u);
+  assert.doesNotMatch(workflow, /--title\s+"圆圆提醒/u);
 });

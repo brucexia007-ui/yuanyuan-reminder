@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { brandPetText } from "./product_brand_contract.mjs";
+
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const runtimeRoot = path.join(
   projectRoot,
@@ -387,7 +389,7 @@ export function validateLearningReminderPreemptionReport(report, expectedBinding
     }
     if (
       !sample.observedAccessibleNames.some(
-        (name) => typeof name === "string" && name.includes("圆圆桌面英语复习"),
+        (name) => typeof name === "string" && name.includes(brandPetText("圆圆桌面英语复习")),
       ) ||
       !sample.observedAccessibleNames.some(
         (name) => typeof name === "string" && name.includes("事项提醒："),

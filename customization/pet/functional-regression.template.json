@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "profile": "yuanyuan-custom-pet-functional-regression",
+  "sourceCommit": null,
+  "sourceSnapshotSha256": null,
+  "sourceDiffBytes": null,
+  "untrackedSourceFiles": [],
+  "productVersion": null,
+  "testedAt": null,
+  "testedBy": null,
+  "windowsScaling": [
+    { "percent": 100, "result": "pending", "notes": "" },
+    { "percent": 125, "result": "pending", "notes": "" },
+    { "percent": 150, "result": "pending", "notes": "" },
+    { "percent": 200, "result": "pending", "notes": "" }
+  ],
+  "displayTopologies": [
+    { "topology": "single_monitor", "result": "pending", "notes": "" },
+    { "topology": "multi_monitor", "result": "pending", "notes": "" }
+  ],
+  "features": [
+    { "id": "reminder_management", "result": "pending", "notes": "" },
+    { "id": "snooze_levels", "result": "pending", "notes": "" },
+    { "id": "missed_reminder_policy", "result": "pending", "notes": "" },
+    { "id": "automatic_backup", "result": "pending", "notes": "" },
+    { "id": "manual_backup", "result": "pending", "notes": "" },
+    { "id": "basic_companion", "result": "pending", "notes": "" },
+    { "id": "reunion_action", "result": "pending", "notes": "" },
+    { "id": "task_watch", "result": "pending", "notes": "" },
+    { "id": "learning_blackboard", "result": "pending", "notes": "" },
+    { "id": "learning_invitation_preemption", "result": "pending", "notes": "" },
+    { "id": "hide_restore_pet", "result": "pending", "notes": "" },
+    { "id": "panel_drag", "result": "pending", "notes": "" },
+    { "id": "interaction_bubble_clearance", "result": "pending", "notes": "" },
+    { "id": "focus_calm", "result": "pending", "notes": "" },
+    { "id": "water_before_activity", "result": "pending", "notes": "" }
+  ],
+  "interactions": [
+    { "id": "treat_direction_follow", "result": "pending", "notes": "" },
+    { "id": "wand_eight_directions", "result": "pending", "notes": "" },
+    { "id": "pet_head_zone_only", "result": "pending", "notes": "" },
+    { "id": "ball_charge_flight_chase_bat_carry_drop", "result": "pending", "notes": "" },
+    { "id": "learning_expression_rows", "result": "pending", "notes": "" }
+  ]
+}

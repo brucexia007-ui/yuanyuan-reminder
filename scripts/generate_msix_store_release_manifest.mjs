@@ -26,8 +26,9 @@ const licenseInventoryPath = path.join(
   "release",
   "third-party-licenses.json",
 );
+const productBrand = JSON.parse(await readFile(path.join(projectRoot, "product-brand.json"), "utf8"));
 const sourceFiles = {
-  "licenses/ASSETS_LICENSE.md": path.join(projectRoot, "ASSETS_LICENSE.md"),
+  "licenses/ASSETS_LICENSE.md": path.join(projectRoot, productBrand.assets.licenseFile),
   "licenses/LICENSE.txt": path.join(projectRoot, "LICENSE"),
   "licenses/THIRD_PARTY_LICENSES.txt": path.join(projectRoot, "THIRD_PARTY_LICENSES.txt"),
   "licenses/THIRD_PARTY_NOTICES.md": path.join(projectRoot, "THIRD_PARTY_NOTICES.md"),

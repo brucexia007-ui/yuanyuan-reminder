@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://yuanyuan.local/schemas/pet-request-v1.json",
+  "title": "Yuanyuan personalization request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "source", "pet", "learning", "target"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "ref", "minimumVersion", "resolvedCommit"],
+      "properties": {
+        "repository": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "ref": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "minimumVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+        "resolvedCommit": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" }
+      }
+    },
+    "pet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["customize", "displayName", "photoInputs", "stylePreset"],
+      "properties": {
+        "customize": { "type": "boolean" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "sex": { "type": "string", "enum": ["female", "male", "unknown"] },
+        "breed": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "personality": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "photoInputs": { "type": "array", "maxItems": 16, "items": { "type": "string", "minLength": 1, "maxLength": 1024 } },
+        "stylePreset": { "type": "string", "enum": ["auto", "soft-illustration", "pixel", "flat"] }
+      }
+    },
+    "learning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "bundledContent", "importMode", "agentAssistedPack", "sourceInputs"],
+      "properties": {
+        "enabled": { "const": true },
+        "bundledContent": { "const": false },
+        "importMode": { "const": "local-preview-confirm" },
+        "agentAssistedPack": { "type": "boolean" },
+        "sourceInputs": { "type": "array", "maxItems": 64, "items": { "type": "string", "minLength": 1, "maxLength": 1024 } }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["platform", "architecture"],
+      "properties": {
+        "platform": { "type": "string", "enum": ["windows", "macos"] },
+        "architecture": { "type": "string", "enum": ["x64", "arm64"] }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "target": { "properties": { "platform": { "const": "windows" } } } } },
+      "then": { "properties": { "target": { "properties": { "architecture": { "const": "x64" } } } } }
+    }
+  ]
+}

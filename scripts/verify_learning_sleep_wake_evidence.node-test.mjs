@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { brandPetText } from "./product_brand_contract.mjs";
+
 import {
   syntheticSleepWakeFixtureSha256,
   validateLearningSleepWakeReport,

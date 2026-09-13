@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import { brandPetText } from "./product_brand_contract.mjs";
+
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const runtimeRoot = path.join(
   projectRoot,
@@ -22,7 +24,7 @@ const LIMITATIONS = [
 ];
 const SCENARIOS = {
   page: { target: "学习页面", cardCount: 4533 },
-  blackboard: { target: "圆圆桌面英语复习", cardCount: 5 },
+  blackboard: { target: brandPetText("圆圆桌面英语复习"), cardCount: 5 },
 };
 const SHA256 = /^[A-F0-9]{64}$/;
 

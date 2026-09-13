@@ -57,6 +57,27 @@ test("accepts only the unified product identity and content policy", () => {
   }
 });
 
+test("accepts a schema-bound custom product identity", () => {
+  const custom = {
+    ...structuredClone(manifest),
+    productName: "饺饺提醒",
+    identifier: "com.brucexia.jiaojiao.reminder",
+    brandConfig: "product-brand.json",
+  };
+  const brand = {
+    application: {
+      displayName: "饺饺提醒",
+      identifier: "com.brucexia.jiaojiao.reminder",
+      packageName: "jiaojiao-reminder",
+    },
+  };
+  assert.doesNotThrow(() => validateProductManifest(custom, brand));
+  assert.throws(
+    () => validateProductManifest({ ...custom, identifier: "com.example.drift" }, brand),
+    /unified product/u,
+  );
+});
+
 test("synchronizes every product version and identity source", () => {
   const synchronized = synchronizeProductVersionSources(sources);
   const checked = { ...sources, ...synchronized };

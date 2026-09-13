@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -19,6 +20,7 @@ function validInput() {
       buildVariant: "runtime-qa-learning",
       sourceCommit: commit,
       sourceDirty: false,
+      sourceBindingSha256: digest,
       applicationSha256: digest,
       runtimeReportFile: "learning-scale-runtime-20260827T080000000Z.json",
       runtimeReportSha256: digest,
@@ -60,6 +62,13 @@ function validInput() {
     },
     authority: { schemaVersion: 1, version: "1.5.4" },
     source: { commit, dirty: false },
+    sourceBinding: {
+      sha256: digest,
+      commit,
+      dirty: false,
+      capturedAt: "2026-08-27T07:00:00.000Z",
+      applicationSha256: digest,
+    },
     applicationSha256: digest,
     runtimeReportSha256: digest,
     now: new Date("2026-08-27T09:00:00.000Z"),
@@ -108,13 +117,34 @@ test("accepts unrelated formal-directory activity only with an external owner", 
 test("permits dirty evidence only when explicitly requested", () => {
   const input = validInput();
   input.envelope.sourceDirty = true;
+  input.envelope.sourceBindingSha256 = null;
   input.source.dirty = true;
+  input.sourceBinding = null;
   assert.throws(
     () => validateCommunityStableLearningEvidence(input),
     CommunityStableLearningEvidenceError,
   );
   input.allowDirty = true;
   assert.doesNotThrow(() => validateCommunityStableLearningEvidence(input));
+});
+
+test("rejects stale, mismatched, or missing formal source bindings", () => {
+  const mutations = [
+    (value) => { value.sourceBinding = null; },
+    (value) => { value.envelope.sourceBindingSha256 = "B".repeat(64); },
+    (value) => { value.sourceBinding.commit = "b".repeat(40); },
+    (value) => { value.sourceBinding.applicationSha256 = "B".repeat(64); },
+    (value) => { value.sourceBinding.dirty = true; },
+    (value) => { value.sourceBinding.capturedAt = "2026-08-27T08:01:00.000Z"; },
+  ];
+  for (const mutate of mutations) {
+    const input = validInput();
+    mutate(input);
+    assert.throws(
+      () => validateCommunityStableLearningEvidence(input),
+      CommunityStableLearningEvidenceError,
+    );
+  }
 });
 
 test("rejects unknown fields and digest mismatches", () => {
@@ -130,5 +160,30 @@ test("rejects unknown fields and digest mismatches", () => {
   assert.throws(
     () => validateCommunityStableLearningEvidence(mismatch),
     CommunityStableLearningEvidenceError,
+  );
+});
+
+test("formal 20000-card execution validates the shared clean candidate before launch", async () => {
+  const [measureScript, buildWrapper, packageJson] = await Promise.all([
+    readFile(new URL("./measure_community_stable_learning_runtime.ps1", import.meta.url), "utf8"),
+    readFile(new URL("./build_runtime_qa_learning_guarded.ps1", import.meta.url), "utf8"),
+    readFile(new URL("../package.json", import.meta.url), "utf8").then(JSON.parse),
+  ]);
+  const bindingRequirementIndex = measureScript.indexOf("formal learning evidence requires -SourceBindingPath");
+  const bindingVerifierIndex = measureScript.indexOf("verify_community_stable_runtime_source_binding.mjs");
+  const launchIndex = measureScript.indexOf("Start-Process -FilePath $appPath");
+  assert.ok(bindingRequirementIndex >= 0 && bindingVerifierIndex > bindingRequirementIndex && launchIndex > bindingVerifierIndex);
+  assert.match(measureScript, /sourceBindingSha256 = \$sourceBindingSha256/u);
+  assert.match(measureScript, /--binding", \$sourceBindingPath/u);
+  assert.match(
+    packageJson.scripts["release:community:learning:gate"],
+    /measure_community_stable_learning_runtime\.ps1/u,
+  );
+  assert.match(
+    packageJson.scripts["runtime:qa:learning:build"],
+    /build_runtime_qa_learning_guarded\.ps1/u,
+  );
+  assert.ok(
+    buildWrapper.indexOf("Assert-YuanyuanRuntimeQaExclusive") < buildWrapper.indexOf("& npm.cmd run unified:ui:build"),
   );
 });

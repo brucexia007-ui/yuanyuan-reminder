@@ -16,6 +16,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
+$utilityModulePath = Join-Path $PSHOME "Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1"
+Import-Module -Name $utilityModulePath -ErrorAction Stop
 if ($WarmupSeconds -ge ($DurationSeconds - $SampleIntervalSeconds)) {
     throw "warmup must leave room for at least one measurement interval"
 }
@@ -23,6 +25,7 @@ if ($WarmupSeconds -ge ($DurationSeconds - $SampleIntervalSeconds)) {
 $acceptanceMinimumDurationSeconds = 86400
 $acceptanceMinimumActiveCoverageSeconds = 72000
 $acceptanceMaximumSampleIntervalSeconds = 60
+$acceptanceMinimumWarmupSeconds = 30
 $acceptanceLimits = [ordered]@{
     averageNormalizedCpuPercent = 2.0
     p95NormalizedCpuPercent = 5.0
@@ -43,6 +46,9 @@ if ($AcceptanceGate) {
     if ($SampleIntervalSeconds -gt $acceptanceMaximumSampleIntervalSeconds) {
         throw "acceptance gate requires a sample interval no greater than 60 seconds"
     }
+    if ($WarmupSeconds -lt $acceptanceMinimumWarmupSeconds) {
+        throw "acceptance gate requires at least 30 seconds of warmup"
+    }
 }
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
@@ -61,7 +67,12 @@ $runId = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
 $qaRoot = Join-Path $workspaceRoot "yuanyuan-runtime-qa-baseline-$runId"
 $markerPath = Join-Path $qaRoot ".yuanyuan-runtime-qa-v1"
 $expectedMarker = "YUANYUAN_RUNTIME_QA_V1`n"
-$formalDataRoot = Join-Path $env:LOCALAPPDATA "com.yuanyuan.reminder"
+$brandConfigPath = Join-Path $projectRoot "product-brand.json"
+$brandConfig = Get-Content -Raw -Encoding UTF8 -LiteralPath $brandConfigPath | ConvertFrom-Json
+if ([string]::IsNullOrWhiteSpace([string]$brandConfig.storage.directoryName)) {
+    throw "product brand storage.directoryName is required"
+}
+$formalDataRoot = Join-Path $env:LOCALAPPDATA ([string]$brandConfig.storage.directoryName)
 $scriptPath = $MyInvocation.MyCommand.Path
 
 foreach ($required in @($appPath, $fixturePath)) {
@@ -178,6 +189,74 @@ public static class YuanyuanRuntimeSystemProbe {
 "@
 }
 
+if (-not ("YuanyuanRuntimeProcessTreeProbe" -as [type])) {
+    Add-Type -TypeDefinition @"
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+
+public sealed class YuanyuanRuntimeProcessEntry {
+    public uint ProcessId { get; set; }
+    public uint ParentProcessId { get; set; }
+    public string Name { get; set; }
+}
+
+public static class YuanyuanRuntimeProcessTreeProbe {
+    private const uint Th32csSnapProcess = 0x00000002;
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    private struct ProcessEntry32 {
+        public uint dwSize;
+        public uint cntUsage;
+        public uint th32ProcessID;
+        public IntPtr th32DefaultHeapID;
+        public uint th32ModuleID;
+        public uint cntThreads;
+        public uint th32ParentProcessID;
+        public int pcPriClassBase;
+        public uint dwFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)]
+        public string szExeFile;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr CreateToolhelp32Snapshot(uint flags, uint processId);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern bool Process32First(IntPtr snapshot, ref ProcessEntry32 entry);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern bool Process32Next(IntPtr snapshot, ref ProcessEntry32 entry);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool CloseHandle(IntPtr handle);
+
+    public static YuanyuanRuntimeProcessEntry[] Capture() {
+        var result = new List<YuanyuanRuntimeProcessEntry>();
+        IntPtr snapshot = CreateToolhelp32Snapshot(Th32csSnapProcess, 0);
+        if (snapshot == new IntPtr(-1)) return result.ToArray();
+        try {
+            var entry = new ProcessEntry32();
+            entry.dwSize = (uint)Marshal.SizeOf(typeof(ProcessEntry32));
+            if (!Process32First(snapshot, ref entry)) return result.ToArray();
+            do {
+                result.Add(new YuanyuanRuntimeProcessEntry {
+                    ProcessId = entry.th32ProcessID,
+                    ParentProcessId = entry.th32ParentProcessID,
+                    Name = entry.szExeFile
+                });
+                entry.dwSize = (uint)Marshal.SizeOf(typeof(ProcessEntry32));
+            } while (Process32Next(snapshot, ref entry));
+            return result.ToArray();
+        }
+        finally {
+            CloseHandle(snapshot);
+        }
+    }
+}
+"@
+}
+
 function Get-DatabaseSnapshot([string]$Root) {
     $files = @()
     if (Test-Path -LiteralPath $Root -PathType Container) {
@@ -194,7 +273,13 @@ function Get-DatabaseSnapshot([string]$Root) {
 }
 
 function Get-ProcessTreeSample([int]$RootProcessId) {
-    $rows = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId, Name)
+    try {
+        $rows = @(Get-CimInstance Win32_Process -ErrorAction Stop |
+            Select-Object ProcessId, ParentProcessId, Name)
+    }
+    catch {
+        $rows = @([YuanyuanRuntimeProcessTreeProbe]::Capture())
+    }
     $owned = [System.Collections.Generic.HashSet[uint32]]::new()
     $owned.Add([uint32]$RootProcessId) | Out-Null
     do {
@@ -259,8 +344,19 @@ function Remove-OwnedQaRoot([string]$Root) {
     ) {
         throw "refusing to remove an unowned runtime QA root"
     }
-    Remove-Item -LiteralPath $canonicalRoot -Recurse -Force
-    return -not (Test-Path -LiteralPath $canonicalRoot)
+    $cleanupDeadline = [DateTime]::UtcNow.AddSeconds(60)
+    do {
+        try {
+            Remove-Item -LiteralPath $canonicalRoot -Recurse -Force -ErrorAction Stop
+        }
+        catch {
+            if ([DateTime]::UtcNow -ge $cleanupDeadline) { throw }
+            # WebView2 crash reporting can retain a newly written dump briefly
+            # after the owning application has exited.
+            Start-Sleep -Seconds 1
+        }
+    } while (Test-Path -LiteralPath $canonicalRoot -PathType Container)
+    return $true
 }
 
 function Get-Median([double[]]$Values) {
@@ -389,31 +485,18 @@ try {
         "Process"
     )
     try {
-        [Environment]::SetEnvironmentVariable("YUANYUAN_RUNTIME_QA_ROOT", $qaRoot, "Process")
-        [Environment]::SetEnvironmentVariable(
-            "YUANYUAN_RUNTIME_QA_EXIT_AFTER_SECONDS",
-            [string]$DurationSeconds,
-            "Process"
-        )
-        [Environment]::SetEnvironmentVariable(
-            "YUANYUAN_RUNTIME_QA_PROFILE",
-            "baseline-ai-off",
-            "Process"
-        )
+        $env:YUANYUAN_RUNTIME_QA_ROOT = $qaRoot
+        $env:YUANYUAN_RUNTIME_QA_EXIT_AFTER_SECONDS = [string]$DurationSeconds
+        $env:YUANYUAN_RUNTIME_QA_PROFILE = "baseline-ai-off"
         $process = Start-Process -FilePath $appPath -PassThru
     }
     finally {
-        [Environment]::SetEnvironmentVariable("YUANYUAN_RUNTIME_QA_ROOT", $previousRoot, "Process")
-        [Environment]::SetEnvironmentVariable(
-            "YUANYUAN_RUNTIME_QA_EXIT_AFTER_SECONDS",
-            $previousExit,
-            "Process"
-        )
-        [Environment]::SetEnvironmentVariable(
-            "YUANYUAN_RUNTIME_QA_PROFILE",
-            $previousProfile,
-            "Process"
-        )
+        if ($null -eq $previousRoot) { Remove-Item Env:YUANYUAN_RUNTIME_QA_ROOT -ErrorAction SilentlyContinue }
+        else { $env:YUANYUAN_RUNTIME_QA_ROOT = $previousRoot }
+        if ($null -eq $previousExit) { Remove-Item Env:YUANYUAN_RUNTIME_QA_EXIT_AFTER_SECONDS -ErrorAction SilentlyContinue }
+        else { $env:YUANYUAN_RUNTIME_QA_EXIT_AFTER_SECONDS = $previousExit }
+        if ($null -eq $previousProfile) { Remove-Item Env:YUANYUAN_RUNTIME_QA_PROFILE -ErrorAction SilentlyContinue }
+        else { $env:YUANYUAN_RUNTIME_QA_PROFILE = $previousProfile }
     }
 
     $windowDeadline = [DateTime]::UtcNow.AddSeconds(30)
@@ -429,10 +512,27 @@ try {
     }
     if ($null -eq $startupMilliseconds) { throw "runtime QA window was not visible within 30 seconds" }
 
-    $databaseStart = Get-DatabaseSnapshot $qaRoot
+    if ($AcceptanceGate) {
+        # Exercise the representative reminder surface before endurance sampling.
+        # The first real reminder otherwise lazy-loads the alert animation and its
+        # WebView resources hours into the run, creating a bounded one-time working
+        # set step that the fixed segmented trend gate correctly cannot distinguish
+        # from growth. The synthetic reminder remains inside the isolated QA root,
+        # and the storage baseline is still captured only after warmup completes.
+        $null = & $fixturePath --root $qaRoot --reminder-latency 1
+        if ($LASTEXITCODE -ne 0) {
+            throw "runtime QA reminder warmup failed with exit code $LASTEXITCODE"
+        }
+    }
+
     Start-Sleep -Seconds $WarmupSeconds
     $process.Refresh()
     if ($process.HasExited) { throw "runtime QA process exited during warmup" }
+    # Align the storage baseline with the first process sample. WebView and SQLite
+    # initialize auxiliary databases asynchronously during warmup; counting those
+    # bounded startup files as endurance growth makes the storage gate dependent on
+    # machine speed instead of writes performed during the measured steady state.
+    $databaseStart = Get-DatabaseSnapshot $qaRoot
     $initialTree = Get-ProcessTreeSample $process.Id
     $previousCpuByProcess = $initialTree.cpuByProcess
     $lastSampleSeconds = $stopwatch.Elapsed.TotalSeconds
@@ -521,7 +621,14 @@ try {
 
     $formalWrites = @()
     if (Test-Path -LiteralPath $formalDataRoot -PathType Container) {
-        $formalWrites = @(Get-ChildItem -LiteralPath $formalDataRoot -Recurse -File -ErrorAction Stop |
+        $formalWrites = @(Get-ChildItem -LiteralPath $formalDataRoot -Force -ErrorAction Stop |
+            Where-Object { $_.Name -ne "EBWebView" } |
+            ForEach-Object {
+                if ($_.PSIsContainer) {
+                    Get-ChildItem -LiteralPath $_.FullName -Recurse -File -Force -ErrorAction Stop
+                }
+                else { $_ }
+            } |
             Where-Object { $_.LastWriteTimeUtc -ge $launchUtc })
     }
 

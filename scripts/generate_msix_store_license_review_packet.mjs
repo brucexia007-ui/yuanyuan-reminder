@@ -21,6 +21,7 @@ const licenseInventoryVerifierPath = path.join(
   "generate_third_party_licenses.mjs",
 );
 const generatorPath = fileURLToPath(import.meta.url);
+const productBrand = JSON.parse(await readFile(path.join(projectRoot, "product-brand.json"), "utf8"));
 
 export const MSIX_STORE_LICENSE_REVIEW_ATTESTATION_TEXT =
   "I attest that the named human reviewer completed the Microsoft Store candidate-specific license, NOTICE, source-availability, asset-rights, channel, trademark, and applicable professional legal review described by this packet, and that no unresolved finding remains.";
@@ -41,7 +42,7 @@ export const MSIX_STORE_LICENSE_REQUIRED_EVIDENCE =
   "docs/P0_THIRD_PARTY_LICENSE_QA_2026-08-09.md";
 
 const materialDefinitions = {
-  assetsLicense: ["ASSETS_LICENSE.md", path.join(projectRoot, "ASSETS_LICENSE.md")],
+  assetsLicense: ["ASSETS_LICENSE.md", path.join(projectRoot, productBrand.assets.licenseFile)],
   licenseArchive: ["THIRD_PARTY_LICENSES.txt", path.join(projectRoot, "THIRD_PARTY_LICENSES.txt")],
   licenseInventory: [
     "src-tauri/target/release/third-party-licenses.json",

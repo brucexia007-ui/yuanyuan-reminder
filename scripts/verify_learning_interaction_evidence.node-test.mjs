@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { brandPetText } from "./product_brand_contract.mjs";
 import { validateLearningInteractionReport } from "./verify_learning_interaction_evidence.mjs";
 
 const APP = "A".repeat(64);
@@ -26,7 +27,7 @@ function percentile(values, fraction) {
 }
 
 function makeReport(scenario = "page", count = 20, gate = true) {
-  const target = scenario === "page" ? "学习页面" : "圆圆桌面英语复习";
+  const target = scenario === "page" ? "学习页面" : brandPetText("圆圆桌面英语复习");
   const cardCount = scenario === "page" ? 4533 : 5;
   const samples = Array.from({ length: count }, (_, index) => ({
     sample: index + 1,

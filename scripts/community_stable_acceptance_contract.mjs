@@ -47,6 +47,7 @@ function validateEndurance(check) {
     [
       "status",
       "reportSha256",
+      "sourceBindingSha256",
       "observedSeconds",
       "activeCoverageSeconds",
       "suspendResumeObserved",
@@ -59,6 +60,7 @@ function validateEndurance(check) {
   );
   if (check.status !== "passed") fail("24-hour endurance evidence is pending");
   sha256(check.reportSha256, "checks.endurance24h.reportSha256");
+  sha256(check.sourceBindingSha256, "checks.endurance24h.sourceBindingSha256");
   safeIntegerAtLeast(check.observedSeconds, 86_400, "24-hour observed duration");
   safeIntegerAtLeast(check.activeCoverageSeconds, 72_000, "24-hour active coverage");
   passed(check.suspendResumeObserved, "sleep/resume observation");
@@ -92,9 +94,13 @@ function validateInstalledE2e(check, installerSha256) {
     check.scenarios,
     [
       "installAndLaunch",
+      "snoozeThirtyMinutes",
+      "missedReminderNotify",
+      "missedReminderSkipOld",
       "reminderDelivery",
       "hideAndRestorePet",
       "panelDrag",
+      "automaticBackup",
       "backupAndRestore",
       "restartPersistence",
       "uninstallKeepsDataByDefault",
@@ -142,6 +148,7 @@ function validateLearningRuntime(check) {
     [
       "status",
       "reportSha256",
+      "sourceBindingSha256",
       "tauriImportPassed",
       "cancellationPassed",
       "importedCards",
@@ -154,6 +161,7 @@ function validateLearningRuntime(check) {
   );
   if (check.status !== "passed") fail("integrated learning runtime evidence is pending");
   sha256(check.reportSha256, "learning runtime report digest");
+  sha256(check.sourceBindingSha256, "learning runtime source binding digest");
   passed(check.tauriImportPassed, "real Tauri learning import");
   passed(check.cancellationPassed, "real Tauri learning import cancellation");
   safeIntegerAtLeast(check.importedCards, 20_000, "learning imported card count");
@@ -165,9 +173,9 @@ function validateLearningRuntime(check) {
 
 export function validateCommunityStableAcceptance(
   acceptance,
-  { authority, releaseCommit, changedPaths, now = new Date() },
+  { authority, expectedProduct, releaseCommit, changedPaths, now = new Date() },
 ) {
-  validateCommunityStableAuthority(authority);
+  validateCommunityStableAuthority(authority, expectedProduct);
   exactKeys(
     acceptance,
     ["schemaVersion", "status", "product", "candidate", "checks", "review"],
@@ -213,6 +221,12 @@ export function validateCommunityStableAcceptance(
   );
   validateLegacyData(acceptance.checks.legacyDataCompatibility);
   validateLearningRuntime(acceptance.checks.learningRuntime);
+  if (
+    acceptance.checks.learningRuntime.sourceBindingSha256 !==
+    acceptance.checks.endurance24h.sourceBindingSha256
+  ) {
+    fail("24-hour and learning runtime evidence used different source bindings");
+  }
 
   exactKeys(
     acceptance.review,

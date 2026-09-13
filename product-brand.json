@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "pet": {
+    "displayName": "圆圆",
+    "sex": "unknown",
+    "breed": "英国短毛猫",
+    "personality": "温和陪伴"
+  },
+  "application": {
+    "displayName": "圆圆提醒",
+    "identifier": "com.yuanyuan.reminder",
+    "packageName": "yuanyuan-reminder",
+    "windowTitles": {
+      "pet": "圆圆",
+      "panel": "圆圆提醒",
+      "tray": "圆圆提醒"
+    },
+    "notificationSender": "圆圆提醒"
+  },
+  "storage": {
+    "directoryName": "com.yuanyuan.reminder",
+    "mainDatabaseFile": "yuanyuan-reminder.sqlite3",
+    "learningDatabaseFile": "yuanyuan-learning.sqlite3",
+    "logFile": "yuanyuan-reminder.log"
+  },
+  "artifacts": {
+    "installerBaseName": "圆圆提醒",
+    "portableBaseName": "圆圆提醒"
+  },
+  "assets": {
+    "petDirectory": "public/assets/pet",
+    "iconDirectory": "src-tauri/icons",
+    "licenseFile": "ASSETS_LICENSE.md"
+  }
+}

@@ -17,9 +17,9 @@ import {
 import { writeNewCandidate } from "./prepare_unified_candidate.mjs";
 
 const product = {
-  name: "圆圆提醒",
+  name: "饺饺提醒",
   version: "1.5.0",
-  identifier: "com.yuanyuan.reminder",
+  identifier: "com.brucexia.jiaojiao.reminder",
 };
 
 function buildFixture(artifactBytes = Buffer.from("MZ unified fixture", "utf8"), branch = "main") {
@@ -77,7 +77,7 @@ test("accepts exactly one installer with fixed metadata and verified checksums",
   try {
     const manifest = await validateUnifiedCandidateDirectory(fixture.directory);
     assert.equal(manifest.candidateId, fixture.manifest.candidateId);
-    assert.equal(manifest.artifact.fileName, "圆圆提醒_1.5.0_x64-setup.exe");
+    assert.equal(manifest.artifact.fileName, "饺饺提醒_1.5.0_x64-setup.exe");
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }
@@ -155,5 +155,34 @@ test("rejects optimistic signature or publication claims", () => {
   assert.throws(
     () => validateUnifiedCandidateManifest({ ...manifest, releaseStatus: "approved" }),
     /release status/u,
+  );
+});
+
+test("rejects unsafe custom product names and malformed identifiers", () => {
+  assert.throws(
+    () => buildUnifiedCandidateManifest({
+      product: { ...product, name: "../饺饺提醒" },
+      source: {
+        commit: "a".repeat(40), branch: "main",
+        commitTimestamp: "2026-08-25T00:00:00.000Z", worktreeClean: true,
+      },
+      artifactBytes: Buffer.from("MZ"), productAuthorityBytes: Buffer.from("authority"),
+      tauriConfigBytes: Buffer.from("tauri"), packageLockBytes: Buffer.from("package-lock"),
+      cargoLockBytes: Buffer.from("cargo-lock"),
+    }),
+    /valid unified release train/u,
+  );
+  assert.throws(
+    () => buildUnifiedCandidateManifest({
+      product: { ...product, identifier: "jiaojiao" },
+      source: {
+        commit: "a".repeat(40), branch: "main",
+        commitTimestamp: "2026-08-25T00:00:00.000Z", worktreeClean: true,
+      },
+      artifactBytes: Buffer.from("MZ"), productAuthorityBytes: Buffer.from("authority"),
+      tauriConfigBytes: Buffer.from("tauri"), packageLockBytes: Buffer.from("package-lock"),
+      cargoLockBytes: Buffer.from("cargo-lock"),
+    }),
+    /valid unified release train/u,
   );
 });

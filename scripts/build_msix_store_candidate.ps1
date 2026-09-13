@@ -277,11 +277,15 @@ New-Item -ItemType Directory -Path $stagingRoot -Force | Out-Null
 Save-XmlUtf8NoBom -Document $generatedManifest -Path $generatedManifestPath
 
 Copy-RequiredFile -Source $sourceExecutablePath -Destination (Join-Path $stagingRoot "yuanyuan-reminder.exe")
+$brandConfig = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $projectRoot "product-brand.json") | ConvertFrom-Json
+if ([string]::IsNullOrWhiteSpace([string]$brandConfig.assets.licenseFile)) {
+    throw "product brand assets.licenseFile is required"
+}
 $licenseFiles = [ordered]@{
     "LICENSE.txt" = Join-Path $projectRoot "LICENSE"
     "THIRD_PARTY_NOTICES.md" = Join-Path $projectRoot "THIRD_PARTY_NOTICES.md"
     "THIRD_PARTY_LICENSES.txt" = Join-Path $projectRoot "THIRD_PARTY_LICENSES.txt"
-    "ASSETS_LICENSE.md" = Join-Path $projectRoot "ASSETS_LICENSE.md"
+    "ASSETS_LICENSE.md" = Join-Path $projectRoot ([string]$brandConfig.assets.licenseFile)
 }
 foreach ($entry in $licenseFiles.GetEnumerator()) {
     Copy-RequiredFile -Source $entry.Value -Destination (Join-Path $stagingRoot "licenses\$($entry.Key)")

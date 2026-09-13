@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import test from "node:test";
 
 import {
@@ -7,6 +9,10 @@ import {
   validateOfflineCsp,
   validateRustTransport,
 } from "./verify_ai_disabled_boundary.mjs";
+
+const projectRoot = path.resolve(import.meta.dirname, "..");
+const productBrand = JSON.parse(await readFile(path.join(projectRoot, "product-brand.json"), "utf8"));
+const assetLicenseSource = `../${productBrand.assets.licenseFile}`;
 
 test("offline CSP accepts only Tauri local IPC", () => {
   validateOfflineCsp("default-src 'self'; connect-src ipc: http://ipc.localhost");
@@ -24,7 +30,7 @@ test("bundle declaration rejects every optional process and QA payload", () => {
     "../LICENSE": "licenses/LICENSE.txt",
     "../THIRD_PARTY_NOTICES.md": "licenses/THIRD_PARTY_NOTICES.md",
     "../THIRD_PARTY_LICENSES.txt": "licenses/THIRD_PARTY_LICENSES.txt",
-    "../ASSETS_LICENSE.md": "licenses/ASSETS_LICENSE.md",
+    [assetLicenseSource]: "licenses/ASSETS_LICENSE.md",
   };
   assert.deepEqual(validateBundleDeclaration({ resources }), {
     externalBin: [],

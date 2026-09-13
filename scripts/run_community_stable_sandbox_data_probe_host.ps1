@@ -1,10 +1,13 @@
 param(
-    [string]$ReleaseRoot = "",
+    [Parameter(Mandatory = $true)]
+    [string]$ReleaseRoot,
     [int]$TimeoutSeconds = 900
 )
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
+. (Join-Path $PSScriptRoot "assert_runtime_qa_exclusive.ps1")
+Assert-YuanyuanRuntimeQaExclusive -Activity "Installed-candidate Windows Sandbox E2E"
 $systemModuleRoot = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\Modules"
 $env:PSModulePath = $systemModuleRoot
 [void](Get-Command Get-AuthenticodeSignature -ErrorAction Stop)
@@ -14,15 +17,14 @@ if ($TimeoutSeconds -lt 120 -or $TimeoutSeconds -gt 1800) {
 }
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-if ([string]::IsNullOrWhiteSpace($ReleaseRoot)) {
-    $ReleaseRoot = Join-Path $projectRoot "src-tauri\target\release"
-}
 $releaseRoot = [IO.Path]::GetFullPath($ReleaseRoot)
 $targetRoot = [IO.Path]::GetFullPath((Join-Path $projectRoot "src-tauri\target"))
 $runId = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssfffZ")
 $outputRoot = Join-Path $targetRoot "community-stable-sandbox-data\$runId"
 $webView2MetadataPath = Join-Path $outputRoot "webview2-mapped-runtime.json"
 $sourceMetadataPath = Join-Path $outputRoot "source-metadata.json"
+$candidateStageManifestPath = Join-Path $outputRoot "candidate-stage-manifest.json"
+$candidateStageBindingPath = Join-Path $outputRoot "candidate-stage-binding.json"
 $configPath = Join-Path $outputRoot "community-stable-data-probe.wsb"
 $completePath = Join-Path $outputRoot "sandbox-data-probe.complete"
 $statusPath = Join-Path $outputRoot "sandbox-data-probe-status.json"
@@ -51,9 +53,45 @@ foreach ($requiredPath in @(
     }
 }
 
+$stageVerifier = Join-Path $projectRoot "scripts\verify_community_stable_e2e_stage.mjs"
+$sourceStageManifestPath = Join-Path $releaseRoot "community-stable-e2e-stage.json"
+if (-not (Test-Path -LiteralPath $stageVerifier -PathType Leaf)) {
+    throw "required E2E stage verifier is missing: $stageVerifier"
+}
+& node $stageVerifier --stage-root $releaseRoot
+if ($LASTEXITCODE -ne 0) {
+    throw "explicit E2E release stage failed independent verification"
+}
+$verifiedStageManifest = Get-Content -Raw -Encoding UTF8 -LiteralPath $sourceStageManifestPath |
+    ConvertFrom-Json
+
 $sandbox = $null
 try {
 New-Item -ItemType Directory -Path $outputRoot | Out-Null
+Copy-Item -LiteralPath $sourceStageManifestPath -Destination $candidateStageManifestPath
+$candidateStageBinding = [ordered]@{
+    schemaVersion = 1
+    verifiedAt = (Get-Date).ToUniversalTime().ToString("o")
+    stageManifestSha256 = (
+        Get-FileHash -Algorithm SHA256 -LiteralPath $candidateStageManifestPath
+    ).Hash
+    stageVerifierSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $stageVerifier).Hash
+    application = [ordered]@{
+        fileName = [string]$verifiedStageManifest.artifacts.application.fileName
+        bytes = [long]$verifiedStageManifest.artifacts.application.bytes
+        sha256 = [string]$verifiedStageManifest.artifacts.application.sha256
+    }
+    installer = [ordered]@{
+        fileName = [string]$verifiedStageManifest.artifacts.installer.fileName
+        bytes = [long]$verifiedStageManifest.artifacts.installer.bytes
+        sha256 = [string]$verifiedStageManifest.artifacts.installer.sha256
+    }
+}
+[IO.File]::WriteAllText(
+    $candidateStageBindingPath,
+    ($candidateStageBinding | ConvertTo-Json -Depth 5) + "`n",
+    [Text.UTF8Encoding]::new($false)
+)
 $gitExecutable = (Get-Command git.exe -ErrorAction Stop).Source
 function Read-GitValue([string[]]$Arguments) {
     # The host probe may run elevated while the working tree belongs to the
@@ -181,7 +219,7 @@ $configuration = @"
     <MappedFolder>
       <HostFolder>$releaseXml</HostFolder>
       <SandboxFolder>C:\YuanyuanRelease</SandboxFolder>
-      <ReadOnly>false</ReadOnly>
+      <ReadOnly>true</ReadOnly>
     </MappedFolder>
     <MappedFolder>
       <HostFolder>$outputXml</HostFolder>
@@ -224,6 +262,7 @@ $configuration = @"
         throw "Windows Sandbox data probe failed: $($status.failure)"
     }
     Write-Output "Windows Sandbox installed-candidate E2E passed: $statusPath"
+    Write-Output "YUANYUAN_INSTALLED_E2E_EVIDENCE_ROOT=$outputRoot"
 }
 finally {
     if ($null -ne $sandbox -and -not $sandbox.HasExited) {

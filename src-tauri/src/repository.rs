@@ -352,6 +352,41 @@ impl Repository {
             .map_err(AppError::from)
     }
 
+    #[cfg(feature = "runtime-qa")]
+    pub(crate) fn runtime_qa_reminder_occurrence_state(
+        &self,
+        reminder_id: &str,
+    ) -> AppResult<Option<(String, Option<String>, Option<String>)>> {
+        self.conn
+            .query_row(
+                "SELECT status, snoozed_until, resolution_reason
+                 FROM occurrences
+                 WHERE reminder_id = ?1
+                 ORDER BY created_at ASC
+                 LIMIT 1",
+                [reminder_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()
+            .map_err(AppError::from)
+    }
+
+    #[cfg(feature = "runtime-qa")]
+    pub(crate) fn runtime_qa_backup_contains_reminder(
+        path: &Path,
+        reminder_id: &str,
+    ) -> AppResult<bool> {
+        validate_backup_database(path)?;
+        let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM reminders WHERE id = ?1)",
+                [reminder_id],
+                |row| row.get(0),
+            )
+            .map_err(AppError::from)
+    }
+
     pub fn update_reminder(&mut self, id: &str, input: CreateReminderInput) -> AppResult<Reminder> {
         validate_input(&input)?;
         let now = Utc::now();

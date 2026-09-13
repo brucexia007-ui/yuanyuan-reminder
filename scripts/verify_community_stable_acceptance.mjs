@@ -4,6 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { validateCommunityStableAcceptance } from "./community_stable_acceptance_contract.mjs";
+import { communityProductFromBrand } from "./community_release_contract.mjs";
 
 const execFileAsync = promisify(execFile);
 const projectRoot = path.resolve(import.meta.dirname, "..");
@@ -49,9 +50,10 @@ async function main() {
     "COMMUNITY_STABLE_ACCEPTANCE_V1.json",
   );
   const authorityPath = path.join(projectRoot, "product-version.json");
-  const [acceptance, authority, releaseCommit] = await Promise.all([
+  const [acceptance, authority, brand, releaseCommit] = await Promise.all([
     readJson(acceptancePath),
     readJson(authorityPath),
+    readJson(path.join(projectRoot, "product-brand.json")),
     resolveCommit(options.releaseCommit),
   ]);
   const testedCommit = acceptance?.candidate?.testedCommit;
@@ -78,6 +80,7 @@ async function main() {
     .filter(Boolean);
   validateCommunityStableAcceptance(acceptance, {
     authority,
+    expectedProduct: communityProductFromBrand(brand),
     releaseCommit,
     changedPaths,
   });

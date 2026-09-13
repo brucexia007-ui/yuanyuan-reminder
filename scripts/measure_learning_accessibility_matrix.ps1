@@ -16,12 +16,18 @@ $reportPath = Join-Path $evidenceRoot "learning-accessibility-matrix-$runId.json
 $captureRoot = Join-Path $evidenceRoot "learning-accessibility-matrix-$runId"
 $expectedMarker = "YUANYUAN_RUNTIME_QA_V1`n"
 $fixtureCardCount = 5
+$brandConfigPath = Join-Path $projectRoot "product-brand.json"
+$brandConfig = Get-Content -Raw -Encoding UTF8 -LiteralPath $brandConfigPath | ConvertFrom-Json
+if ([string]::IsNullOrWhiteSpace([string]$brandConfig.pet.displayName)) {
+    throw "product brand pet display name is required"
+}
 
 $learningPageName = -join @([char]0x5B66, [char]0x4E60, [char]0x9875, [char]0x9762)
-$blackboardName = -join @(
-    [char]0x5706, [char]0x5706, [char]0x684C, [char]0x9762,
-    [char]0x82F1, [char]0x8BED, [char]0x590D, [char]0x4E60
+$blackboardSuffix = -join @(
+    [char]0x684C, [char]0x9762, [char]0x82F1, [char]0x8BED,
+    [char]0x590D, [char]0x4E60
 )
+$blackboardName = "{0}{1}" -f ([string]$brandConfig.pet.displayName), $blackboardSuffix
 $startRoundName = -join @([char]0x5F00, [char]0x59CB, [char]0x4E00, [char]0x8F6E)
 $optionsName = -join @(
     [char]0x8BF7, [char]0x9009, [char]0x62E9, [char]0x4E2D,

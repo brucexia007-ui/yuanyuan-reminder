@@ -88,6 +88,32 @@ test("accepts only one product identity and one default frontend build", () => {
   );
 });
 
+test("accepts one schema-bound custom identity with the same unified capabilities", () => {
+  const brand = {
+    application: {
+      displayName: "饺饺提醒",
+      identifier: "com.brucexia.jiaojiao.reminder",
+      packageName: "jiaojiao-reminder",
+    },
+  };
+  const customManifest = {
+    ...manifest,
+    productName: brand.application.displayName,
+    identifier: brand.application.identifier,
+    brandConfig: "product-brand.json",
+  };
+  assert.doesNotThrow(() => validateUnifiedSourceContract({
+    ...valid,
+    brand,
+    manifest: customManifest,
+    tauriConfig: {
+      ...valid.tauriConfig,
+      productName: brand.application.displayName,
+      identifier: brand.application.identifier,
+    },
+  }));
+});
+
 test("requires integrated learning bytes while rejecting edition identities", () => {
   const paths = ["dist/index.html", "dist/assets/pet/learning-atlas.webp"];
   const javascript = "get_learning_home preview_learning_import delete_learning_data";

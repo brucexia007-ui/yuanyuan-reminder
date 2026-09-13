@@ -47,6 +47,21 @@ $tauriConfig = Get-Content -Raw -Encoding UTF8 -LiteralPath (
 $candidateVersion = [string]$package.version
 $productName = [string]$tauriConfig.productName
 $bundleIdentifier = [string]$tauriConfig.identifier
+$identifierSegments = @($bundleIdentifier.Split('.'))
+$installerManufacturer = if ($identifierSegments.Count -ge 2) {
+    [string]$identifierSegments[1]
+}
+else {
+    ""
+}
+if ([string]::IsNullOrWhiteSpace($installerManufacturer)) {
+    throw "Tauri identifier cannot determine the NSIS manufacturer registry key"
+}
+$brandConfig = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $projectRoot "product-brand.json") | ConvertFrom-Json
+$installerBaseName = [string]$brandConfig.artifacts.installerBaseName
+if ([string]::IsNullOrWhiteSpace($installerBaseName) -or $installerBaseName -ne $productName) {
+    throw "product brand installer base name must match the Tauri product name"
+}
 $scriptPath = $MyInvocation.MyCommand.Path
 $candidatePayloadPath = Join-Path $releaseRoot "nsis-payload\yuanyuan-reminder.exe"
 $candidateInstallerCandidates = @(
@@ -55,6 +70,10 @@ $candidateInstallerCandidates = @(
 )
 if ($candidateInstallerCandidates.Count -ne 1) {
     throw "release bundle must contain exactly one version-matched x64 NSIS installer"
+}
+$expectedInstallerName = "{0}_{1}_x64-setup.exe" -f $installerBaseName, $candidateVersion
+if ($candidateInstallerCandidates[0].Name -cne $expectedInstallerName) {
+    throw "release installer name does not match the product brand"
 }
 $candidateInstallerPath = $candidateInstallerCandidates[0].FullName
 $reportPath = Join-Path $releaseRoot $(if ($UseDefaultInstallRoot) {
@@ -398,8 +417,11 @@ function Remove-OwnedDirectory(
 
 $historicalInstallerPath = Find-HistoricalInstaller
 $requiredFiles = @($historicalInstallerPath, $candidateInstallerPath, $candidatePayloadPath, $scriptPath)
+if ([string]::IsNullOrWhiteSpace([string]$brandConfig.assets.licenseFile)) {
+    throw "product brand assets.licenseFile is required"
+}
 $expectedLicenseFiles = [ordered]@{
-    "ASSETS_LICENSE.md" = Join-Path $projectRoot "ASSETS_LICENSE.md"
+    "ASSETS_LICENSE.md" = Join-Path $projectRoot ([string]$brandConfig.assets.licenseFile)
     "LICENSE.txt" = Join-Path $projectRoot "LICENSE"
     "THIRD_PARTY_LICENSES.txt" = Join-Path $projectRoot "THIRD_PARTY_LICENSES.txt"
     "THIRD_PARTY_NOTICES.md" = Join-Path $projectRoot "THIRD_PARTY_NOTICES.md"
@@ -451,7 +473,7 @@ $localAppDataMatchesTokenProfile = $profileRegistryQueryAvailable -and
 $currentUserRegistry64Writable = Test-CurrentUserRegistry64WriteAccess
 
 $uninstallKey = "Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\$productName"
-$productKey = "Registry::HKEY_CURRENT_USER\Software\yuanyuan\$productName"
+$productKey = "Registry::HKEY_CURRENT_USER\Software\$installerManufacturer\$productName"
 $runKey = "Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run"
 $preexistingRunValue = $null
 $preexistingRunValuePresent = $false

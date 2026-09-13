@@ -8,6 +8,7 @@ import { licenseFallbackReviewItems } from "./generate_third_party_licenses.mjs"
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const releaseRoot = path.join(projectRoot, "src-tauri", "target", "release");
 const outputPath = path.join(releaseRoot, "release-license-review-packet.json");
+const productBrand = JSON.parse(await readFile(path.join(projectRoot, "product-brand.json"), "utf8"));
 
 export const LICENSE_REVIEW_ATTESTATION_TEXT =
   "I attest that the named reviewer completed the candidate-specific license, NOTICE, source-availability, asset-rights, channel, trademark, and applicable professional legal review described by this packet, and that no unresolved finding remains.";
@@ -29,7 +30,7 @@ const MATERIALS = [
   ["licenseInventory", path.join(releaseRoot, "third-party-licenses.json")],
   ["licenseArchive", path.join(projectRoot, "THIRD_PARTY_LICENSES.txt")],
   ["thirdPartyNotices", path.join(projectRoot, "THIRD_PARTY_NOTICES.md")],
-  ["assetsLicense", path.join(projectRoot, "ASSETS_LICENSE.md")],
+  ["assetsLicense", path.join(projectRoot, productBrand.assets.licenseFile)],
   ["projectLicense", path.join(projectRoot, "LICENSE")],
   [
     "licensePolicy",

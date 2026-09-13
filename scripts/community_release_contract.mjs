@@ -30,7 +30,47 @@ export function sha256(bytes) {
   return createHash("sha256").update(bytes).digest("hex").toUpperCase();
 }
 
-export function validateCommunityStablePolicy(policy) {
+export function communityProductFromBrand(brand) {
+  if (
+    brand?.schemaVersion !== 1 ||
+    typeof brand.application?.displayName !== "string" ||
+    brand.application.displayName.trim().length === 0 ||
+    typeof brand.application?.identifier !== "string" ||
+    brand.application.identifier.trim().length === 0 ||
+    typeof brand.artifacts?.installerBaseName !== "string" ||
+    brand.artifacts.installerBaseName.trim().length === 0 ||
+    typeof brand.artifacts?.portableBaseName !== "string" ||
+    brand.artifacts.portableBaseName.trim().length === 0 ||
+    brand.artifacts.installerBaseName !== brand.application.displayName ||
+    [brand.artifacts.installerBaseName, brand.artifacts.portableBaseName]
+      .some((value) => /[\\/:*?"<>|\u0000-\u001f\u007f]/u.test(value))
+  ) {
+    fail("community release product brand is invalid");
+  }
+  return {
+    name: brand.application.displayName,
+    identifier: brand.application.identifier,
+    installerBaseName: brand.artifacts.installerBaseName,
+    portableBaseName: brand.artifacts.portableBaseName,
+  };
+}
+
+function validateExpectedProduct(product) {
+  exactKeys(
+    product,
+    ["name", "identifier", "installerBaseName", "portableBaseName"],
+    "expectedProduct",
+  );
+  if (
+    [product.name, product.identifier, product.installerBaseName, product.portableBaseName]
+      .some((value) => typeof value !== "string" || value.trim().length === 0)
+  ) {
+    fail("expected community release product is invalid");
+  }
+}
+
+export function validateCommunityStablePolicy(policy, expectedProduct) {
+  validateExpectedProduct(expectedProduct);
   exactKeys(
     policy,
     [
@@ -56,8 +96,8 @@ export function validateCommunityStablePolicy(policy) {
   }
   exactKeys(policy.product, ["name", "identifier"], "policy.product");
   if (
-    policy.product.name !== "圆圆提醒" ||
-    policy.product.identifier !== "com.yuanyuan.reminder"
+    policy.product.name !== expectedProduct.name ||
+    policy.product.identifier !== expectedProduct.identifier
   ) {
     fail("community release product identity is invalid");
   }
@@ -106,6 +146,7 @@ export function validateCommunityStablePolicy(policy) {
       "npm.cmd run verify",
       "cargo test --manifest-path src-tauri/Cargo.toml --locked",
       "npm.cmd run tauri build",
+      "npm.cmd run release:community:artifact-binding",
     ],
     "policy.blockingCommands",
   );
@@ -157,11 +198,12 @@ function validateCommit(commit) {
   }
 }
 
-export function validateCommunityStableAuthority(authority) {
+export function validateCommunityStableAuthority(authority, expectedProduct) {
+  validateExpectedProduct(expectedProduct);
   if (
     authority?.schemaVersion !== 1 ||
-    authority.productName !== "圆圆提醒" ||
-    authority.identifier !== "com.yuanyuan.reminder" ||
+    authority.productName !== expectedProduct.name ||
+    authority.identifier !== expectedProduct.identifier ||
     typeof authority.version !== "string" ||
     !/^\d+\.\d+\.\d+$/u.test(authority.version) ||
     authority.releaseTrain !== "unified-product" ||
@@ -175,14 +217,15 @@ export function validateCommunityStableAuthority(authority) {
 export function buildCommunityReleaseBundle({
   policy,
   authority,
+  expectedProduct,
   tag,
   sourceCommit,
   policyBytes,
   portableBytes,
   installerBytes,
 }) {
-  validateCommunityStablePolicy(policy);
-  validateCommunityStableAuthority(authority);
+  validateCommunityStablePolicy(policy, expectedProduct);
+  validateCommunityStableAuthority(authority, expectedProduct);
   validateCommit(sourceCommit);
   if (tag !== `v${authority.version}`) {
     fail("release tag must exactly match the stable product version");
@@ -200,13 +243,13 @@ export function buildCommunityReleaseBundle({
   const artifacts = [
     {
       id: "portable",
-      fileName: `Yuanyuan-Reminder-${authority.version}-x64-Portable.exe`,
+      fileName: `${expectedProduct.portableBaseName}_${authority.version}_windows-x64-portable.exe`,
       bytes: portableBytes.length,
       sha256: sha256(portableBytes),
     },
     {
       id: "setup",
-      fileName: `Yuanyuan-Reminder-${authority.version}-x64-Setup.exe`,
+      fileName: `${expectedProduct.installerBaseName}_${authority.version}_x64-setup.exe`,
       bytes: installerBytes.length,
       sha256: sha256(installerBytes),
     },
@@ -215,7 +258,7 @@ export function buildCommunityReleaseBundle({
     .map((artifact) => `${artifact.sha256.toLowerCase()}  ${artifact.fileName}`)
     .join("\n")}\n`;
   const notes = [
-    `# 圆圆提醒 ${tag}`,
+    `# ${authority.productName} ${tag}`,
     "",
     "这是面向开源社区、可自行下载和从源码构建的 Windows 稳定版本。稳定表示本项目的自动回归、Rust 后端、数据迁移/备份、关键 E2E 与正式构建门已经通过；商业代码签名不是此社区渠道的阻断条件。",
     "",

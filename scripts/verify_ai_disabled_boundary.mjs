@@ -6,6 +6,8 @@ import path from "node:path";
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const releaseRoot = path.join(projectRoot, "src-tauri", "target", "release");
 const sourceOnly = process.argv.includes("--source-only");
+const productBrand = JSON.parse(await readFile(path.join(projectRoot, "product-brand.json"), "utf8"));
+const assetLicenseSource = `../${productBrand.assets.licenseFile}`;
 
 const forbiddenFrontendTransports = [
   /\bWebSocket\s*\(/u,
@@ -50,7 +52,7 @@ const requiredLicenseResources = {
   "../LICENSE": "licenses/LICENSE.txt",
   "../THIRD_PARTY_NOTICES.md": "licenses/THIRD_PARTY_NOTICES.md",
   "../THIRD_PARTY_LICENSES.txt": "licenses/THIRD_PARTY_LICENSES.txt",
-  "../ASSETS_LICENSE.md": "licenses/ASSETS_LICENSE.md",
+  [assetLicenseSource]: "licenses/ASSETS_LICENSE.md",
 };
 
 export function validateOfflineCsp(csp) {

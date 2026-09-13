@@ -21,11 +21,20 @@ $fixturePath = Join-Path $releaseRoot "release-first-start-recovery.sqlite3"
 $captureReportPath = Join-Path $releaseRoot "release-first-start-recovery-database.json"
 $scriptSha256 = (Get-FileHash -LiteralPath $MyInvocation.MyCommand.Path -Algorithm SHA256).Hash
 $captureHelperSha256 = (Get-FileHash -LiteralPath $captureHelperPath -Algorithm SHA256).Hash
+$brandConfig = Get-Content -Raw -Encoding UTF8 -LiteralPath (
+    Join-Path $projectRoot "product-brand.json"
+) | ConvertFrom-Json
+if ([string]::IsNullOrWhiteSpace([string]$brandConfig.storage.directoryName) -or
+    [string]::IsNullOrWhiteSpace([string]$brandConfig.storage.mainDatabaseFile)) {
+    throw "product brand storage directory and main database file are required"
+}
+$formalDataLeaf = [string]$brandConfig.storage.directoryName
+$mainDatabaseFile = [string]$brandConfig.storage.mainDatabaseFile
 $localDataRoot = [Environment]::GetFolderPath(
     [Environment+SpecialFolder]::LocalApplicationData
 )
-$formalDataRoot = Join-Path $localDataRoot "com.yuanyuan.reminder"
-$databasePath = Join-Path $formalDataRoot "yuanyuan-reminder.sqlite3"
+$formalDataRoot = Join-Path $localDataRoot $formalDataLeaf
+$databasePath = Join-Path $formalDataRoot $mainDatabaseFile
 $walPath = "$databasePath-wal"
 $shmPath = "$databasePath-shm"
 $runId = "{0}-{1}" -f
@@ -615,12 +624,12 @@ try {
     New-OwnedDirectory `
         $formalDataRoot `
         $localDataRoot `
-        "com.yuanyuan.reminder" `
+        $formalDataLeaf `
         $dataMarker
     $dataOwned = $true
     $environment.emptyFormalDataRootProvisionedByProbe = $true
 
-    $watcher = [IO.FileSystemWatcher]::new($formalDataRoot, "yuanyuan-reminder.sqlite3-wal")
+    $watcher = [IO.FileSystemWatcher]::new($formalDataRoot, "$mainDatabaseFile-wal")
     $watcher.NotifyFilter = [IO.NotifyFilters]::FileName -bor
         [IO.NotifyFilters]::Size -bor [IO.NotifyFilters]::LastWrite
     $watcher.EnableRaisingEvents = $true
@@ -738,7 +747,7 @@ finally {
             $cleanup.formalDataRootRemoved = Remove-OwnedDirectory `
                 $formalDataRoot `
                 $localDataRoot `
-                "com.yuanyuan.reminder" `
+                $formalDataLeaf `
                 $dataMarker
         }
         catch {

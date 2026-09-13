@@ -28,6 +28,19 @@ function Write-ProbeProgress([string]$Stage) {
     [IO.File]::AppendAllText($progressPath, $line, [Text.UTF8Encoding]::new($false))
 }
 
+function Assert-ExactPropertyNames(
+    [object]$Value,
+    [string[]]$Expected,
+    [string]$Label
+) {
+    if ($null -eq $Value) { throw "$Label must be an object" }
+    $actual = @($Value.PSObject.Properties.Name | Sort-Object)
+    $wanted = @($Expected | Sort-Object)
+    if (($actual -join "`0") -cne ($wanted -join "`0")) {
+        throw "$Label fields are not exact"
+    }
+}
+
 Write-ProbeProgress "bootstrap:start"
 
 try {
@@ -164,6 +177,14 @@ public static class YuanyuanInstalledE2EWindowProbe {
         SetCursorPos(x, y);
         for (var index = 0; index < notches; index++) {
             mouse_event(0x0800, 0, 0, unchecked((uint)-120), UIntPtr.Zero);
+            Thread.Sleep(15);
+        }
+    }
+
+    public static void ScrollUp(int x, int y, int notches) {
+        SetCursorPos(x, y);
+        for (var index = 0; index < notches; index++) {
+            mouse_event(0x0800, 0, 0, 120, UIntPtr.Zero);
             Thread.Sleep(15);
         }
     }
@@ -335,6 +356,191 @@ function Wait-AppElement(
         Start-Sleep -Milliseconds 100
     }
     throw "candidate UI element did not appear: $Name"
+}
+
+function Find-AppControlElement(
+    [int]$ProcessId,
+    [string]$Name,
+    [System.Windows.Automation.ControlType]$ControlType
+) {
+    foreach ($node in @(Get-AppAccessibleNodes $ProcessId)) {
+        try {
+            if (
+                [string]$node.Current.Name -eq $Name -and
+                $node.Current.IsEnabled -and
+                $node.Current.ControlType -eq $ControlType
+            ) { return $node }
+        }
+        catch {}
+    }
+    $null
+}
+
+function Wait-AppControlElement(
+    [System.Diagnostics.Process]$Process,
+    [string]$Name,
+    [System.Windows.Automation.ControlType]$ControlType,
+    [int]$TimeoutSeconds = 20
+) {
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $Process.Refresh()
+        if ($Process.HasExited) { throw "candidate exited before UI control appeared: $Name" }
+        $element = Find-AppControlElement $Process.Id $Name $ControlType
+        if ($null -ne $element) { return $element }
+        Start-Sleep -Milliseconds 100
+    }
+    throw "candidate UI control did not appear: $Name"
+}
+
+function Get-ComboBoxSelectedLabel(
+    [System.Windows.Automation.AutomationElement]$ComboBox
+) {
+    $selectionPattern = $null
+    if ($ComboBox.TryGetCurrentPattern(
+        [System.Windows.Automation.SelectionPattern]::Pattern,
+        [ref]$selectionPattern
+    )) {
+        $selected = @(
+            ([System.Windows.Automation.SelectionPattern]$selectionPattern).Current.GetSelection()
+        )
+        if ($selected.Count -eq 1) {
+            $label = [string]$selected[0].Current.Name
+            if (-not [string]::IsNullOrWhiteSpace($label)) { return $label }
+        }
+    }
+    $valuePattern = $null
+    if ($ComboBox.TryGetCurrentPattern(
+        [System.Windows.Automation.ValuePattern]::Pattern,
+        [ref]$valuePattern
+    )) {
+        return [string]([System.Windows.Automation.ValuePattern]$valuePattern).Current.Value
+    }
+    ""
+}
+
+function Select-AppComboBoxOption(
+    [System.Diagnostics.Process]$Process,
+    [string]$AccessibleName,
+    [string]$OptionLabel,
+    [int]$KeyboardDownCount
+) {
+    $comboBox = Wait-AppControlElement `
+        $Process `
+        $AccessibleName `
+        ([System.Windows.Automation.ControlType]::ComboBox) `
+        20
+    $handle = Get-ElementWindowHandle $comboBox
+    if ($handle -ne [IntPtr]::Zero) {
+        [void][YuanyuanInstalledE2EWindowProbe]::SetForegroundWindow(
+            [YuanyuanInstalledE2EWindowProbe]::RootWindow($handle)
+        )
+    }
+    $scrollPattern = $null
+    if ($comboBox.TryGetCurrentPattern(
+        [System.Windows.Automation.ScrollItemPattern]::Pattern,
+        [ref]$scrollPattern
+    )) {
+        ([System.Windows.Automation.ScrollItemPattern]$scrollPattern).ScrollIntoView()
+    }
+    Start-Sleep -Milliseconds 200
+    # WebView may recreate the native UIA node after scrolling it into view.
+    # Resolve it again before focusing so backup-restore settings checks do not
+    # retain an element that is no longer available.
+    $comboBox = Wait-AppControlElement `
+        $Process `
+        $AccessibleName `
+        ([System.Windows.Automation.ControlType]::ComboBox) `
+        20
+    try {
+        $comboBox.SetFocus()
+    }
+    catch {
+        Start-Sleep -Milliseconds 150
+        $comboBox = Wait-AppControlElement `
+            $Process `
+            $AccessibleName `
+            ([System.Windows.Automation.ControlType]::ComboBox) `
+            20
+        $comboBox.SetFocus()
+    }
+    Start-Sleep -Milliseconds 200
+
+    $selectedSemantically = $false
+    $expandPattern = $null
+    if ($comboBox.TryGetCurrentPattern(
+        [System.Windows.Automation.ExpandCollapsePattern]::Pattern,
+        [ref]$expandPattern
+    )) {
+        try {
+            ([System.Windows.Automation.ExpandCollapsePattern]$expandPattern).Expand()
+            Start-Sleep -Milliseconds 200
+            $option = Find-AppControlElement `
+                $Process.Id `
+                $OptionLabel `
+                ([System.Windows.Automation.ControlType]::ListItem)
+            if ($null -ne $option) {
+                $selectionItemPattern = $null
+                if ($option.TryGetCurrentPattern(
+                    [System.Windows.Automation.SelectionItemPattern]::Pattern,
+                    [ref]$selectionItemPattern
+                )) {
+                    ([System.Windows.Automation.SelectionItemPattern]$selectionItemPattern).Select()
+                    $selectedSemantically = $true
+                }
+            }
+            ([System.Windows.Automation.ExpandCollapsePattern]$expandPattern).Collapse()
+        }
+        catch {
+            try { ([System.Windows.Automation.ExpandCollapsePattern]$expandPattern).Collapse() }
+            catch {}
+        }
+    }
+    if (-not $selectedSemantically) {
+        $comboBox = Wait-AppControlElement `
+            $Process `
+            $AccessibleName `
+            ([System.Windows.Automation.ControlType]::ComboBox) `
+            20
+        try {
+            $comboBox.SetFocus()
+        }
+        catch {
+            Start-Sleep -Milliseconds 150
+            $comboBox = Wait-AppControlElement `
+                $Process `
+                $AccessibleName `
+                ([System.Windows.Automation.ControlType]::ComboBox) `
+                20
+            $comboBox.SetFocus()
+        }
+        [System.Windows.Forms.SendKeys]::SendWait("{HOME}")
+        if ($KeyboardDownCount -gt 0) {
+            [System.Windows.Forms.SendKeys]::SendWait("{DOWN $KeyboardDownCount}")
+        }
+        [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
+    }
+
+    $deadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        try {
+            $freshComboBox = Find-AppControlElement `
+                $Process.Id `
+                $AccessibleName `
+                ([System.Windows.Automation.ControlType]::ComboBox)
+            if ($null -ne $freshComboBox) {
+                $comboBox = $freshComboBox
+                $selectedLabel = Get-ComboBoxSelectedLabel $comboBox
+                if ($selectedLabel -eq $OptionLabel) { return $selectedLabel }
+            }
+        }
+        catch {
+            # React/WebView can replace the UIA node while persisting settings;
+            # the next poll resolves the current node again.
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    throw "candidate combo box did not select the required option: $OptionLabel"
 }
 
 function Wait-VisibleAppElement(
@@ -652,7 +858,7 @@ function Stop-CandidateFromSettings([System.Diagnostics.Process]$Process) {
 }
 
 $status = [ordered]@{
-    schemaVersion = 1
+    schemaVersion = 2
     generatedAt = $null
     profile = "community-stable-installed-e2e"
     sandboxUser = [Environment]::UserName
@@ -672,6 +878,8 @@ $status = [ordered]@{
     sourceMetadataSha256 = $null
     probeScriptSha256 = $null
     hostScriptSha256 = $null
+    candidateStage = $null
+    evidenceFileBindings = $null
     ready = $false
     failure = $null
 }
@@ -710,6 +918,113 @@ try {
             Join-Path $projectRoot "scripts\run_community_stable_sandbox_data_probe_host.ps1"
         )
     ).Hash
+    $candidateStageManifestPath = Join-Path $outputRoot "candidate-stage-manifest.json"
+    $candidateStageBindingPath = Join-Path $outputRoot "candidate-stage-binding.json"
+    $candidateStageManifest = Get-Content -Raw -Encoding UTF8 `
+        -LiteralPath $candidateStageManifestPath | ConvertFrom-Json
+    $candidateStageBinding = Get-Content -Raw -Encoding UTF8 `
+        -LiteralPath $candidateStageBindingPath | ConvertFrom-Json
+    Assert-ExactPropertyNames $candidateStageBinding @(
+        "schemaVersion", "verifiedAt", "stageManifestSha256", "stageVerifierSha256",
+        "application", "installer"
+    ) "candidate stage binding"
+    Assert-ExactPropertyNames $candidateStageBinding.application @(
+        "fileName", "bytes", "sha256"
+    ) "candidate stage application binding"
+    Assert-ExactPropertyNames $candidateStageBinding.installer @(
+        "fileName", "bytes", "sha256"
+    ) "candidate stage installer binding"
+    Assert-ExactPropertyNames $candidateStageManifest @(
+        "schemaVersion", "createdAt", "product", "source", "build", "sourceRelease",
+        "artifacts", "configBindings"
+    ) "candidate stage manifest"
+    Assert-ExactPropertyNames $candidateStageManifest.artifacts @(
+        "application", "installer"
+    ) "candidate stage manifest artifacts"
+    Assert-ExactPropertyNames $candidateStageManifest.artifacts.application @(
+        "fileName", "bytes", "sha256"
+    ) "candidate stage manifest application"
+    Assert-ExactPropertyNames $candidateStageManifest.artifacts.installer @(
+        "fileName", "bytes", "sha256"
+    ) "candidate stage manifest installer"
+    $candidateStageManifestSha256 = (
+        Get-FileHash -Algorithm SHA256 -LiteralPath $candidateStageManifestPath
+    ).Hash
+    $candidateStageBindingSha256 = (
+        Get-FileHash -Algorithm SHA256 -LiteralPath $candidateStageBindingPath
+    ).Hash
+    $candidateStageVerifierSha256 = (
+        Get-FileHash -Algorithm SHA256 -LiteralPath (
+            Join-Path $projectRoot "scripts\verify_community_stable_e2e_stage.mjs"
+        )
+    ).Hash
+    $verifiedAt = [DateTimeOffset]::MinValue
+    $verifiedAtValid = [DateTimeOffset]::TryParse(
+        [string]$candidateStageBinding.verifiedAt,
+        [ref]$verifiedAt
+    )
+    if (
+        $candidateStageBinding.schemaVersion -ne 1 -or
+        $candidateStageManifest.schemaVersion -ne 1 -or
+        -not $verifiedAtValid -or
+        [string]$candidateStageBinding.stageManifestSha256 -cne $candidateStageManifestSha256 -or
+        [string]$candidateStageBinding.stageVerifierSha256 -cne $candidateStageVerifierSha256
+    ) {
+        throw "candidate stage evidence binding is invalid or stale"
+    }
+    foreach ($artifactName in @("application", "installer")) {
+        $bindingArtifact = $candidateStageBinding.$artifactName
+        $manifestArtifact = $candidateStageManifest.artifacts.$artifactName
+        if (
+            [string]$bindingArtifact.fileName -cne [string]$manifestArtifact.fileName -or
+            [long]$bindingArtifact.bytes -ne [long]$manifestArtifact.bytes -or
+            [string]$bindingArtifact.sha256 -cne [string]$manifestArtifact.sha256 -or
+            [IO.Path]::GetFileName([string]$bindingArtifact.fileName) -cne
+                [string]$bindingArtifact.fileName -or
+            [long]$bindingArtifact.bytes -le 0 -or
+            [string]$bindingArtifact.sha256 -notmatch "^[A-F0-9]{64}$"
+        ) {
+            throw "candidate stage $artifactName binding does not match its manifest"
+        }
+    }
+    $candidateStageApplicationSource = Join-Path `
+        $sourceReleaseRoot `
+        ([string]$candidateStageBinding.application.fileName)
+    $candidateStageInstallerSource = Join-Path `
+        (Join-Path $sourceReleaseRoot "bundle\nsis") `
+        ([string]$candidateStageBinding.installer.fileName)
+    foreach ($candidateStageArtifact in @(
+        @{
+            Label = "application"
+            Path = $candidateStageApplicationSource
+            Binding = $candidateStageBinding.application
+        },
+        @{
+            Label = "installer"
+            Path = $candidateStageInstallerSource
+            Binding = $candidateStageBinding.installer
+        }
+    )) {
+        if (-not (Test-Path -LiteralPath $candidateStageArtifact.Path -PathType Leaf)) {
+            throw "candidate stage $($candidateStageArtifact.Label) is missing"
+        }
+        $candidateStageArtifactFile = Get-Item -LiteralPath $candidateStageArtifact.Path
+        if (
+            [long]$candidateStageArtifactFile.Length -ne
+                [long]$candidateStageArtifact.Binding.bytes -or
+            (Get-FileHash -Algorithm SHA256 -LiteralPath $candidateStageArtifact.Path).Hash -cne
+                [string]$candidateStageArtifact.Binding.sha256
+        ) {
+            throw "candidate stage $($candidateStageArtifact.Label) changed after host verification"
+        }
+    }
+    $status.candidateStage = [ordered]@{
+        manifestSha256 = $candidateStageManifestSha256
+        bindingSha256 = $candidateStageBindingSha256
+        stageVerifierSha256 = $candidateStageVerifierSha256
+        applicationSha256 = [string]$candidateStageBinding.application.sha256
+        installerSha256 = [string]$candidateStageBinding.installer.sha256
+    }
     $webView2Executable = Join-Path $webView2RuntimeRoot "msedgewebview2.exe"
     if (-not (Test-Path -LiteralPath $webView2Executable -PathType Leaf)) {
         throw "mapped WebView2 runtime executable is missing"
@@ -750,9 +1065,9 @@ try {
     }
     New-Item -ItemType Directory -Path (Join-Path $releaseRoot "bundle\nsis") -Force |
         Out-Null
-    Copy-Item -LiteralPath (Join-Path $sourceReleaseRoot "yuanyuan-reminder.exe") `
+    Copy-Item -LiteralPath $candidateStageApplicationSource `
         -Destination (Join-Path $releaseRoot "yuanyuan-reminder.exe")
-    Copy-Item -Path (Join-Path $sourceReleaseRoot "bundle\nsis\*.exe") `
+    Copy-Item -LiteralPath $candidateStageInstallerSource `
         -Destination (Join-Path $releaseRoot "bundle\nsis")
     $status.candidateCopiedToSandboxDisk = $true
     Write-ProbeProgress "candidate:copied"
@@ -797,12 +1112,61 @@ try {
     $tauriConfig = Get-Content -Raw -Encoding UTF8 -LiteralPath (
         Join-Path $projectRoot "src-tauri\tauri.conf.json"
     ) | ConvertFrom-Json
+    $brandConfig = Get-Content -Raw -Encoding UTF8 -LiteralPath (
+        Join-Path $projectRoot "product-brand.json"
+    ) | ConvertFrom-Json
+    $petDisplayName = [string]$brandConfig.pet.displayName
+    $petSex = [string]$brandConfig.pet.sex
+    $petBreed = [string]$brandConfig.pet.breed
+    $petPersonality = [string]$brandConfig.pet.personality
+    $petSexLabel = switch ($petSex) {
+        "female" { "母猫" }
+        "male" { "公猫" }
+        "unknown" { "猫咪" }
+        default { throw "functional E2E pet sex is invalid" }
+    }
+    $petIdentityDescription = "{0}：{1}{2}，性格{3}" -f `
+        $petDisplayName, $petBreed, $petSexLabel, $petPersonality
+    $databaseFile = [string]$brandConfig.storage.mainDatabaseFile
+    $installerBaseName = [string]$brandConfig.artifacts.installerBaseName
+    $identifierSegments = @(([string]$tauriConfig.identifier).Split('.'))
+    $installerManufacturer = if ($identifierSegments.Count -ge 2) {
+        [string]$identifierSegments[1]
+    } else {
+        ""
+    }
+    if (
+        [string]$candidateStageManifest.product.name -ne [string]$tauriConfig.productName -or
+        [string]$candidateStageManifest.product.version -ne [string]$package.version -or
+        [string]$candidateStageManifest.product.identifier -ne [string]$tauriConfig.identifier -or
+        [string]$candidateStageManifest.product.packageName -ne [string]$package.name -or
+        [string]$candidateStageManifest.source.branch -ne [string]$sourceMetadata.branch -or
+        [string]$candidateStageManifest.source.commit -ne [string]$sourceMetadata.commit -or
+        [bool]$candidateStageManifest.source.dirty -ne [bool]$sourceMetadata.dirty -or
+        [string]$brandConfig.application.identifier -ne [string]$tauriConfig.identifier -or
+        [string]::IsNullOrWhiteSpace($petDisplayName) -or
+        [string]::IsNullOrWhiteSpace($petBreed) -or
+        [string]::IsNullOrWhiteSpace($petPersonality) -or
+        [string]::IsNullOrWhiteSpace($databaseFile) -or
+        [string]::IsNullOrWhiteSpace($installerBaseName) -or
+        $installerBaseName -ne [string]$tauriConfig.productName -or
+        [string]::IsNullOrWhiteSpace($installerManufacturer) -or
+        [IO.Path]::GetFileName($databaseFile) -ne $databaseFile -or
+        -not $databaseFile.EndsWith(".sqlite3", [StringComparison]::OrdinalIgnoreCase)
+    ) {
+        throw "functional E2E brand storage configuration is invalid"
+    }
     $candidateInstaller = @(
         Get-ChildItem -LiteralPath (Join-Path $releaseRoot "bundle\nsis") -File |
             Where-Object Name -Like ("*_{0}_x64-setup.exe" -f [string]$package.version)
     )
     if ($candidateInstaller.Count -ne 1) {
         throw "functional E2E requires exactly one version-matched installer"
+    }
+    $expectedInstallerName = "{0}_{1}_x64-setup.exe" -f `
+        $installerBaseName, [string]$package.version
+    if ($candidateInstaller[0].Name -cne $expectedInstallerName) {
+        throw "functional E2E installer name does not match the product brand"
     }
     $sourceHelperPath = Join-Path `
         $projectRoot `
@@ -822,7 +1186,7 @@ try {
     $applicationPath = Join-Path $installRoot "yuanyuan-reminder.exe"
     $uninstallerPath = Join-Path $installRoot "uninstall.exe"
     $uninstallKey = "Registry::HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Uninstall\$($tauriConfig.productName)"
-    $productKey = "Registry::HKEY_CURRENT_USER\Software\yuanyuan\$($tauriConfig.productName)"
+    $productKey = "Registry::HKEY_CURRENT_USER\Software\$installerManufacturer\$($tauriConfig.productName)"
     $desktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "$($tauriConfig.productName).lnk"
     $programsShortcut = Join-Path ([Environment]::GetFolderPath("Programs")) "$($tauriConfig.productName).lnk"
     foreach ($path in @($installRoot, $dataRoot, $roamingDataRoot)) {
@@ -838,19 +1202,40 @@ try {
         installedCoreSha256 = $null
         helperSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $helperPath).Hash
         helperSeedExitCode = $null
+        helperAddOverdueNotifyExitCode = $null
+        helperAddMissedExitCode = $null
+        helperAutomaticBackupExitCode = $null
         installExitCode = $null
         scenarios = [ordered]@{
             installAndLaunch = $false
+            snoozeThirtyMinutes = $false
+            missedReminderNotify = $false
+            missedReminderSkipOld = $false
             reminderDelivery = $false
             hideAndRestorePet = $false
             panelDrag = $false
+            automaticBackup = $false
             backupAndRestore = $false
             restartPersistence = $false
             uninstallKeepsDataByDefault = $false
         }
         reminder = $null
+        overdueNotifyEvidence = $null
+        snoozedReminder = $null
+        snoozeEvidence = $null
+        missedReminder = $null
+        missedReminderEvidence = $null
+        automaticBackupEvidence = $null
         mutation = $null
         panelDragEvidence = $null
+        petIdentity = [ordered]@{
+            displayName = $petDisplayName
+            sex = $petSex
+            breed = $petBreed
+            personality = $petPersonality
+            accessibleDescription = $petIdentityDescription
+            observedLaunchCount = 0
+        }
         formalUserDataUsed = $false
         cleanup = [ordered]@{
             applicationExited = $false
@@ -904,15 +1289,98 @@ try {
         if ($seedExitCode -ne 0) {
             throw "installed-candidate reminder seed failed: $($seedOutput -join ' | ')"
         }
-        $seed = $seedOutput | ConvertFrom-Json
-        $functional.reminder = $seed
+        $snoozeSeed = $seedOutput | ConvertFrom-Json
+        $functional.snoozedReminder = $snoozeSeed
         Write-ProbeProgress "functional:seed:passed"
 
         Write-ProbeProgress "functional:first-launch:start"
+        $firstLaunchStartedAt = [DateTimeOffset]::UtcNow
         $candidateProcess = Start-InstalledCandidate $applicationPath $webView2RuntimeRoot
         [void](Wait-PetElement $candidateProcess 30)
         $functional.scenarios.installAndLaunch = $true
+        [void](Wait-AppElement $candidateProcess ([string]$snoozeSeed.title) $false $false 45)
+        Write-ProbeProgress "functional:snooze-30:start"
+        $snoozeAccessibleName = "稍后提醒时长，可选 5、10、30、60 分钟"
+        $selectedSnoozeValue = Select-AppComboBoxOption `
+            $candidateProcess `
+            $snoozeAccessibleName `
+            "30 分钟" `
+            2
+        Start-Sleep -Milliseconds 250
+        $snoozeButton = Wait-AppElement $candidateProcess "稍后" $true $true 20
+        Invoke-AccessibleElement $snoozeButton
+        $snoozeOutcome = "提醒已延后；${petDisplayName}安静等候"
+        [void](Wait-AppElement $candidateProcess $snoozeOutcome $true $false 20)
+        Stop-CandidateFromSettings $candidateProcess
+        $candidateProcess = $null
+
+        $snoozeInspectOutput = & $helperPath inspect `
+            --data-root $dataRoot `
+            --reminder-ids ([string]$snoozeSeed.reminderId) `
+            --attest-windows-sandbox
+        if ($LASTEXITCODE -ne 0) { throw "installed-candidate snooze inspection failed" }
+        $snoozeInspect = $snoozeInspectOutput | ConvertFrom-Json
+        if (
+            $null -eq $snoozeInspect -or
+            -not $snoozeInspect.databaseHealthy -or
+            @($snoozeInspect.records).Count -ne 1
+        ) {
+            throw "installed reminder snooze inspection did not return exactly one healthy record"
+        }
+        $snoozeRecord = @($snoozeInspect.records)[0]
+        if (
+            -not $snoozeRecord.present -or
+            [string]$snoozeRecord.occurrenceStatus -ne "snoozed" -or
+            [string]::IsNullOrWhiteSpace([string]$snoozeRecord.snoozedUntil)
+        ) {
+            throw "installed reminder did not persist the 30-minute snooze"
+        }
+        $snoozeObservedAt = [DateTimeOffset]::UtcNow
+        $remainingSeconds = [Math]::Round(
+            ([DateTimeOffset]::Parse([string]$snoozeRecord.snoozedUntil) -
+                $snoozeObservedAt).TotalSeconds
+        )
+        if ($remainingSeconds -lt 1500 -or $remainingSeconds -gt 1900) {
+            throw "installed 30-minute snooze deadline is outside the accepted range"
+        }
+        $functional.snoozeEvidence = [ordered]@{
+            reminderId = [string]$snoozeSeed.reminderId
+            accessibleName = $snoozeAccessibleName
+            selectedMinutes = 30
+            selectedValue = $selectedSnoozeValue
+            outcomeLabel = $snoozeOutcome
+            occurrenceStatus = [string]$snoozeRecord.occurrenceStatus
+            observedAt = $snoozeObservedAt.ToString("o")
+            snoozedUntil = [string]$snoozeRecord.snoozedUntil
+            remainingSeconds = [int]$remainingSeconds
+        }
+        $functional.scenarios.snoozeThirtyMinutes = $true
+        Write-ProbeProgress "functional:snooze-30:passed"
+
+        Write-ProbeProgress "functional:add-overdue-notify:start"
+        $addDueOutput = @(& $helperPath add-overdue-notify `
+            --data-root $dataRoot `
+            --overdue-minutes 16 `
+            --attest-windows-sandbox 2>&1)
+        $functional.helperAddOverdueNotifyExitCode = $LASTEXITCODE
+        $addDueOutput | Set-Content -Encoding UTF8 -LiteralPath (
+            Join-Path $outputRoot "installed-candidate-add-overdue-notify.log"
+        )
+        if ($functional.helperAddOverdueNotifyExitCode -ne 0) {
+            throw "installed-candidate overdue notify setup failed: $($addDueOutput -join ' | ')"
+        }
+        $seed = $addDueOutput | ConvertFrom-Json
+        $functional.reminder = $seed
+        Write-ProbeProgress "functional:add-overdue-notify:passed"
+
+        Write-ProbeProgress "functional:reminder-launch:start"
+        $candidateProcess = Start-InstalledCandidate $applicationPath $webView2RuntimeRoot
+        [void](Wait-AppElement $candidateProcess "${petDisplayName}桌面宠物" $true $false 30)
+        [void](Wait-AppElement $candidateProcess $petIdentityDescription $true $false 30)
+        $functional.petIdentity.observedLaunchCount += 1
         [void](Wait-AppElement $candidateProcess ([string]$seed.title) $false $false 45)
+        $notifyAlertObservedAt = [DateTimeOffset]::UtcNow
+        $functional.scenarios.missedReminderNotify = $true
         $functional.scenarios.reminderDelivery = $true
         Write-ProbeProgress "functional:reminder-delivery:passed"
 
@@ -928,7 +1396,7 @@ try {
         if (-not (Wait-PetHidden $candidateProcess $petWindowHandle 10)) {
             throw "pet remained visible after the installed hide command"
         }
-        $restorePet = Wait-AppElement $candidateProcess "显示并叫醒圆圆" $true $true 20
+        $restorePet = Wait-AppElement $candidateProcess "显示并叫醒${petDisplayName}" $true $true 20
         $settingsHandle = Get-ElementWindowHandle $restorePet
         if ($settingsHandle -eq [IntPtr]::Zero) {
             throw "settings restore control has no native window"
@@ -942,7 +1410,7 @@ try {
             [int]($settingsRect.top + (($settingsRect.bottom - $settingsRect.top) * 0.65)),
             48
         )
-        $restorePet = Wait-VisibleAppElement $candidateProcess "显示并叫醒圆圆" 20
+        $restorePet = Wait-VisibleAppElement $candidateProcess "显示并叫醒${petDisplayName}" 20
         Click-AccessibleElement $restorePet
         [void](Wait-AppElement $candidateProcess "圆圆已经显示并醒来了。" $false $false 20)
         [void](Wait-PetVisible $candidateProcess $petWindowHandle 20)
@@ -950,6 +1418,63 @@ try {
         Write-ProbeProgress "functional:pet-hide-restore:passed"
 
         Write-ProbeProgress "functional:backup-create:start"
+        # The restore control lives at the bottom of Settings. Return to the top
+        # before querying WebView2 UIA, which omits distant offscreen controls.
+        [void][YuanyuanInstalledE2EWindowProbe]::SetForegroundWindow(
+            [YuanyuanInstalledE2EWindowProbe]::RootWindow($settingsHandle)
+        )
+        [YuanyuanInstalledE2EWindowProbe]::ScrollUp(
+            [int](($settingsRect.left + $settingsRect.right) / 2),
+            [int]($settingsRect.top + (($settingsRect.bottom - $settingsRect.top) * 0.65)),
+            48
+        )
+        $missedPolicyAccessibleName = "错过提醒策略，可选恢复后仍提醒、自动归入已跳过"
+        $notifyPolicyControl = Wait-AppControlElement `
+            $candidateProcess `
+            $missedPolicyAccessibleName `
+            ([System.Windows.Automation.ControlType]::ComboBox) `
+            20
+        $selectedNotifyPolicy = Get-ComboBoxSelectedLabel $notifyPolicyControl
+        if ($selectedNotifyPolicy -ne "恢复后仍提醒") {
+            throw "installed default missed-reminder policy is not notify"
+        }
+        [void](Wait-AppElement $candidateProcess "自动备份" $true $false 30)
+        $automaticBackupOutput = @(& $helperPath inspect-automatic-backup `
+            --data-root $dataRoot `
+            --reminder-id ([string]$snoozeSeed.reminderId) `
+            --attest-windows-sandbox 2>&1)
+        $functional.helperAutomaticBackupExitCode = $LASTEXITCODE
+        $automaticBackupOutput | Set-Content -Encoding UTF8 -LiteralPath (
+            Join-Path $outputRoot "installed-candidate-automatic-backup.log"
+        )
+        if ($functional.helperAutomaticBackupExitCode -ne 0) {
+            throw "installed automatic backup inspection failed: $($automaticBackupOutput -join ' | ')"
+        }
+        $automaticBackup = $automaticBackupOutput | ConvertFrom-Json
+        if (
+            -not $automaticBackup.automatic -or
+            $automaticBackup.learningIncluded -or
+            -not $automaticBackup.databaseHealthy -or
+            -not $automaticBackup.reminderPresent -or
+            [int64]$automaticBackup.sizeBytes -le 0
+        ) {
+            throw "installed first-launch automatic backup is incomplete"
+        }
+        $functional.automaticBackupEvidence = [ordered]@{
+            uiLabel = "自动备份"
+            firstLaunchStartedAt = $firstLaunchStartedAt.ToString("o")
+            fileName = [string]$automaticBackup.fileName
+            createdAt = [string]$automaticBackup.createdAt
+            sizeBytes = [int64]$automaticBackup.sizeBytes
+            sha256 = [string]$automaticBackup.sha256
+            automatic = [bool]$automaticBackup.automatic
+            learningIncluded = [bool]$automaticBackup.learningIncluded
+            databaseHealthy = [bool]$automaticBackup.databaseHealthy
+            reminderId = [string]$automaticBackup.reminderId
+            reminderPresent = [bool]$automaticBackup.reminderPresent
+        }
+        $functional.scenarios.automaticBackup = $true
+        Write-ProbeProgress "functional:automatic-backup:passed"
         $createBackup = Wait-AppElement $candidateProcess "立即备份" $true $true 20
         Invoke-AccessibleElement $createBackup
         [void](Wait-AppElement $candidateProcess "手动备份已创建。" $false $false 30)
@@ -965,11 +1490,27 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "installed-candidate initial inspection failed" }
         $initialInspect = $initialInspectOutput | ConvertFrom-Json
         if (
+            $null -eq $initialInspect -or
             -not $initialInspect.databaseHealthy -or
-            -not $initialInspect.records[0].present -or
-            $initialInspect.records[0].occurrenceStatus -notin @("pending", "overdue")
+            @($initialInspect.records).Count -ne 1
+        ) {
+            throw "installed overdue-notify inspection did not return exactly one healthy record"
+        }
+        $initialRecord = @($initialInspect.records)[0]
+        if (
+            -not $initialRecord.present -or
+            $initialRecord.occurrenceStatus -notin @("pending", "overdue")
         ) {
             throw "installed reminder was not durably claimed"
+        }
+        $functional.overdueNotifyEvidence = [ordered]@{
+            reminderId = [string]$seed.reminderId
+            policyAccessibleName = $missedPolicyAccessibleName
+            selectedPolicy = $selectedNotifyPolicy
+            overdueMinutes = 16
+            observedAt = $notifyAlertObservedAt.ToString("o")
+            alertObserved = $true
+            occurrenceStatus = [string]$initialRecord.occurrenceStatus
         }
 
         $mutationOutput = & $helperPath mutate `
@@ -1008,9 +1549,16 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "installed-candidate restored inspection failed" }
         $restoredInspect = $restoredInspectOutput | ConvertFrom-Json
         if (
+            $null -eq $restoredInspect -or
             -not $restoredInspect.databaseHealthy -or
-            -not $restoredInspect.records[0].present -or
-            $restoredInspect.records[1].present
+            @($restoredInspect.records).Count -ne 2
+        ) {
+            throw "installed backup restore inspection did not return exactly two healthy records"
+        }
+        $restoredRecords = @($restoredInspect.records)
+        if (
+            -not $restoredRecords[0].present -or
+            $restoredRecords[1].present
         ) {
             throw "installed backup restore did not recover the pre-mutation state"
         }
@@ -1024,16 +1572,112 @@ try {
         }
         Invoke-PetMenuItem $candidateProcess "设置"
         [void](Wait-AppElement $candidateProcess "设置" $true $false 20)
+        $selectedMissedPolicy = Select-AppComboBoxOption `
+            $candidateProcess `
+            $missedPolicyAccessibleName `
+            "自动归入已跳过" `
+            1
+        $missedGraceAccessibleName = "错过提醒宽限，可选 15、30、60、120、240 分钟"
+        $selectedMissedGrace = Select-AppComboBoxOption `
+            $candidateProcess `
+            $missedGraceAccessibleName `
+            "15 分钟" `
+            0
+        Start-Sleep -Milliseconds 250
         Stop-CandidateFromSettings $candidateProcess
         $candidateProcess = $null
         $functional.scenarios.backupAndRestore = $true
         Write-ProbeProgress "functional:backup-restore:passed"
 
+        Write-ProbeProgress "functional:missed-reminder:start"
+        $missedOutput = @(& $helperPath add-missed `
+            --data-root $dataRoot `
+            --overdue-minutes 16 `
+            --attest-windows-sandbox 2>&1)
+        $functional.helperAddMissedExitCode = $LASTEXITCODE
+        $missedOutput | Set-Content -Encoding UTF8 -LiteralPath (
+            Join-Path $outputRoot "installed-candidate-add-missed.log"
+        )
+        if ($functional.helperAddMissedExitCode -ne 0) {
+            throw "installed-candidate missed reminder setup failed: $($missedOutput -join ' | ')"
+        }
+        $missed = $missedOutput | ConvertFrom-Json
+        $functional.missedReminder = $missed
+        $candidateProcess = Start-InstalledCandidate $applicationPath $webView2RuntimeRoot
+        [void](Wait-AppElement $candidateProcess "${petDisplayName}桌面宠物" $true $false 30)
+        [void](Wait-AppElement $candidateProcess $petIdentityDescription $true $false 30)
+        $functional.petIdentity.observedLaunchCount += 1
+        $missedAlertObserved = $false
+        $missedInspect = $null
+        $missedDeadline = [DateTime]::UtcNow.AddSeconds(25)
+        while ([DateTime]::UtcNow -lt $missedDeadline) {
+            $candidateProcess.Refresh()
+            if ($candidateProcess.HasExited) {
+                throw "candidate exited before the missed-reminder policy completed"
+            }
+            if ($null -ne (Find-AppElement $candidateProcess.Id ([string]$missed.title) $false $false)) {
+                $missedAlertObserved = $true
+                break
+            }
+            $missedInspectOutput = & $helperPath inspect `
+                --data-root $dataRoot `
+                --reminder-ids ([string]$missed.reminderId) `
+                --attest-windows-sandbox
+            if ($LASTEXITCODE -ne 0) {
+                throw "installed-candidate missed reminder inspection failed"
+            }
+            $missedInspect = $missedInspectOutput | ConvertFrom-Json
+            if (
+                $null -eq $missedInspect -or
+                -not $missedInspect.databaseHealthy -or
+                @($missedInspect.records).Count -ne 1
+            ) {
+                throw "installed missed-reminder inspection did not return exactly one healthy record"
+            }
+            if ([string]@($missedInspect.records)[0].occurrenceStatus -eq "skipped") { break }
+            Start-Sleep -Milliseconds 150
+        }
+        if ($missedAlertObserved) {
+            throw "old installed reminder was displayed despite the skip-old policy"
+        }
+        if (
+            $null -eq $missedInspect -or
+            -not $missedInspect.databaseHealthy -or
+            @($missedInspect.records).Count -ne 1
+        ) {
+            throw "old installed reminder inspection did not produce one healthy record"
+        }
+        $missedRecord = @($missedInspect.records)[0]
+        if (
+            -not $missedRecord.present -or
+            [string]$missedRecord.occurrenceStatus -ne "skipped" -or
+            [string]$missedRecord.resolutionReason -ne "missed"
+        ) {
+            throw "old installed reminder was not automatically recorded as missed"
+        }
+        $missedObservedAt = [DateTimeOffset]::UtcNow
+        $functional.missedReminderEvidence = [ordered]@{
+            reminderId = [string]$missed.reminderId
+            policyAccessibleName = $missedPolicyAccessibleName
+            selectedPolicy = $selectedMissedPolicy
+            graceAccessibleName = $missedGraceAccessibleName
+            selectedGrace = $selectedMissedGrace
+            overdueMinutes = 16
+            observedAt = $missedObservedAt.ToString("o")
+            alertObserved = $missedAlertObserved
+            occurrenceStatus = [string]$missedRecord.occurrenceStatus
+            resolutionReason = [string]$missedRecord.resolutionReason
+        }
+        Stop-CandidateFromSettings $candidateProcess
+        $candidateProcess = $null
+        $functional.scenarios.missedReminderSkipOld = $true
+        Write-ProbeProgress "functional:missed-reminder:passed"
+
         Write-ProbeProgress "functional:uninstall-preserve:start"
         $databaseBeforeUninstallSha256 = (
             Get-FileHash `
                 -Algorithm SHA256 `
-                -LiteralPath (Join-Path $dataRoot "yuanyuan-reminder.sqlite3")
+                -LiteralPath (Join-Path $dataRoot $databaseFile)
         ).Hash
         $uninstallProcess = Start-Process `
             -FilePath $uninstallerPath `
@@ -1044,7 +1688,7 @@ try {
         if ($uninstallProcess.ExitCode -ne 0 -or (Test-Path -LiteralPath $installRoot)) {
             throw "functional E2E default uninstall failed"
         }
-        $databaseAfterUninstall = Join-Path $dataRoot "yuanyuan-reminder.sqlite3"
+        $databaseAfterUninstall = Join-Path $dataRoot $databaseFile
         if (
             -not (Test-Path -LiteralPath $databaseAfterUninstall -PathType Leaf) -or
             (Get-FileHash -Algorithm SHA256 -LiteralPath $databaseAfterUninstall).Hash -ne
@@ -1115,7 +1759,8 @@ try {
         -not $functional.cleanup.productRegistrationPersistedAfterUninstall -or
         -not $functional.cleanup.ownedProductRegistrationRemoved -or
         -not $functional.cleanup.shortcutsRemoved -or
-        -not $functional.cleanup.sandboxShutdownRequested
+        -not $functional.cleanup.sandboxShutdownRequested -or
+            $functional.petIdentity.observedLaunchCount -ne 5
     ) {
         throw "functional installed-candidate E2E did not close every scenario and cleanup gate"
     }
@@ -1124,6 +1769,23 @@ try {
         -Destination (Join-Path $outputRoot "nsis-installed-payload.json")
     Copy-Item -LiteralPath $uninstallReport `
         -Destination (Join-Path $outputRoot "release-uninstall-data-choice-probe.json")
+    $status.evidenceFileBindings = [ordered]@{
+        payloadReportSha256 = (
+            Get-FileHash -Algorithm SHA256 -LiteralPath (
+                Join-Path $outputRoot "nsis-installed-payload.json"
+            )
+        ).Hash
+        uninstallReportSha256 = (
+            Get-FileHash -Algorithm SHA256 -LiteralPath (
+                Join-Path $outputRoot "release-uninstall-data-choice-probe.json"
+            )
+        ).Hash
+        webViewMetadataSha256 = (
+            Get-FileHash -Algorithm SHA256 -LiteralPath (
+                Join-Path $outputRoot "webview2-mapped-runtime.json"
+            )
+        ).Hash
+    }
     $status.reportsCopied = $true
     $status.ready = $status.payloadInspectionPassed -and
         $status.uninstallDataChoicePassed -and
@@ -1133,6 +1795,46 @@ try {
 catch {
     Write-ProbeProgress "result:failed"
     $status.failure = [string]$_.Exception.Message
+    $candidateExit = $null
+    if ($null -ne $candidateProcess) {
+        try {
+            $candidateProcess.Refresh()
+            $candidateExit = [ordered]@{
+                id = [int]$candidateProcess.Id
+                hasExited = [bool]$candidateProcess.HasExited
+                exitCode = if ($candidateProcess.HasExited) {
+                    [int]$candidateProcess.ExitCode
+                } else {
+                    $null
+                }
+            }
+        }
+        catch {}
+    }
+    $copiedApplicationLogs = @()
+    $applicationLogRoot = Join-Path $dataRoot "logs"
+    if (Test-Path -LiteralPath $applicationLogRoot -PathType Container) {
+        $applicationLogIndex = 0
+        foreach ($applicationLog in @(
+            Get-ChildItem -LiteralPath $applicationLogRoot -File -Filter "*.log" |
+                Sort-Object LastWriteTimeUtc -Descending |
+                Select-Object -First 4
+        )) {
+            $applicationLogIndex += 1
+            $destinationName = "sandbox-application-{0:D2}-{1}" -f `
+                $applicationLogIndex, $applicationLog.Name
+            $destination = Join-Path $outputRoot $destinationName
+            Copy-Item -LiteralPath $applicationLog.FullName -Destination $destination `
+                -ErrorAction SilentlyContinue
+            if (Test-Path -LiteralPath $destination -PathType Leaf) {
+                $copiedApplicationLogs += [ordered]@{
+                    name = $destinationName
+                    bytes = [long](Get-Item -LiteralPath $destination).Length
+                    sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $destination).Hash
+                }
+            }
+        }
+    }
     $edgeUpdateLogRoot = Join-Path $env:ProgramData "Microsoft\EdgeUpdate\Log"
     $logRoots = @($env:TEMP, $edgeUpdateLogRoot) |
         Where-Object { Test-Path -LiteralPath $_ -PathType Container }
@@ -1175,7 +1877,9 @@ catch {
         }
     )
     $status.failureDiagnostics = [ordered]@{
+        candidateProcess = $candidateExit
         webView2Registrations = @($webViewVersions)
+        copiedApplicationLogs = @($copiedApplicationLogs)
         copiedInstallerLogs = @($copiedLogs)
     }
 }

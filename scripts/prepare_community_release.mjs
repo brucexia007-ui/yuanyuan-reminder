@@ -4,8 +4,10 @@ import { fileURLToPath } from "node:url";
 
 import {
   buildCommunityReleaseBundle,
+  communityProductFromBrand,
   CommunityReleaseContractError,
 } from "./community_release_contract.mjs";
+import { validateAcceptedInstallerArtifact } from "./verify_community_stable_artifact_binding.mjs";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -44,10 +46,24 @@ export async function prepareCommunityRelease(options) {
     "COMMUNITY_STABLE_RELEASE_POLICY_V1.json",
   );
   const authorityPath = path.join(projectRoot, "product-version.json");
+  const brandPath = path.join(projectRoot, "product-brand.json");
+  const acceptancePath = path.join(
+    projectRoot,
+    "docs",
+    "release",
+    "COMMUNITY_STABLE_ACCEPTANCE_V1.json",
+  );
   const policyBytes = await readFile(policyPath);
   const authorityBytes = await readFile(authorityPath);
+  const brandBytes = await readFile(brandPath);
+  const acceptanceBytes = await readFile(acceptancePath);
   const policy = JSON.parse(policyBytes.toString("utf8").replace(/^\uFEFF/u, ""));
   const authority = JSON.parse(authorityBytes.toString("utf8").replace(/^\uFEFF/u, ""));
+  const brand = JSON.parse(brandBytes.toString("utf8").replace(/^\uFEFF/u, ""));
+  const acceptance = JSON.parse(
+    acceptanceBytes.toString("utf8").replace(/^\uFEFF/u, ""),
+  );
+  const expectedProduct = communityProductFromBrand(brand);
   const portablePath = path.join(
     projectRoot,
     "src-tauri",
@@ -68,9 +84,16 @@ export async function prepareCommunityRelease(options) {
     readFile(portablePath),
     readFile(installerPath),
   ]);
+  validateAcceptedInstallerArtifact({
+    acceptance,
+    authority,
+    expectedProduct,
+    installerBytes,
+  });
   const bundle = buildCommunityReleaseBundle({
     policy,
     authority,
+    expectedProduct,
     tag: options.tag,
     sourceCommit: options.sourceCommit,
     policyBytes,

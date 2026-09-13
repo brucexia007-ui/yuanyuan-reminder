@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repository": "https://github.com/brucexia007-ui/yuanyuan-reminder.git",
+    "ref": "main",
+    "minimumVersion": "1.5.5",
+    "resolvedCommit": null
+  },
+  "pet": {
+    "customize": true,
+    "displayName": "糖糖",
+    "sex": "unknown",
+    "breed": "待用户确认",
+    "personality": "由参考素材确定",
+    "photoInputs": [],
+    "stylePreset": "auto"
+  },
+  "learning": {
+    "enabled": true,
+    "bundledContent": false,
+    "importMode": "local-preview-confirm",
+    "agentAssistedPack": false,
+    "sourceInputs": []
+  },
+  "target": {
+    "platform": "windows",
+    "architecture": "x64"
+  }
+}
