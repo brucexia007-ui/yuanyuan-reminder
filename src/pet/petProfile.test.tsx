@@ -60,6 +60,28 @@ describe("runtime pet profile", () => {
     acceptPetSnapshot({ ...current, revision: current.revision + 1, nickname: "新昵称" });
     expect(getPetSnapshot().manifest).toBe(manifest);
   });
+  it("waits for learning and scene atlases before publishing a first switch", async () => {
+    const pending = new Map<string, () => void>();
+    class DeferredImage {
+      onload: (() => void) | null = null; onerror: (() => void) | null = null;
+      set src(url: string) { pending.set(url, () => this.onload?.()); }
+    }
+    vi.stubGlobal("Image", DeferredImage);
+    const next = { ...sample("optional"), capabilities: { learning: true, scene: true } };
+    const previous = getPetSnapshot();
+    const preparation = preparePetSnapshot(next);
+    for (const [url, finish] of pending) if (url !== next.manifest.learningSpritesheet && url !== next.manifest.sceneSpritesheet) finish();
+    await Promise.resolve();
+    expect(getPetSnapshot()).toBe(previous);
+    expect(pending.has(next.manifest.learningSpritesheet)).toBe(true);
+    expect(pending.has(next.manifest.sceneSpritesheet)).toBe(true);
+    pending.get(next.manifest.learningSpritesheet)!();
+    await Promise.resolve();
+    expect(getPetSnapshot()).toBe(previous);
+    pending.get(next.manifest.sceneSpritesheet)!();
+    await preparation;
+    expect(getPetSnapshot().effectivePackId).toBe("optional");
+  });
   it("only commits the last overlapping resource preparation", async () => {
     const first = sample("first"), last = { ...sample("last"), revision: first.revision + 1 };
     await Promise.all([preparePetSnapshot(first), preparePetSnapshot(last)]);

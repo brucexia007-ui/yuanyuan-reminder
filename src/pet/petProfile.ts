@@ -72,7 +72,12 @@ export async function preparePetSnapshot(next: PetProfileSnapshot) {
   requestedRevision = next.revision;
   const token = ++generation;
   if (next.effectivePackId === snapshot.effectivePackId && next.staticOnly === snapshot.staticOnly) { acceptPetSnapshot(next); return; }
-  const sources = next.staticOnly ? [["fallback", next.fallbackImage]] : [["standard", next.manifest.spritesheet], ["sleep", next.manifest.sleepSpritesheet], ["life", next.manifest.lifeSpritesheet]];
+  const sources = next.staticOnly ? [["fallback", next.fallbackImage]] : [
+    ["standard", next.manifest.spritesheet], ["sleep", next.manifest.sleepSpritesheet],
+    ["life", next.manifest.lifeSpritesheet], ["fallback", next.fallbackImage],
+    ...(next.capabilities.learning ? [["learning", next.manifest.learningSpritesheet]] : []),
+    ...(next.capabilities.scene ? [["scene", next.manifest.sceneSpritesheet]] : []),
+  ];
   let failed: string | null = null;
   await Promise.all(sources.map(async ([sheet, url]) => { try { await loadImage(url); } catch { failed ??= sheet; } }));
   if (token !== generation) return;

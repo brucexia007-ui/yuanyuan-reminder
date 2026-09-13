@@ -17,6 +17,7 @@ interface SpriteAnimatorProps {
   mirrored?: boolean;
   offsetX?: number;
   settleAtStaticFrame?: boolean;
+  forceStill?: boolean;
   settings: Pick<AppSettings, "animationMode" | "animationSpeed">;
   onComplete?: (animation: AnimationName) => void;
   onFrameChange?: (animation: AnimationName, frameIndex: number) => void;
@@ -51,6 +52,7 @@ export function SpriteAnimator({
   mirrored = false,
   offsetX = 0,
   settleAtStaticFrame = false,
+  forceStill = false,
   settings,
   onComplete,
   onFrameChange,
@@ -78,7 +80,7 @@ export function SpriteAnimator({
     sceneSheetAvailable,
   );
   // Work focus stays in the pack's resting pose so it cannot distract the user.
-  const animate = animation !== "work-focus-loop"
+  const animate = !forceStill && animation !== "work-focus-loop"
     && shouldAnimate(settings.animationMode) && (Boolean(previewPack) || !profile.staticOnly);
 
   useEffect(() => {

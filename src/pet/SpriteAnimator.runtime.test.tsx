@@ -101,6 +101,25 @@ describe("SpriteAnimator scene runtime fallback", () => {
     expect(complete).not.toHaveBeenCalled();
   });
 
+  it("keeps a basic work pose still for 30 seconds and releases it for interaction", async () => {
+    vi.useFakeTimers();
+    const pack = { ...builtinPet, capabilities: { learning: true, scene: false } };
+    const renderPose = async (forceStill: boolean) => {
+      await act(async () => root.render(<SpriteAnimator previewPack={pack}
+        animation="focus-calm" forceStill={forceStill}
+        settings={{ animationMode: "always", animationSpeed: 1 }} />));
+    };
+    await renderPose(true);
+    const sprite = container.querySelector<HTMLElement>(".sprite-animator")!;
+    const restingPosition = sprite.style.backgroundPosition;
+    await act(async () => vi.advanceTimersByTime(30_000));
+    expect(sprite.style.backgroundPosition).toBe(restingPosition);
+    await renderPose(false);
+    const start = sprite.style.backgroundPosition;
+    await act(async () => vi.advanceTimersByTime(fallbackManifest.animations["focus-calm"].durations[0]));
+    expect(sprite.style.backgroundPosition).not.toBe(start);
+  });
+
   it("switches a failed scene atlas request to the declared legacy animation", async () => {
     imageLoads = false;
     await act(async () => root.render(

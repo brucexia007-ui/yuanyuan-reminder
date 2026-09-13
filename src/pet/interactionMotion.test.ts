@@ -4,11 +4,11 @@ import {
   followOffsetTowardPointer,
   gentleHeadOffsetTowardPointer,
   shouldAdvancePettingFrame,
+  shouldAdvanceWandFrame,
   shouldMirrorTowardPointer,
   shouldMirrorTowardPointerWithHysteresis,
   transitionToolInteraction,
   treatFrameFromPointerHeight,
-  wandDirectionFrame,
 } from "./interactionMotion";
 
 describe("pointer-driven pet interactions", () => {
@@ -54,21 +54,10 @@ describe("pointer-driven pet interactions", () => {
     expect(shouldAdvancePettingFrame(8, 100)).toBe(true);
   });
 
-  it("maps every teaser-wand sector to its matching directional pose", () => {
-    const width = 192;
-    const height = 208;
-    expect(wandDirectionFrame(96, 10, width, height)).toBe(0);
-    expect(wandDirectionFrame(170, 25, width, height)).toBe(1);
-    expect(wandDirectionFrame(180, 96, width, height)).toBe(2);
-    expect(wandDirectionFrame(170, 180, width, height)).toBe(3);
-    expect(wandDirectionFrame(96, 196, width, height)).toBe(4);
-    expect(wandDirectionFrame(22, 180, width, height)).toBe(5);
-    expect(wandDirectionFrame(12, 96, width, height)).toBe(6);
-    expect(wandDirectionFrame(22, 25, width, height)).toBe(7);
-  });
-
-  it("keeps the current wand pose inside the chest deadzone", () => {
-    expect(wandDirectionFrame(96, 96, 192, 208, 7)).toBe(7);
+  it("paces wand frames by accumulated movement and a short minimum interval", () => {
+    expect(shouldAdvanceWandFrame(7, 120)).toBe(false);
+    expect(shouldAdvanceWandFrame(24, 79)).toBe(false);
+    expect(shouldAdvanceWandFrame(8, 80)).toBe(true);
   });
 
   it("advances action frames from pointer motion instead of a slow autonomous loop", () => {

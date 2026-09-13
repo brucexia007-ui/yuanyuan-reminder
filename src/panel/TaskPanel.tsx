@@ -787,7 +787,7 @@ const careActions: Array<{
     kind: "wand",
     icon: "🪶",
     title: "逗猫棒",
-    get description() { return petText("按住逗猫棒移向八个方位，{pet}会用对应爪子抓。"); },
+    get description() { return petText("按住并移动逗猫棒，{pet}会随着距离和停留时间伸爪追逐。"); },
     interactive: true,
   },
   {
@@ -974,7 +974,7 @@ function CareView({
           kind === "treat"
             ? petText("猫条已经出现在{pet}身边：按住它上下移动。")
             : kind === "wand"
-              ? petText("按住逗猫棒移向不同方位；正上方时{pet}会站起来抓。")
+              ? petText("按住并移动逗猫棒，{pet}会跟着伸爪；停留片刻也会继续追逐。")
               : kind === "pet"
                 ? petText("把鼠标移到{pet}头上轻轻移动，它会朝你的方向蹭一蹭。")
                 : petText("球已经放在{pet}脚边：按住鼠标左键蓄力，松手扔出。"),

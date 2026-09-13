@@ -104,11 +104,11 @@ import {
   followOffsetTowardPointer,
   gentleHeadOffsetTowardPointer,
   shouldAdvancePettingFrame,
+  shouldAdvanceWandFrame,
   shouldMirrorTowardPointer,
   shouldMirrorTowardPointerWithHysteresis,
   transitionToolInteraction,
   treatFrameFromPointerHeight,
-  wandDirectionFrame,
 } from "./interactionMotion";
 import {
   COMPACT_PET_WINDOW_GUTTER,
@@ -211,13 +211,6 @@ interface ActiveToolInteraction {
   flightDuration: number;
   ballVisible: boolean;
 }
-
-const wandPhaseAnimations = [
-  "wand-reach",
-  "wand-swipe",
-  "wand-return",
-  "wand-swipe",
-] as const satisfies readonly AnimationName[];
 
 const lifeAnimations: Array<{
   name: Exclude<LifeAnimationName, "belly-down">;
@@ -324,6 +317,19 @@ function isCoreDirectedOccurrence(intent: PetIntent): boolean {
   );
 }
 
+type AlertAction = "complete" | "snooze" | "skip";
+
+function alertActionAccessibleLabel(action: AlertAction): string {
+  switch (action) {
+    case "complete":
+      return petText("记录完成；{pet}会继续陪伴");
+    case "snooze":
+      return petText("提醒已延后；{pet}安静等候");
+    case "skip":
+      return petText("提醒已跳过；{pet}会继续陪伴");
+  }
+}
+
 function animationForPetIntent(
   intent: PetIntent,
   companion: CompanionExpressionSnapshot | null,
@@ -392,6 +398,8 @@ export function PetWindow() {
     activeIntent?.kind === "activity" &&
     (animation === "warmup-alert" || animation === "warmup-loop");
   const [alertActionPending, setAlertActionPending] = useState(false);
+  const [alertActionAccessibleStatus, setAlertActionAccessibleStatus] =
+    useState<string | null>(null);
   const [alertSnoozeMinutes, setAlertSnoozeMinutes] = useState(10);
   const [focusState, setFocusState] = useState<FocusState>({ session: null });
   const [companionExpression, setCompanionExpression] =
@@ -428,6 +436,7 @@ export function PetWindow() {
   const currentAnimation = useRef<AnimationName>("idle");
   const cursorFollowEnabled = useRef(true);
   const bellyHoldTimer = useRef<number | null>(null);
+  const alertActionStatusTimer = useRef<number | null>(null);
   const activeIntentRef = useRef<PetIntent | null>(null);
   const basicSupportRef = useRef<BasicSupportSession | null>(null);
   const focusStateRef = useRef<FocusState>({ session: null });
@@ -461,6 +470,26 @@ export function PetWindow() {
       bellyHoldTimer.current = null;
     }
   }, []);
+
+  const announceAlertAction = useCallback((action: AlertAction) => {
+    if (alertActionStatusTimer.current !== null) {
+      window.clearTimeout(alertActionStatusTimer.current);
+    }
+    setAlertActionAccessibleStatus(alertActionAccessibleLabel(action));
+    alertActionStatusTimer.current = window.setTimeout(() => {
+      alertActionStatusTimer.current = null;
+      setAlertActionAccessibleStatus(null);
+    }, 30_000);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (alertActionStatusTimer.current !== null) {
+        window.clearTimeout(alertActionStatusTimer.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     currentAnimation.current = animation;
@@ -733,6 +762,7 @@ export function PetWindow() {
         // Rust's bounded lease still expires if this window loses its IPC connection.
       });
     }
+    setLookFrame(null);
   }, []);
 
   const restoreFunctionalAnimation = useCallback(() => {
@@ -1073,21 +1103,27 @@ export function PetWindow() {
     void Promise.all([
       onBackendEvent<LearningInvitationDto>(
         "learning-invitation-presented",
-        setLearningInvitation,
+        (invitation) => {
+          if (!disposed) setLearningInvitation(invitation);
+        },
       ),
       onBackendEvent<{ invitationId: string }>(
         "learning-invitation-withdrawn",
-        ({ invitationId }) =>
+        ({ invitationId }) => {
+          if (disposed) return;
           setLearningInvitation((current) =>
             current?.invitationId === invitationId ? null : current,
-          ),
+          );
+        },
       ),
       onBackendEvent<LearningSessionSnapshot>(
         "learning-session-updated",
-        activateDesktopLearning,
+        (session) => {
+          if (!disposed) activateDesktopLearning(session);
+        },
       ),
       onBackendEvent("learning-session-interrupted", () => {
-        setDesktopLearningSession(null);
+        if (!disposed) setDesktopLearningSession(null);
       }),
     ]).then((unlisten) => {
       if (disposed) unlisten.forEach((cleanup) => cleanup());
@@ -1386,7 +1422,7 @@ export function PetWindow() {
                 : kind === "treat"
                   ? 30
                   : 48,
-            frame: kind === "treat" ? 6 : kind === "wand" ? 1 : 0,
+            frame: kind === "treat" ? 6 : 0,
             mirrored: false,
             offsetX: kind === "pet" || kind === "ball" ? 0 : 8,
             engaged: kind !== "pet" && kind !== "wand" && kind !== "ball",
@@ -1480,20 +1516,6 @@ export function PetWindow() {
     toolInteraction?.id,
     toolInteraction?.expiresAtUnixMs,
   ]);
-
-  useEffect(() => {
-    if (toolInteraction?.kind !== "wand" || !toolInteraction.engaged) return;
-    const timer = window.setInterval(() => {
-      const current = toolInteractionRef.current;
-      if (!current || current.kind !== "wand" || !current.engaged) return;
-      const phase = (current.phase + 1) % wandPhaseAnimations.length;
-      const next: ActiveToolInteraction = { ...current, phase };
-      toolInteractionRef.current = next;
-      setToolInteraction(next);
-      setAnimation(wandPhaseAnimations[phase]);
-    }, 130);
-    return () => window.clearInterval(timer);
-  }, [toolInteraction?.engaged, toolInteraction?.id, toolInteraction?.kind]);
 
   useEffect(() => {
     if (
@@ -1916,16 +1938,17 @@ export function PetWindow() {
       const y = Math.max(12, Math.min(bounds.height - 12, clientY - bounds.top));
       const distance = Math.hypot(x - current.frameX, y - current.frameY);
       if (distance < 2 && current.kind !== "treat") return;
-      const advancePetting =
-        current.kind !== "pet" ||
-        shouldAdvancePettingFrame(
-          distance,
-          Math.max(0, eventTime - current.lastFrameAt),
-        );
+      const elapsedMs = Math.max(0, eventTime - current.lastFrameAt);
+      const advanceFrame =
+        current.kind === "pet"
+          ? shouldAdvancePettingFrame(distance, elapsedMs)
+          : current.kind === "wand"
+            ? shouldAdvanceWandFrame(distance, elapsedMs)
+            : true;
       const mirrored =
+        current.kind === "pet" ||
+        current.kind === "treat" ||
         current.kind === "wand"
-          ? false
-          : current.kind === "pet" || current.kind === "treat"
           ? shouldMirrorTowardPointerWithHysteresis(
               x,
               bounds.width,
@@ -1946,22 +1969,18 @@ export function PetWindow() {
           current.kind === "treat"
             ? treatFrameFromPointerHeight(y, bounds.height)
             : current.kind === "wand"
-              ? wandDirectionFrame(
-                  x,
-                  y,
-                  bounds.width,
-                  bounds.height,
-                  current.frame,
-                )
-            : advancePetting
+              ? advanceFrame
+                ? advanceInteractionFrame(current.frame, distance)
+                : current.frame
+            : advanceFrame
               ? advanceInteractionFrame(current.frame, distance)
               : current.frame,
         mirrored,
         offsetX,
-        frameX: advancePetting ? x : current.frameX,
-        frameY: advancePetting ? y : current.frameY,
+        frameX: advanceFrame ? x : current.frameX,
+        frameY: advanceFrame ? y : current.frameY,
         lastFrameAt:
-          current.kind === "pet" && advancePetting
+          (current.kind === "pet" || current.kind === "wand") && advanceFrame
             ? eventTime
             : current.lastFrameAt,
       };
@@ -2017,7 +2036,7 @@ export function PetWindow() {
     toolInteractionRef.current = next;
     setToolInteraction(next);
     setLookFrame(null);
-    setAnimation(engaged ? "wand-reach" : "idle");
+    setAnimation(engaged ? "wand-play" : "idle");
   }, []);
 
   const startBallCharge = useCallback(() => {
@@ -2135,9 +2154,7 @@ export function PetWindow() {
     void showTaskPanel(route);
   };
 
-  const handleAlertAction = async (
-    action: "complete" | "snooze" | "skip",
-  ) => {
+  const handleAlertAction = async (action: AlertAction) => {
     const intent = activeIntentRef.current;
     if (!intent?.occurrenceId || alertActionPending) return;
     setAlertActionPending(true);
@@ -2149,6 +2166,7 @@ export function PetWindow() {
       } else {
         await skipOccurrence(intent.occurrenceId);
       }
+      announceAlertAction(action);
       if (!tauriAvailable()) {
         updateActiveIntent(null);
         const today = await listToday();
@@ -2175,7 +2193,7 @@ export function PetWindow() {
     ? intentTextSurface(activeIntent)
     : "none";
   const motionAccessibleLabel =
-    petActivity?.activity === "reminding" && activeIntent
+    activeIntent
     ? motionOnlyAccessibleLabel(activeIntent)
     : null;
   const informationCard = sleepPresentationActive
@@ -2386,6 +2404,7 @@ export function PetWindow() {
                 <label className="pet-alert-snooze">
                   <span className="sr-only">稍后提醒时长</span>
                   <select
+                    aria-label="稍后提醒时长，可选 5、10、30、60 分钟"
                     value={alertSnoozeMinutes}
                     disabled={alertActionPending}
                     onChange={(event) => setAlertSnoozeMinutes(Number(event.target.value))}
@@ -2441,8 +2460,25 @@ export function PetWindow() {
           </button>
         ) : null}
         {motionAccessibleLabel && (
-          <span className="sr-only" role="status" aria-live="polite">
+          <span
+            className="sr-only"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            aria-label={motionAccessibleLabel}
+          >
             {motionAccessibleLabel}
+          </span>
+        )}
+        {alertActionAccessibleStatus && (
+          <span
+            className="sr-only"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            aria-label={alertActionAccessibleStatus}
+          >
+            {alertActionAccessibleStatus}
           </span>
         )}
         {petSleepAccessibleStatus(petActivity) && (
@@ -2491,6 +2527,10 @@ export function PetWindow() {
               key={`${petProfile.effectivePackId}:${petProfile.staticOnly}`}
               animation={animation}
               fallbackAnimation={fallbackAnimationForScene(animation)}
+              forceStill={animation === "focus-calm" && (
+                focusState.session?.phase === "focus" ||
+                companionExpression?.sceneAppearance.kind === "work"
+              )}
               settleAtStaticFrame={
                 animation === "work-fatigue-enter" &&
                 companionExpression?.sceneAppearance.kind === "work" &&
