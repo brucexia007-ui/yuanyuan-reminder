@@ -35,6 +35,17 @@
   animation: desktop-learning-board-arrive var(--learning-enter-duration) cubic-bezier(.18, .78, .2, 1) both;
 }
 
+/* The seated pet starts at y=241; keep every question control above it. */
+.desktop-learning-board:not(.desktop-learning-complete) {
+  height: 232px;
+  min-height: 0;
+  padding-top: 9px;
+  padding-bottom: 13px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd7cd #203d34;
+}
+
 .desktop-learning-stage[data-stage-motion="entering"] .desktop-learning-console,
 .desktop-learning-stage[data-stage-motion="entering"] > .desktop-learning-pet.is-complete {
   animation: desktop-learning-console-arrive var(--learning-enter-duration) cubic-bezier(.18, .78, .2, 1) both;

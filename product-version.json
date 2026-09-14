@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "productName": "圆圆提醒",
   "identifier": "com.yuanyuan.reminder",
-  "version": "1.5.29",
+  "version": "1.5.30",
   "releaseTrain": "unified-product",
   "channel": "development",
   "capabilities": {

@@ -154,6 +154,7 @@ export function LearningDesktopStage({
     motionEnabled ? "writing" : "steady",
   );
   const firstOptionRef = useRef<HTMLButtonElement>(null);
+  const firstRatingRef = useRef<HTMLButtonElement>(null);
   const nextButtonRef = useRef<HTMLButtonElement>(null);
   const questionStartedAtRef = useRef(Date.now());
   const curiousTimerRef = useRef<number | null>(null);
@@ -384,6 +385,10 @@ export function LearningDesktopStage({
       nextButtonRef.current?.focus();
     }
   }, [answer, feedbackPhase]);
+
+  useEffect(() => {
+    if (flipped) firstRatingRef.current?.focus();
+  }, [flipped]);
 
   const finishAndClose = useCallback(async () => {
     if (busy) return;
@@ -905,12 +910,12 @@ export function LearningDesktopStage({
           >
             <div className="desktop-learning-word-row">
               <span>{stageLabel(question.stage)}</span>
-              <h2 lang="en">{question.headword}</h2>
-              <small>{question.phonetic ?? question.partOfSpeech.join(" · ")}</small>
+              <h2 lang={question.partOfSpeech.includes("generic") ? undefined : "en"}>{question.headword}</h2>
+              <small>{question.phonetic ?? question.partOfSpeech.filter((part) => part !== "generic").join(" · ")}</small>
             </div>
 
             {question.kind === "multiple_choice" ? (
-              <div className="desktop-learning-options" aria-label="请选择中文释义">
+              <div className="desktop-learning-options" aria-label="请选择答案">
                 {question.options.map((option, index) => {
                   const selected = answer?.selectedOptionId === option.optionId;
                   const correct = answer?.correctOptionId === option.optionId;
@@ -941,14 +946,14 @@ export function LearningDesktopStage({
             ) : fallbackCard ? (
               <div className="desktop-learning-fallback">
                 {!flipped ? (
-                  <button type="button" disabled={busy} onClick={() => setFlipped(true)}>
-                    选项不足，看看含义
+                  <button ref={firstOptionRef} type="button" disabled={busy} onClick={() => setFlipped(true)}>
+                    先回忆，再查看答案
                   </button>
                 ) : (
                   <>
                     <p>{fallbackCard.meaningsZh.join("；")}</p>
                     <div role="group" aria-label="这次想得怎么样">
-                      <button type="button" onClick={() => void rateFallback("again")}>忘了</button>
+                      <button ref={firstRatingRef} type="button" onClick={() => void rateFallback("again")}>忘了</button>
                       <button type="button" onClick={() => void rateFallback("hard")}>模糊</button>
                       <button type="button" onClick={() => void rateFallback("good")}>记得</button>
                     </div>
@@ -963,7 +968,7 @@ export function LearningDesktopStage({
               >
                 <span>
                   <strong>{answer.correct ? "回答正确" : "这次需要再看"}</strong>
-                  {!answer.correct && ` · 正确释义：${answer.correctMeaningZh}`}
+                  {!answer.correct && ` · 正确答案：${answer.correctMeaningZh}`}
                 </span>
                 {answer.correct ? (
                   <small className="desktop-learning-auto-next">

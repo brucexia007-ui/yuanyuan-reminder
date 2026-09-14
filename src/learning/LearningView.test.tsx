@@ -530,7 +530,7 @@ describe("learning micro-session", () => {
     await flush();
 
     expect(container.textContent).toContain("这次需要再看");
-    expect(container.textContent).toContain("正确释义：处理；设法解决");
+    expect(container.textContent).toContain("正确答案：处理；设法解决");
     expect(container.querySelector(".learning-result-button.red")?.classList).toContain("is-pressed");
     expect(container.querySelector(".learning-option.is-wrong")?.textContent).toContain("树木；木材");
 

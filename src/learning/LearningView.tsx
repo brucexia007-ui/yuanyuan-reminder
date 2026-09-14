@@ -963,12 +963,12 @@ function LearningStage({
 
       <article className="learning-blackboard">
         <p className="learning-stage">{stageLabel(question.stage)}</p>
-        <h2 ref={headingRef} tabIndex={-1} lang="en">{question.headword}</h2>
+        <h2 ref={headingRef} tabIndex={-1} lang={question.partOfSpeech.includes("generic") ? undefined : "en"}>{question.headword}</h2>
         {question.phonetic && <p className="learning-phonetic">{question.phonetic}</p>}
-        <p className="learning-pos">{question.partOfSpeech.join(" · ")}</p>
+        <p className="learning-pos">{question.partOfSpeech.filter((part) => part !== "generic").join(" · ")}</p>
 
         {question.kind === "multiple_choice" ? (
-          <div className="learning-options" aria-label="请选择对应的中文释义">
+          <div className="learning-options" aria-label="请选择答案">
             {question.options.map((option, index) => {
               const isSelected = answer?.selectedOptionId === option.optionId;
               const isCorrect = answer?.correctOptionId === option.optionId;
@@ -997,7 +997,7 @@ function LearningStage({
           <div className="learning-recall-fallback">
             {!flipped ? (
               <button className="learning-chalk-action" type="button" disabled={busy} onClick={onFlip}>
-                选项不足，看看含义
+                先回忆，再查看答案
               </button>
             ) : (
               <div className="learning-answer" aria-live="polite">
@@ -1016,7 +1016,7 @@ function LearningStage({
         {answer && (
           <div className={`learning-result ${answer.correct ? "is-correct" : "is-wrong"}`} role="status" aria-live="polite">
             <strong>{answer.correct ? "回答正确" : "这次需要再看"}</strong>
-            {!answer.correct && <span>正确释义：{answer.correctMeaningZh}</span>}
+            {!answer.correct && <span>正确答案：{answer.correctMeaningZh}</span>}
           </div>
         )}
       </article>
@@ -1401,7 +1401,7 @@ function LearningHome({
         <summary>第一次用？1 分钟了解</summary>
         <ul>
           <li>{petText("{pet}会先安排到期复习，再用新词补满这一轮；没有每日上限。")}</li>
-          <li>选项不足时：忘了会尽快重现，模糊会缩短间隔，记得会逐步延长间隔。</li>
+          <li>回忆题：忘了会尽快重现，模糊会缩短间隔，记得会逐步延长间隔。</li>
           <li>词表与进度只保存在本机；“完整 JSON”可用于备份和恢复。</li>
         </ul>
       </details>

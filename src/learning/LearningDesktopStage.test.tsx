@@ -187,6 +187,27 @@ describe("desktop learning pet feedback", () => {
     vi.clearAllMocks();
   });
 
+  it("supports revealing and rating a generic recall card with keyboard focus", async () => {
+    backend.getCurrentLearningQuestion.mockResolvedValue({
+      ...question, kind: "recall_fallback", headword: "首先确认什么？", phonetic: null,
+      partOfSpeech: ["generic"], options: [],
+    });
+    backend.getCurrentLearningCard.mockResolvedValue({
+      schemaVersion: 1, cardId: "card-1", headword: "首先确认什么？", phonetic: null,
+      partOfSpeech: ["generic"], meaningsZh: ["确认可观察的结果。"], wordFamily: [],
+      stage: "learning", sourceIds: [],
+    });
+    await act(async () => root.render(<LearningDesktopStage session={session}
+      settings={{ animationMode: "off", animationSpeed: 1 }} onSessionChange={vi.fn()} onClose={vi.fn()} />));
+    await flushPromises();
+    expect(document.activeElement?.textContent).toBe("先回忆，再查看答案");
+    expect(container.textContent).not.toContain("选项不足");
+    expect(container.querySelector(".desktop-learning-word-row")?.textContent).not.toContain("generic");
+    await act(async () => (document.activeElement as HTMLButtonElement).click());
+    expect(container.textContent).toContain("确认可观察的结果。");
+    expect(document.activeElement?.textContent).toBe("忘了");
+  });
+
   it("moves DOM focus to the first answer after the question finishes writing", async () => {
     await act(async () =>
       root.render(
