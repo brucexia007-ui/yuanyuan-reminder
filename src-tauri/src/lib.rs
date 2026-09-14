@@ -412,6 +412,13 @@ fn setup(app: &mut tauri::App) -> AppResult<()> {
             if let WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = panel_for_event.hide();
+            } else if let WindowEvent::ScaleFactorChanged { .. } = event {
+                let panel = panel_for_event.clone();
+                let _ = panel_for_event.run_on_main_thread(move || {
+                    if let Err(error) = windows::fit_panel_to_current_monitor(&panel) {
+                        tracing::warn!(error = %error, "panel could not fit changed display scale");
+                    }
+                });
             }
         });
     }

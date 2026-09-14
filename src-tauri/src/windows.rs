@@ -1,6 +1,6 @@
 use tauri::{
     menu::{CheckMenuItem, ContextMenu, Menu, MenuItem, PredefinedMenuItem, Submenu},
-    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition,
+    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, PhysicalSize,
 };
 
 use crate::{
@@ -147,6 +147,96 @@ fn logical_size_in_physical(width: u32, height: u32, scale_factor: f64) -> (u32,
     )
 }
 
+// A small display can have less usable height than the configured logical
+// minimum at high DPI. Size limits must fit that display before positioning.
+fn panel_dimensions(
+    current: (u32, u32),
+    scale: f64,
+    work: DisplayBounds,
+) -> ((u32, u32), (u32, u32), (u32, u32)) {
+    let scale = if scale.is_finite() && scale > 0.0 {
+        scale
+    } else {
+        1.0
+    };
+    let minimum = logical_size_in_physical(360, 560, scale);
+    let maximum = logical_size_in_physical(480, 760, scale);
+    let preferred = logical_size_in_physical(390, 620, scale);
+    let available = (work.width.max(1), work.height.max(1));
+    let maximum = (maximum.0.min(available.0), maximum.1.min(available.1));
+    let minimum = (minimum.0.min(maximum.0), minimum.1.min(maximum.1));
+    let width = if current.0 < minimum.0 {
+        preferred.0
+    } else {
+        current.0
+    };
+    let height = if current.1 < minimum.1 {
+        preferred.1
+    } else {
+        current.1
+    };
+    (
+        (
+            width.clamp(minimum.0, maximum.0),
+            height.clamp(minimum.1, maximum.1),
+        ),
+        minimum,
+        maximum,
+    )
+}
+
+fn fit_panel_on_monitor(panel: &tauri::WebviewWindow, monitor: &tauri::Monitor) -> AppResult<()> {
+    let work = monitor.work_area();
+    let display = DisplayBounds {
+        x: work.position.x,
+        y: work.position.y,
+        width: work.size.width,
+        height: work.size.height,
+    };
+    let current = panel
+        .outer_size()
+        .map_err(|e| AppError::Window(e.to_string()))?;
+    let (size, minimum, maximum) = panel_dimensions(
+        (current.width, current.height),
+        monitor.scale_factor(),
+        display,
+    );
+    // Drop the previous minimum before applying a smaller work area or a new
+    // DPI range; the old minimum may exceed the new maximum (and vice versa).
+    panel
+        .set_min_size(None::<PhysicalSize<u32>>)
+        .map_err(|e| AppError::Window(e.to_string()))?;
+    panel
+        .set_max_size(Some(PhysicalSize::new(maximum.0, maximum.1)))
+        .map_err(|e| AppError::Window(e.to_string()))?;
+    panel
+        .set_min_size(Some(PhysicalSize::new(minimum.0, minimum.1)))
+        .map_err(|e| AppError::Window(e.to_string()))?;
+    if (current.width, current.height) != size {
+        panel
+            .set_size(PhysicalSize::new(size.0, size.1))
+            .map_err(|e| AppError::Window(e.to_string()))?;
+    }
+    let pos = panel
+        .outer_position()
+        .map_err(|e| AppError::Window(e.to_string()))?;
+    let (x, y) = clamp_to_display(pos.x, pos.y, size.0, size.1, display);
+    panel
+        .set_position(PhysicalPosition::new(x, y))
+        .map_err(|e| AppError::Window(e.to_string()))?;
+    Ok(())
+}
+
+pub fn fit_panel_to_current_monitor(panel: &tauri::WebviewWindow) -> AppResult<()> {
+    if let Some(monitor) = panel
+        .current_monitor()
+        .map_err(|e| AppError::Window(e.to_string()))?
+    {
+        fit_panel_on_monitor(panel, &monitor)?;
+    }
+    Ok(())
+}
+
 #[cfg(windows)]
 pub fn lock_workstation() -> AppResult<()> {
     use windows_sys::Win32::System::Shutdown::LockWorkStation;
@@ -214,6 +304,12 @@ pub fn show_task_panel(app: &AppHandle, route: &str) -> AppResult<()> {
         .ok_or_else(|| AppError::Window("panel window is unavailable".into()))?;
 
     if let Some(pet) = app.get_webview_window("pet") {
+        if let Some(monitor) = pet
+            .current_monitor()
+            .map_err(|e| AppError::Window(e.to_string()))?
+        {
+            fit_panel_on_monitor(&panel, &monitor)?;
+        }
         if let (Ok(pet_pos), Ok(pet_size), Ok(panel_size)) =
             (pet.outer_position(), pet.outer_size(), panel.outer_size())
         {
@@ -226,13 +322,17 @@ pub fn show_task_panel(app: &AppHandle, route: &str) -> AppResult<()> {
                 if x < work_pos.x {
                     x = pet_pos.x + pet_size.width as i32 + 12;
                 }
-                x = x.clamp(
-                    work_pos.x,
-                    work_pos.x + work_size.width as i32 - panel_size.width as i32,
-                );
-                y = y.clamp(
-                    work_pos.y,
-                    work_pos.y + work_size.height as i32 - panel_size.height as i32,
+                (x, y) = clamp_to_display(
+                    x,
+                    y,
+                    panel_size.width,
+                    panel_size.height,
+                    DisplayBounds {
+                        x: work_pos.x,
+                        y: work_pos.y,
+                        width: work_size.width,
+                        height: work_size.height,
+                    },
                 );
             }
             let _ = panel.set_position(PhysicalPosition::new(x, y));
@@ -421,6 +521,54 @@ pub fn show_pet_context_menu(app: &AppHandle) -> AppResult<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn high_dpi_panel_fits_small_work_area_without_invalid_position_bounds() {
+        let work = super::DisplayBounds {
+            x: -1024,
+            y: 40,
+            width: 1024,
+            height: 708,
+        };
+        for scale in [1.0, 1.25, 1.5, 2.0] {
+            let current = super::logical_size_in_physical(390, 620, scale);
+            let (size, minimum, maximum) = super::panel_dimensions(current, scale, work);
+            assert!(size.0 <= work.width && size.1 <= work.height);
+            assert!(minimum.0 <= size.0 && minimum.1 <= size.1);
+            assert!(maximum.0 >= size.0 && maximum.1 >= size.1);
+            let (x, y) = super::clamp_to_display(100, -800, size.0, size.1, work);
+            assert!(x >= work.x && y >= work.y);
+            assert!(x + size.0 as i32 <= work.x + work.width as i32);
+            assert!(y + size.1 as i32 <= work.y + work.height as i32);
+        }
+        let (size, _, _) = super::panel_dimensions((488, 775), 1.25, work);
+        assert_eq!(size, (488, 708));
+        // Positioning remains safe even if Windows reports a stale oversized
+        // native size while processing the resize request.
+        assert_eq!(super::clamp_to_display(0, 0, 488, 775, work), (-488, 40));
+    }
+
+    #[test]
+    fn live_scale_change_restores_readable_panel_width_and_preserves_user_resize() {
+        let work = super::DisplayBounds {
+            x: 0,
+            y: 0,
+            width: 1920,
+            height: 1032,
+        };
+        assert_eq!(
+            super::panel_dimensions((390, 620), 1.25, work).0,
+            (488, 775)
+        );
+        assert_eq!(super::panel_dimensions((390, 620), 1.5, work).0, (585, 930));
+        assert_eq!(super::panel_dimensions((460, 700), 1.0, work).0, (460, 700));
+        let tiny = super::DisplayBounds {
+            width: 300,
+            height: 400,
+            ..work
+        };
+        assert_eq!(super::panel_dimensions((390, 620), 1.5, tiny).0, (300, 400));
+    }
+
     #[test]
     fn dialog_scope_restores_original_panel_order_only_after_last_close() {
         for original in [false, true] {
