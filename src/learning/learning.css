@@ -876,7 +876,22 @@
 .learning-record-pagination { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; text-align: center; }
 
 .learning-dialog-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgb(35 29 25 / 42%); }
-.learning-dialog { display: grid; gap: 12px; width: min(100%, 390px); padding: 20px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface-strong); box-shadow: 0 24px 80px rgb(0 0 0 / 22%); }
+.learning-dialog {
+  display: grid;
+  gap: 12px;
+  width: min(100%, 390px);
+  min-height: 0;
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface-strong);
+  box-shadow: 0 24px 80px rgb(0 0 0 / 22%);
+}
 .learning-dialog h2,
 .learning-dialog p { margin: 0; }
 .learning-dialog dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0; }
