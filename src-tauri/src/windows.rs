@@ -194,12 +194,24 @@ fn fit_panel_on_monitor(panel: &tauri::WebviewWindow, monitor: &tauri::Monitor) 
         height: work.size.height,
     };
     let current = panel
+        .inner_size()
+        .map_err(|e| AppError::Window(e.to_string()))?;
+    let outer = panel
         .outer_size()
         .map_err(|e| AppError::Window(e.to_string()))?;
+    let frame = (
+        outer.width.saturating_sub(current.width),
+        outer.height.saturating_sub(current.height),
+    );
+    let content_area = DisplayBounds {
+        width: display.width.saturating_sub(frame.0),
+        height: display.height.saturating_sub(frame.1),
+        ..display
+    };
     let (size, minimum, maximum) = panel_dimensions(
         (current.width, current.height),
         monitor.scale_factor(),
-        display,
+        content_area,
     );
     // Drop the previous minimum before applying a smaller work area or a new
     // DPI range; the old minimum may exceed the new maximum (and vice versa).
@@ -220,7 +232,13 @@ fn fit_panel_on_monitor(panel: &tauri::WebviewWindow, monitor: &tauri::Monitor) 
     let pos = panel
         .outer_position()
         .map_err(|e| AppError::Window(e.to_string()))?;
-    let (x, y) = clamp_to_display(pos.x, pos.y, size.0, size.1, display);
+    let (x, y) = clamp_to_display(
+        pos.x,
+        pos.y,
+        size.0.saturating_add(frame.0),
+        size.1.saturating_add(frame.1),
+        display,
+    );
     panel
         .set_position(PhysicalPosition::new(x, y))
         .map_err(|e| AppError::Window(e.to_string()))?;
