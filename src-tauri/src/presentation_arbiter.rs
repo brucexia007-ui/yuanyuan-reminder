@@ -296,6 +296,47 @@ impl PresentationArbiter {
     }
 
     #[cfg(feature = "learning")]
+    pub fn acquire_learning_session(
+        &mut self,
+        session_id: &str,
+        now_unix_ms: i64,
+    ) -> AcquireResult {
+        self.expire(now_unix_ms);
+        let completed = self.completed_learning_session_id.clone();
+        if let Some(previous) = completed.as_deref().filter(|id| *id != session_id) {
+            if let Some(active) = self.active.as_ref().filter(|lease| {
+                lease.owner != PresentationOwner::LearningSession
+                    && (!lease.preemptible
+                        || lease.priority >= PresentationOwner::LearningSession.priority())
+            }) {
+                // A failed next-round attempt must not replace the old result's
+                // restore identity with an unpresented session's identity.
+                return AcquireResult::Denied(active.clone());
+            }
+            // The committed result can hand its presentation to the next round.
+            // An unfinished question or a higher-priority overlay still owns its lease.
+            if self.active_learning_session_id.as_deref() == Some(previous) {
+                self.finish_learning_session(previous, now_unix_ms);
+            }
+        }
+        let result = self.acquire(
+            PresentationOwner::LearningSession,
+            now_unix_ms,
+            None,
+            Some(session_id),
+        );
+        if result.granted_lease().is_some() {
+            if let Some(previous) = completed.as_deref().filter(|id| *id != session_id) {
+                self.completed_learning_session_id = None;
+                if self.resumable_learning_session_id.as_deref() == Some(previous) {
+                    self.resumable_learning_session_id = None;
+                }
+            }
+        }
+        result
+    }
+
+    #[cfg(feature = "learning")]
     pub fn finish_learning(&mut self, now_unix_ms: i64) -> bool {
         let previous_revision = self.revision;
         let mut changed = self.release_owner(PresentationOwner::LearningSession, now_unix_ms);
@@ -512,6 +553,89 @@ fn restore_target_for_owner(owner: PresentationOwner) -> Option<PetRestoreTarget
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn next_round_replaces_only_a_committed_result_and_ignores_stale_cleanup() {
+        let mut arbiter = PresentationArbiter::default();
+        arbiter.acquire_learning_session("first", 1);
+        assert!(arbiter
+            .acquire_learning_session("next", 2)
+            .granted_lease()
+            .is_none());
+        assert!(arbiter.mark_learning_completed("first"));
+        let old = arbiter.active_lease().unwrap().clone();
+        assert!(arbiter
+            .acquire_learning_session("next", 3)
+            .granted_lease()
+            .is_some());
+        assert_ne!(arbiter.active_lease().unwrap().lease_id, old.lease_id);
+        assert_eq!(arbiter.completed_learning_session_id(), None);
+        assert_eq!(arbiter.snapshot().resumable_learning_session_id, None);
+        assert!(!arbiter.finish_learning_session("first", 4));
+        assert!(!arbiter.mark_learning_completed("first"));
+        assert!(!arbiter.release(&old.lease_id, old.revision, 4));
+        arbiter.reconcile_completed_learning(5);
+        assert_eq!(arbiter.active_learning_session_id.as_deref(), Some("next"));
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn next_round_does_not_bypass_an_overlay_or_lose_the_previous_result_when_denied() {
+        for overlay in [
+            PresentationOwner::WaterReminder,
+            PresentationOwner::Focus,
+            PresentationOwner::UserInteraction,
+            PresentationOwner::StrongReminder,
+        ] {
+            let mut arbiter = PresentationArbiter::default();
+            arbiter.acquire_learning_session("first", 1);
+            arbiter.mark_learning_completed("first");
+            // Focus has equal priority, so it starts while a reminder has
+            // already displaced the completed result.
+            arbiter.acquire(PresentationOwner::WaterReminder, 2, None, None);
+            arbiter.release_owner(PresentationOwner::WaterReminder, 2);
+            assert!(arbiter
+                .acquire(overlay, 2, None, None)
+                .granted_lease()
+                .is_some());
+            assert!(arbiter
+                .acquire_learning_session("next", 3)
+                .granted_lease()
+                .is_none());
+            assert_eq!(arbiter.active_lease().unwrap().owner, overlay);
+            assert_eq!(arbiter.completed_learning_session_id(), Some("first"));
+            assert!(!arbiter.finish_learning_session("next", 4));
+            arbiter.release_owner(overlay, 5);
+            arbiter.reconcile_completed_learning(5);
+            assert_eq!(arbiter.active_learning_session_id.as_deref(), Some("first"));
+            assert!(arbiter
+                .acquire_learning_session("next", 6)
+                .granted_lease()
+                .is_some());
+            arbiter.finish_learning_session("next", 7);
+            arbiter.reconcile_completed_learning(7);
+            assert_eq!(arbiter.snapshot().activity, PetActivity::Idle);
+        }
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn next_round_clears_a_displaced_result_without_restoring_it_over_the_new_session() {
+        let mut arbiter = PresentationArbiter::default();
+        arbiter.acquire_learning_session("first", 1);
+        arbiter.mark_learning_completed("first");
+        arbiter.acquire(PresentationOwner::WaterReminder, 2, None, None);
+        arbiter.release_owner(PresentationOwner::WaterReminder, 3);
+        assert!(arbiter
+            .acquire_learning_session("next", 4)
+            .granted_lease()
+            .is_some());
+        assert!(!arbiter.finish_learning_session("first", 5));
+        arbiter.finish_learning_session("next", 6);
+        arbiter.reconcile_completed_learning(7);
+        assert_eq!(arbiter.snapshot().activity, PetActivity::Idle);
+    }
 
     #[cfg(feature = "learning")]
     #[test]

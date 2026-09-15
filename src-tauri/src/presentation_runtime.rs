@@ -220,12 +220,7 @@ pub fn acquire_learning_session(
         let mut transition = PresentationTransition::default();
         record_result(
             &mut transition,
-            arbiter.acquire(
-                PresentationOwner::LearningSession,
-                now_unix_ms,
-                None,
-                Some(session_id),
-            ),
+            arbiter.acquire_learning_session(session_id, now_unix_ms),
         );
         transition
     })
