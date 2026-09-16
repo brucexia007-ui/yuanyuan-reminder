@@ -280,7 +280,7 @@ function Find-PetElement([int]$ProcessId) {
             # learning windows are deliberately larger; native popup menus are
             # excluded above. This locator stays stable while the pet's
             # accessible name changes with its semantic scene.
-            if ($bounds.Width -lt 20 -or $bounds.Height -lt 20) { continue }
+            if ($bounds.Width -lt 80 -or $bounds.Height -lt 80) { continue }
             [void]$matches.Add([pscustomobject]@{
                 element = $node
                 titlePriority = if (
@@ -321,7 +321,7 @@ function Observe-InstalledPetIdentity(
     if ($handle -eq [IntPtr]::Zero) { throw "installed pet has no native window handle" }
     $observedTitle = [YuanyuanInstalledE2EWindowProbe]::WindowTitle($handle)
     if ($observedTitle -cne $ExpectedName) {
-        throw "installed pet window title differs from the selected built-in pet"
+        throw "installed pet window title '$observedTitle' differs from '$ExpectedName'"
     }
     $Functional.petIdentity.observedWindowTitle = $observedTitle
     $Functional.petIdentity.observedLaunchCount += 1
