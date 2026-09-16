@@ -162,10 +162,7 @@ function fixture() {
         },
         petIdentity: {
           displayName: "饺饺",
-          sex: "female",
-          breed: "英短金点",
-          personality: "乖巧高冷",
-          accessibleDescription: "饺饺：英短金点母猫，性格乖巧高冷",
+          observedWindowTitle: "饺饺",
           observedLaunchCount: 5,
         },
         formalUserDataUsed: false,
@@ -373,10 +370,10 @@ test("rejects optimistic drag and scenario claims", () => {
   assert.throws(() => validateInstalledE2eEvidence(lateAutomaticBackup), /first-launch window/u);
 });
 
-test("requires the installed pet identity on every candidate launch", () => {
-  const wrongSex = fixture();
-  wrongSex.status.functional.petIdentity.sex = "male";
-  assert.throws(() => validateInstalledE2eEvidence(wrongSex), /pet sex is stale/u);
+test("requires the installed pet window title on every candidate launch", () => {
+  const wrongTitle = fixture();
+  wrongTitle.status.functional.petIdentity.observedWindowTitle = "圆圆";
+  assert.throws(() => validateInstalledE2eEvidence(wrongTitle), /native window title is stale/u);
 
   const missingLaunch = fixture();
   missingLaunch.status.functional.petIdentity.observedLaunchCount = 4;

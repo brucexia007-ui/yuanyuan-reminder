@@ -78,6 +78,9 @@ export async function prepareCommunityRelease(options) {
     json(path.join(acceptedDirectory, "accepted-artifacts.json")),
   ]);
   const expectedProduct = communityProductFromBrand(brand);
+  if (!/^[0-9a-f]{40}$/u.test(acceptance?.candidate?.testedCommit ?? "")) {
+    fail("stable acceptance evidence is pending or invalid");
+  }
   const changedPaths = git("diff", "--name-only", acceptance.candidate.testedCommit, options.sourceCommit, "--")
     .split(/\r?\n/u).filter(Boolean);
   validateCommunityStableAcceptance(acceptance, {

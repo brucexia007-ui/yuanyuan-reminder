@@ -31,6 +31,9 @@ async function main(args) {
   if (tag !== `v${authority.version}` || git("rev-parse", "HEAD") !== commit || git("status", "--porcelain=v1")) {
     throw new Error("draft tag, version, or clean source commit is invalid");
   }
+  if (!/^[0-9a-f]{40}$/u.test(acceptance?.candidate?.testedCommit ?? "")) {
+    throw new Error("stable acceptance evidence is pending or invalid");
+  }
   const changedPaths = git("diff", "--name-only", acceptance.candidate.testedCommit, commit, "--")
     .split(/\r?\n/u).filter(Boolean);
   validateCommunityStableAcceptance(acceptance, {

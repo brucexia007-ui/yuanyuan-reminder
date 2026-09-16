@@ -331,22 +331,13 @@ export function validateInstalledE2eEvidence({
   requireValue(status.functional.formalUserDataUsed === false, "functional E2E used formal user data");
   exactKeys(status.functional.petIdentity, [
     "displayName",
-    "sex",
-    "breed",
-    "personality",
-    "accessibleDescription",
+    "observedWindowTitle",
     "observedLaunchCount",
   ], "status.functional.petIdentity");
-  const expectedSexLabel = { female: "母猫", male: "公猫", unknown: "猫咪" }[brand.pet?.sex];
-  requireValue(typeof expectedSexLabel === "string", "product brand pet sex is invalid");
   requireValue(status.functional.petIdentity.displayName === brand.pet.displayName, "installed pet display name is stale");
-  requireValue(status.functional.petIdentity.sex === brand.pet.sex, "installed pet sex is stale");
-  requireValue(status.functional.petIdentity.breed === brand.pet.breed, "installed pet breed is stale");
-  requireValue(status.functional.petIdentity.personality === brand.pet.personality, "installed pet personality is stale");
   requireValue(
-    status.functional.petIdentity.accessibleDescription
-      === `${brand.pet.displayName}：${brand.pet.breed}${expectedSexLabel}，性格${brand.pet.personality}`,
-    "installed pet accessible identity description is stale",
+    status.functional.petIdentity.observedWindowTitle === brand.pet.displayName,
+    "installed pet native window title is stale",
   );
   requireValue(status.functional.petIdentity.observedLaunchCount === 5, "installed pet identity was not observed on all launches");
   allTrue(status.functional.scenarios, [

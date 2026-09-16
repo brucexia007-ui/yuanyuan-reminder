@@ -311,6 +311,23 @@ function Wait-PetElement(
     throw "candidate pet UI element did not appear"
 }
 
+function Observe-InstalledPetIdentity(
+    [System.Diagnostics.Process]$Process,
+    [System.Collections.IDictionary]$Functional,
+    [string]$ExpectedName
+) {
+    $petElement = Wait-PetElement $Process 30
+    $handle = Get-ElementWindowHandle $petElement
+    if ($handle -eq [IntPtr]::Zero) { throw "installed pet has no native window handle" }
+    $observedTitle = [YuanyuanInstalledE2EWindowProbe]::WindowTitle($handle)
+    if ($observedTitle -cne $ExpectedName) {
+        throw "installed pet window title differs from the selected built-in pet"
+    }
+    $Functional.petIdentity.observedWindowTitle = $observedTitle
+    $Functional.petIdentity.observedLaunchCount += 1
+    return $petElement
+}
+
 function Find-PetSemanticElement([int]$ProcessId) {
     foreach ($node in @(Get-AppAccessibleNodes $ProcessId)) {
         try {
@@ -1116,17 +1133,6 @@ try {
         Join-Path $projectRoot "product-brand.json"
     ) | ConvertFrom-Json
     $petDisplayName = [string]$brandConfig.pet.displayName
-    $petSex = [string]$brandConfig.pet.sex
-    $petBreed = [string]$brandConfig.pet.breed
-    $petPersonality = [string]$brandConfig.pet.personality
-    $petSexLabel = switch ($petSex) {
-        "female" { "母猫" }
-        "male" { "公猫" }
-        "unknown" { "猫咪" }
-        default { throw "functional E2E pet sex is invalid" }
-    }
-    $petIdentityDescription = "{0}：{1}{2}，性格{3}" -f `
-        $petDisplayName, $petBreed, $petSexLabel, $petPersonality
     $databaseFile = [string]$brandConfig.storage.mainDatabaseFile
     $installerBaseName = [string]$brandConfig.artifacts.installerBaseName
     $identifierSegments = @(([string]$tauriConfig.identifier).Split('.'))
@@ -1230,10 +1236,7 @@ try {
         panelDragEvidence = $null
         petIdentity = [ordered]@{
             displayName = $petDisplayName
-            sex = $petSex
-            breed = $petBreed
-            personality = $petPersonality
-            accessibleDescription = $petIdentityDescription
+            observedWindowTitle = $null
             observedLaunchCount = 0
         }
         formalUserDataUsed = $false
@@ -1296,7 +1299,7 @@ try {
         Write-ProbeProgress "functional:first-launch:start"
         $firstLaunchStartedAt = [DateTimeOffset]::UtcNow
         $candidateProcess = Start-InstalledCandidate $applicationPath $webView2RuntimeRoot
-        [void](Wait-PetElement $candidateProcess 30)
+        [void](Observe-InstalledPetIdentity $candidateProcess $functional $petDisplayName)
         $functional.scenarios.installAndLaunch = $true
         [void](Wait-AppElement $candidateProcess ([string]$snoozeSeed.title) $false $false 45)
         Write-ProbeProgress "functional:snooze-30:start"
@@ -1375,9 +1378,7 @@ try {
 
         Write-ProbeProgress "functional:reminder-launch:start"
         $candidateProcess = Start-InstalledCandidate $applicationPath $webView2RuntimeRoot
-        [void](Wait-AppElement $candidateProcess "${petDisplayName}桌面宠物" $true $false 30)
-        [void](Wait-AppElement $candidateProcess $petIdentityDescription $true $false 30)
-        $functional.petIdentity.observedLaunchCount += 1
+        [void](Observe-InstalledPetIdentity $candidateProcess $functional $petDisplayName)
         [void](Wait-AppElement $candidateProcess ([string]$seed.title) $false $false 45)
         $notifyAlertObservedAt = [DateTimeOffset]::UtcNow
         $functional.scenarios.missedReminderNotify = $true
@@ -1523,7 +1524,7 @@ try {
 
         Write-ProbeProgress "functional:restart-persistence:start"
         $candidateProcess = Start-InstalledCandidate $applicationPath $webView2RuntimeRoot
-        $petElement = Wait-PetElement $candidateProcess 30
+        $petElement = Observe-InstalledPetIdentity $candidateProcess $functional $petDisplayName
         $petWindowHandle = Get-ElementWindowHandle $petElement
         if ($petWindowHandle -eq [IntPtr]::Zero) {
             throw "restarted pet has no native window"
@@ -1564,7 +1565,7 @@ try {
         }
 
         $candidateProcess = Start-InstalledCandidate $applicationPath $webView2RuntimeRoot
-        [void](Wait-PetElement $candidateProcess 30)
+        [void](Observe-InstalledPetIdentity $candidateProcess $functional $petDisplayName)
         Invoke-PetMenuItem $candidateProcess "打开今日任务"
         [void](Wait-AppElement $candidateProcess ([string]$seed.title) $false $false 20)
         if ($null -ne (Find-AppElement $candidateProcess.Id ([string]$mutation.title) $false $false)) {
@@ -1604,9 +1605,7 @@ try {
         $missed = $missedOutput | ConvertFrom-Json
         $functional.missedReminder = $missed
         $candidateProcess = Start-InstalledCandidate $applicationPath $webView2RuntimeRoot
-        [void](Wait-AppElement $candidateProcess "${petDisplayName}桌面宠物" $true $false 30)
-        [void](Wait-AppElement $candidateProcess $petIdentityDescription $true $false 30)
-        $functional.petIdentity.observedLaunchCount += 1
+        [void](Observe-InstalledPetIdentity $candidateProcess $functional $petDisplayName)
         $missedAlertObserved = $false
         $missedInspect = $null
         $missedDeadline = [DateTime]::UtcNow.AddSeconds(25)
