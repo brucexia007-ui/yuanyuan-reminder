@@ -19,19 +19,10 @@ use windows_sys::Win32::{
 
 use crate::error::{AppError, AppResult};
 
-pub const DELETE_ALL_LOCAL_DATA_CONFIRMATION: &str = "删除圆圆全部本地数据";
-
-const APPLICATION_IDENTIFIER: &str = "com.yuanyuan.reminder";
-#[cfg(feature = "learning")]
-const LEARNING_PREVIEW_APPLICATION_IDENTIFIER: &str = "com.yuanyuan.reminder.learning-preview";
 const CLEANUP_MODE: &str = "delete-all-local-data-after-exit";
 const CLEANUP_MODE_ARG: &str = "--yuanyuan-delete-all-local-data-after-exit";
 const PARENT_PID_ARG: &str = "--yuanyuan-cleanup-parent-pid=";
 const REQUEST_NONCE_ARG: &str = "--yuanyuan-cleanup-request-nonce=";
-const MARKER_FILE_NAME: &str = ".com.yuanyuan.reminder.delete-all-local-data.json";
-#[cfg(feature = "learning")]
-const LEARNING_PREVIEW_MARKER_FILE_NAME: &str =
-    ".com.yuanyuan.reminder.learning-preview.delete-all-local-data.json";
 const MARKER_MAX_BYTES: u64 = 4 * 1024;
 const PARENT_WAIT_MILLIS: u32 = 60_000;
 const DELETE_RETRY_WINDOW: Duration = Duration::from_secs(30);
@@ -55,7 +46,7 @@ struct CleanupMarker {
 }
 
 pub fn validate_delete_request(confirmation: &str, understands_no_recovery: bool) -> AppResult<()> {
-    if confirmation != DELETE_ALL_LOCAL_DATA_CONFIRMATION {
+    if confirmation != delete_all_local_data_confirmation() {
         return Err(AppError::Validation(
             "the local data deletion confirmation phrase does not match".into(),
         ));
@@ -68,23 +59,32 @@ pub fn validate_delete_request(confirmation: &str, understands_no_recovery: bool
     Ok(())
 }
 
+fn delete_all_local_data_confirmation() -> String {
+    format!("删除{}全部本地数据", crate::brand::pet_display_name())
+}
+
 pub fn schedule_after_exit(identifier: &str) -> AppResult<()> {
     let identifier = supported_application_identifier(identifier)?;
     let base = local_data_base()?;
-    let root = owned_data_root(&base, identifier)?;
-    ensure_root_is_safe(&base, &root, identifier)?;
+    let root = owned_data_root(&base, &identifier)?;
+    ensure_root_is_safe(&base, &root, &identifier)?;
 
     let request_nonce = Uuid::new_v4();
     let marker = CleanupMarker {
         schema_version: 1,
         mode: CLEANUP_MODE.into(),
-        application_identifier: identifier.into(),
+        application_identifier: identifier.clone(),
         parent_pid: std::process::id(),
         request_nonce,
         requested_at: Utc::now().to_rfc3339(),
     };
-    let marker_path = marker_path(&base, identifier)?;
-    write_marker_atomically(&base, &marker_path, marker_file_name(identifier)?, &marker)?;
+    let marker_path = marker_path(&base, &identifier)?;
+    write_marker_atomically(
+        &base,
+        &marker_path,
+        &marker_file_name(&identifier)?,
+        &marker,
+    )?;
 
     let executable = std::env::current_exe()?;
     let spawn_result = Command::new(executable)
@@ -107,9 +107,9 @@ pub fn schedule_after_exit(identifier: &str) -> AppResult<()> {
 pub fn handle_startup(identifier: &str) -> AppResult<bool> {
     let identifier = supported_application_identifier(identifier)?;
     let base = local_data_base()?;
-    let root = owned_data_root(&base, identifier)?;
+    let root = owned_data_root(&base, &identifier)?;
     let supplied_arguments = parse_cleanup_arguments(std::env::args().skip(1))?;
-    let marker_path = marker_path(&base, identifier)?;
+    let marker_path = marker_path(&base, &identifier)?;
     let marker_exists = path_exists_without_following(&marker_path)?;
 
     if supplied_arguments.is_none() && !marker_exists {
@@ -121,13 +121,13 @@ pub fn handle_startup(identifier: &str) -> AppResult<bool> {
         ));
     }
 
-    let marker = read_and_validate_marker(&marker_path, identifier)?;
+    let marker = read_and_validate_marker(&marker_path, &identifier)?;
     if let Some(arguments) = supplied_arguments {
         validate_supplied_arguments(&marker, &arguments)?;
     }
 
     wait_for_parent(marker.parent_pid)?;
-    delete_owned_root_with_retry(&base, &root, identifier)?;
+    delete_owned_root_with_retry(&base, &root, &identifier)?;
     match fs::remove_file(&marker_path) {
         Ok(()) => {}
         Err(error) if error.kind() == ErrorKind::NotFound => {}
@@ -141,13 +141,14 @@ fn local_data_base() -> AppResult<PathBuf> {
         .ok_or_else(|| AppError::Window("local app data directory is unavailable".into()))
 }
 
-fn supported_application_identifier(identifier: &str) -> AppResult<&'static str> {
-    if identifier == APPLICATION_IDENTIFIER {
-        return Ok(APPLICATION_IDENTIFIER);
+fn supported_application_identifier(identifier: &str) -> AppResult<String> {
+    let stable = crate::brand::application_identifier();
+    if identifier == stable {
+        return Ok(stable.into());
     }
     #[cfg(feature = "learning")]
-    if identifier == LEARNING_PREVIEW_APPLICATION_IDENTIFIER {
-        return Ok(LEARNING_PREVIEW_APPLICATION_IDENTIFIER);
+    if identifier == format!("{stable}.learning-preview") {
+        return Ok(identifier.into());
     }
     Err(AppError::Validation(
         "local data cleanup is restricted to an owned application identifier".into(),
@@ -158,13 +159,9 @@ fn owned_data_root(base: &Path, identifier: &str) -> AppResult<PathBuf> {
     Ok(base.join(supported_application_identifier(identifier)?))
 }
 
-fn marker_file_name(identifier: &str) -> AppResult<&'static str> {
-    match supported_application_identifier(identifier)? {
-        APPLICATION_IDENTIFIER => Ok(MARKER_FILE_NAME),
-        #[cfg(feature = "learning")]
-        LEARNING_PREVIEW_APPLICATION_IDENTIFIER => Ok(LEARNING_PREVIEW_MARKER_FILE_NAME),
-        _ => unreachable!("supported identifiers are exhaustively matched"),
-    }
+fn marker_file_name(identifier: &str) -> AppResult<String> {
+    let identifier = supported_application_identifier(identifier)?;
+    Ok(format!(".{identifier}.delete-all-local-data.json"))
 }
 
 fn marker_path(base: &Path, identifier: &str) -> AppResult<PathBuf> {
@@ -450,12 +447,22 @@ fn path_exists_without_following(path: &Path) -> AppResult<bool> {
 mod tests {
     use super::*;
 
+    fn application_identifier() -> &'static str {
+        crate::brand::application_identifier()
+    }
+
+    #[cfg(feature = "learning")]
+    fn preview_application_identifier() -> String {
+        format!("{}.learning-preview", application_identifier())
+    }
+
     #[test]
     fn deletion_confirmation_requires_exact_phrase_and_acknowledgement() {
-        assert!(validate_delete_request(DELETE_ALL_LOCAL_DATA_CONFIRMATION, true).is_ok());
+        let confirmation = delete_all_local_data_confirmation();
+        assert!(validate_delete_request(&confirmation, true).is_ok());
         assert!(validate_delete_request(" 删除圆圆全部本地数据", true).is_err());
         assert!(validate_delete_request("删除圆圆全部本地资料", true).is_err());
-        assert!(validate_delete_request(DELETE_ALL_LOCAL_DATA_CONFIRMATION, false).is_err());
+        assert!(validate_delete_request(&confirmation, false).is_err());
     }
 
     #[test]
@@ -486,12 +493,12 @@ mod tests {
         let marker = CleanupMarker {
             schema_version: 1,
             mode: CLEANUP_MODE.into(),
-            application_identifier: APPLICATION_IDENTIFIER.into(),
+            application_identifier: application_identifier().into(),
             parent_pid: 42,
             request_nonce: Uuid::new_v4(),
             requested_at: "2026-08-11T00:00:00Z".into(),
         };
-        assert!(validate_marker(&marker, APPLICATION_IDENTIFIER).is_ok());
+        assert!(validate_marker(&marker, application_identifier()).is_ok());
 
         let mut value = serde_json::to_value(&marker).unwrap();
         value["unexpectedField"] = serde_json::json!(true);
@@ -505,25 +512,27 @@ mod tests {
 
         let mut wrong_identity = marker;
         wrong_identity.application_identifier = "com.example.other".into();
-        assert!(validate_marker(&wrong_identity, APPLICATION_IDENTIFIER).is_err());
+        assert!(validate_marker(&wrong_identity, application_identifier()).is_err());
     }
 
     #[test]
     fn deletion_removes_only_the_exact_owned_root() {
         let temporary = tempfile::tempdir().unwrap();
         let base = temporary.path();
-        let root = owned_data_root(base, APPLICATION_IDENTIFIER).unwrap();
+        let root = owned_data_root(base, application_identifier()).unwrap();
         let sibling = base.join("keep-me");
         fs::create_dir_all(root.join("backups")).unwrap();
         fs::write(root.join("yuanyuan-reminder.sqlite3"), b"synthetic").unwrap();
         fs::write(root.join("backups").join("backup.sqlite3"), b"synthetic").unwrap();
         fs::write(&sibling, b"unrelated").unwrap();
 
-        delete_owned_root_once(base, &root, APPLICATION_IDENTIFIER).unwrap();
+        delete_owned_root_once(base, &root, application_identifier()).unwrap();
 
         assert!(!root.exists());
         assert_eq!(fs::read(sibling).unwrap(), b"unrelated");
-        assert!(delete_owned_root_once(base, &base.join("other"), APPLICATION_IDENTIFIER).is_err());
+        assert!(
+            delete_owned_root_once(base, &base.join("other"), application_identifier()).is_err()
+        );
     }
 
     #[cfg(feature = "learning")]
@@ -531,21 +540,21 @@ mod tests {
     fn learning_preview_cleanup_is_isolated_from_stable_data() {
         let temporary = tempfile::tempdir().unwrap();
         let base = temporary.path();
-        let stable_root = owned_data_root(base, APPLICATION_IDENTIFIER).unwrap();
-        let preview_root = owned_data_root(base, LEARNING_PREVIEW_APPLICATION_IDENTIFIER).unwrap();
+        let preview_identifier = preview_application_identifier();
+        let stable_root = owned_data_root(base, application_identifier()).unwrap();
+        let preview_root = owned_data_root(base, &preview_identifier).unwrap();
         fs::create_dir_all(&stable_root).unwrap();
         fs::create_dir_all(&preview_root).unwrap();
         fs::write(stable_root.join("stable.sqlite3"), b"stable").unwrap();
         fs::write(preview_root.join("preview.sqlite3"), b"preview").unwrap();
 
-        delete_owned_root_once(base, &preview_root, LEARNING_PREVIEW_APPLICATION_IDENTIFIER)
-            .unwrap();
+        delete_owned_root_once(base, &preview_root, &preview_identifier).unwrap();
 
         assert!(stable_root.join("stable.sqlite3").exists());
         assert!(!preview_root.exists());
         assert_ne!(
-            marker_file_name(APPLICATION_IDENTIFIER).unwrap(),
-            marker_file_name(LEARNING_PREVIEW_APPLICATION_IDENTIFIER).unwrap()
+            marker_file_name(application_identifier()).unwrap(),
+            marker_file_name(&preview_identifier).unwrap()
         );
     }
 }

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { petText } from "../brand";
 import { SpriteAnimator } from "../pet/SpriteAnimator";
 import type { AnimationName } from "../pet/manifest";
 import {
@@ -28,7 +29,7 @@ const destinationDetails = {
   local_provider: {
     title: "仅在本机整理",
     subtitle: "交给本机 Provider",
-    retention: "圆圆不写入数据库、日志或备份；本地 Provider 的缓存政策仍需单独披露。",
+    retention: petText("圆圆不写入数据库、日志或备份；本地 Provider 的缓存政策仍需单独披露。"),
   },
   cloud_provider: {
     title: "交给云服务整理",
@@ -89,7 +90,7 @@ export function SupportSortBoundaryLab() {
           <p className="sort-boundary-eyebrow">P0 · 数据去向原型 · 不发送</p>
           <h1>先看去向，再决定要不要整理</h1>
           <p>
-            圆圆只把整理板拨到你选择的位置。数据说明和授权属于工具，不是小猫对白。
+            {petText("圆圆只把整理板拨到你选择的位置。数据说明和授权属于工具，不是小猫对白。")}
           </p>
         </div>
         <label className="sort-motion-toggle">
@@ -106,7 +107,7 @@ export function SupportSortBoundaryLab() {
       </header>
 
       <section className="sort-boundary-shell">
-        <div className="sort-pet-stage" aria-label="圆圆安静守在数据去向牌旁">
+        <div className="sort-pet-stage" aria-label={petText("圆圆安静守在数据去向牌旁")}>
           <div className="sort-pet">
             <SpriteAnimator
               animation={animation}

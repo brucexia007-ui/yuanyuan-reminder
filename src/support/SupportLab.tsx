@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { petText } from "../brand";
 import { SpriteAnimator } from "../pet/SpriteAnimator";
 import type { AnimationName } from "../pet/manifest";
 import {
@@ -29,7 +30,7 @@ const pathDetails: Record<
   },
   give_space: {
     title: "先别管我",
-    note: "圆圆后退，不再回看",
+    note: petText("圆圆后退，不再回看"),
     prop: "留白牌",
   },
 };
@@ -77,7 +78,7 @@ export function SupportLab() {
   const shiftedAway = activePath === "give_space" || state.stage === "closed";
 
   return (
-    <main className="support-lab" aria-label="圆圆基础陪伴实验台">
+    <main className="support-lab" aria-label={petText("圆圆基础陪伴实验台")}>
       <header className="support-header">
         <div>
           <p className="support-eyebrow">P0 · 三路径基础陪伴</p>
@@ -97,7 +98,7 @@ export function SupportLab() {
       <section className="support-shell">
         <div
           className={`support-stage ${shiftedAway ? "is-away" : ""}`}
-          aria-label="圆圆的非语言回应"
+          aria-label={petText("圆圆的非语言回应")}
         >
           <div className="support-window" aria-hidden="true">
             <span />
@@ -120,9 +121,9 @@ export function SupportLab() {
             </div>
           ) : null}
           <p className="sr-only">
-            {activePath === "stay_close" && "圆圆在软垫上安静坐下。"}
-            {activePath === "move_together" && "圆圆伸了伸懒腰，邀请一起轻轻活动。"}
-            {activePath === "give_space" && "圆圆向后退开，为你留出空间。"}
+            {activePath === "stay_close" && petText("圆圆在软垫上安静坐下。")}
+            {activePath === "move_together" && petText("圆圆伸了伸懒腰，邀请一起轻轻活动。")}
+            {activePath === "give_space" && petText("圆圆向后退开，为你留出空间。")}
           </p>
         </div>
 
@@ -130,10 +131,10 @@ export function SupportLab() {
           {state.stage === "approach" ? (
             <div className="support-step">
               <span className="support-step-number">01</span>
-              <h2>由你决定圆圆是否靠近</h2>
-              <p>圆圆不会自动判断情绪，也不会突然弹出问题。</p>
+              <h2>{petText("由你决定圆圆是否靠近")}</h2>
+              <p>{petText("圆圆不会自动判断情绪，也不会突然弹出问题。")}</p>
               <button type="button" className="support-primary" onClick={begin}>
-                让圆圆靠近
+                {petText("让圆圆靠近")}
               </button>
             </div>
           ) : null}
@@ -141,7 +142,7 @@ export function SupportLab() {
           {state.stage === "choosing" ? (
             <div className="support-step">
               <span className="support-step-number">02</span>
-              <h2>把一张小牌放到圆圆面前</h2>
+              <h2>{petText("把一张小牌放到圆圆面前")}</h2>
               <div className="support-paths">
                 {(Object.keys(pathDetails) as Array<keyof typeof pathDetails>).map((path) => (
                   <button type="button" key={path} onClick={() => choose(path)}>

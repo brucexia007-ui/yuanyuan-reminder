@@ -17,6 +17,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { applicationDisplayName } from "../brand";
 import {
   completeOccurrence,
   cancelFocus,
@@ -494,7 +495,7 @@ export function TaskPanel() {
 
       <nav
         className={`segmented ${taskWatch.available ? "has-task-watch" : ""} ${learningAvailable ? "has-learning" : ""}`}
-        aria-label="圆圆提醒页面"
+        aria-label={`${applicationDisplayName}页面`}
       >
         <TabButton active={tab === "today"} onClick={() => setTab("today")}>
           今日
@@ -2367,6 +2368,7 @@ function SettingsView({
         description="电脑关机或休眠后，对已经过去很久的事项如何处理"
       >
         <select
+          aria-label="错过提醒策略，可选恢复后仍提醒、自动归入已跳过"
           value={settings.missedReminderPolicy}
           onChange={(event) =>
             void onChange({
@@ -2384,6 +2386,7 @@ function SettingsView({
           description="超过这段时间才视为错过，并在历史中标记原因"
         >
           <select
+            aria-label="错过提醒宽限，可选 15、30、60、120、240 分钟"
             value={settings.missedReminderGraceMinutes}
             onChange={(event) =>
               void onChange({ missedReminderGraceMinutes: Number(event.target.value) })
@@ -2605,15 +2608,22 @@ function SettingRow({
 }) {
   const titleId = useId();
   const descriptionId = useId();
-  const accessibleChild = isValidElement<{
+  const child = isValidElement<{
+    "aria-label"?: string;
     "aria-labelledby"?: string;
     "aria-describedby"?: string;
     role?: string;
   }>(children)
-    ? cloneElement(children, {
-        "aria-labelledby": titleId,
+    ? children
+    : null;
+  const hasExplicitAccessibleName = Boolean(
+    child?.props["aria-label"] || child?.props["aria-labelledby"],
+  );
+  const accessibleChild = child
+    ? cloneElement(child, {
+        ...(!hasExplicitAccessibleName ? { "aria-labelledby": titleId } : {}),
         "aria-describedby": descriptionId,
-        ...(children.type === "div" ? { role: "group" } : {}),
+        ...(child.type === "div" ? { role: "group" } : {}),
       })
     : children;
 

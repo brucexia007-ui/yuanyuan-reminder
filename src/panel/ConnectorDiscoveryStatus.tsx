@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { petText } from "../brand";
 
 import {
   applyProjectHookInspection,
@@ -39,7 +40,7 @@ function authorizationCopy(connector: ConnectorDiscoveryStatus): string {
     return "授权状态暂时无法读取";
   }
   if (connector.authorizationProbe === "unconfigured") {
-    return "尚未授权圆圆守望";
+    return petText("尚未授权圆圆守望");
   }
   const active = connector.trustedInstances.filter(
     (instance) => instance.authorizationState === "active",
@@ -70,7 +71,7 @@ function toolTrustCopy(connector: ConnectorDiscoveryStatus): string {
 function eventHealthCopy(connector: ConnectorDiscoveryStatus): string {
   switch (connector.eventHealth) {
     case "paused_authentication_failure":
-      return "连续认证失败，圆圆已暂停接收；来源任务不受影响";
+      return petText("连续认证失败，圆圆已暂停接收；来源任务不受影响");
     case "unavailable":
       return "事件健康状态暂时无法读取";
     default:
@@ -90,7 +91,7 @@ function hookInspectionCopy(inspection: InspectionState | undefined): string {
     return "发现需要人工复核的 Hook 配置冲突；未作修改";
   }
   if (preview.proposedAction === "no_change") {
-    return `圆圆 Hook 与预期一致（${preview.exactHandlers}/${preview.expectedHandlers}）；未作修改`;
+    return petText(`圆圆 Hook 与预期一致（${preview.exactHandlers}/${preview.expectedHandlers}）；未作修改`);
   }
   return `只读检查完成：已有 ${preview.exactHandlers} 项、缺少 ${preview.missingHandlers} 项；未作修改`;
 }
@@ -325,7 +326,7 @@ export function ConnectorDiscoveryStatusCard() {
       ) : null}
 
       <p className="connector-privacy-note">
-        自动发现不会启动 Codex 或 Claude；来源校验使用 Windows 本地信任链和随圆圆发布的离线分发证据且不联网，也不会返回程序路径、哈希或证书材料。
+        {petText("自动发现不会启动 Codex 或 Claude；来源校验使用 Windows 本地信任链和随圆圆发布的离线分发证据且不联网，也不会返回程序路径、哈希或证书材料。")}
         自动发现不会读取配置、会话、项目或任务内容。
         只有点击“只读检查 Hook 配置”后，才会读取对应工具的用户级 Hook 配置；只有再次通过原生选择器选择项目并确认，才会读取该项目固定的 Hook 设置。不会读取项目任务或代码正文，也不会写入文件或保存选择。
       </p>
@@ -341,7 +342,7 @@ export function ConnectorDiscoveryStatusCard() {
         <div className="connector-trust-preview" role="region" aria-label="连接器授权范围预览">
           <strong>尚未执行任何变更</strong>
           <ul>
-            <li>确认后只会创建圆圆专用的本机凭据与随机实例身份。</li>
+            <li>{petText("确认后只会创建圆圆专用的本机凭据与随机实例身份。")}</li>
             <li>密钥正文不会显示、导出或写入诊断。</li>
             <li>不会改变来源任务行为，也不会读取任务正文。</li>
             <li>当前预览不会安装、合并、覆盖或删除任何 Hook 配置。</li>

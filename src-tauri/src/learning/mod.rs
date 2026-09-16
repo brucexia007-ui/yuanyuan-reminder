@@ -530,7 +530,7 @@ impl LearningRuntime {
             preview_token: Some(token.clone()),
             expires_at_unix_ms: Some(expires_at_unix_ms),
             format: Some("json"),
-            source_label: Some("圆圆原生学习数据".into()),
+            source_label: Some(format!("{}原生学习数据", crate::brand::pet_display_name())),
             card_count: data.card_count,
             new_count: data.new_count,
             learning_count: data.learning_count,

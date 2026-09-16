@@ -223,6 +223,9 @@ export function buildCommunityReleaseBundle({
   policyBytes,
   portableBytes,
   installerBytes,
+  petPackBytes,
+  sourceLicenseBytes,
+  sourceInfoBytes,
 }) {
   validateCommunityStablePolicy(policy, expectedProduct);
   validateCommunityStableAuthority(authority, expectedProduct);
@@ -234,8 +237,14 @@ export function buildCommunityReleaseBundle({
     !Buffer.isBuffer(policyBytes) ||
     !Buffer.isBuffer(portableBytes) ||
     !Buffer.isBuffer(installerBytes) ||
+    !Buffer.isBuffer(petPackBytes) ||
+    !Buffer.isBuffer(sourceLicenseBytes) ||
+    !Buffer.isBuffer(sourceInfoBytes) ||
     portableBytes.length === 0 ||
-    installerBytes.length === 0
+    installerBytes.length === 0 ||
+    petPackBytes.length === 0 ||
+    sourceLicenseBytes.length === 0 ||
+    sourceInfoBytes.length === 0
   ) {
     fail("community release inputs must be non-empty bytes");
   }
@@ -253,6 +262,24 @@ export function buildCommunityReleaseBundle({
       bytes: installerBytes.length,
       sha256: sha256(installerBytes),
     },
+    {
+      id: "jiaojiao-pet-pack",
+      fileName: "饺饺.yuanyuan-pet",
+      bytes: petPackBytes.length,
+      sha256: sha256(petPackBytes),
+    },
+    {
+      id: "jiaojiao-source-license",
+      fileName: "JIAOJIAO_STANDALONE_ASSETS_LICENSE.md",
+      bytes: sourceLicenseBytes.length,
+      sha256: sha256(sourceLicenseBytes),
+    },
+    {
+      id: "pet-pack-source",
+      fileName: "PET_PACK_SOURCE.md",
+      bytes: sourceInfoBytes.length,
+      sha256: sha256(sourceInfoBytes),
+    },
   ];
   const checksums = `${artifacts
     .map((artifact) => `${artifact.sha256.toLowerCase()}  ${artifact.fileName}`)
@@ -267,6 +294,9 @@ export function buildCommunityReleaseBundle({
     "- 当前社区发布不要求商业代码签名，Windows 可能显示“未知发布者”或 SmartScreen 提示。",
     "- Smart App Control 或组织安全策略可能阻止未签名程序运行；这种环境请从对应标签自行构建，或等待未来签名/商店渠道。",
     "- 只从本项目的官方 GitHub Release 下载，并核对 `SHA256SUMS.txt`；也可以从完全对应的源码标签自行构建。",
+    "- 饺饺作为独立宠物包安装，圆圆仍是主程序的默认形象。来源与许可见随附文件。",
+    "- 饺饺原许可限定素材用途，公开分发前须由权利人确认授权范围。",
+    "- 数据库升级后如需回退，须同时恢复升级前的完整应用数据目录，不能只降级程序。",
     "",
     "## 文件校验",
     "",

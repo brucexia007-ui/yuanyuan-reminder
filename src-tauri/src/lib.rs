@@ -3,6 +3,7 @@ mod ai_sidecar_trust;
 #[cfg(windows)]
 mod ai_supervisor;
 mod backups;
+mod brand;
 mod commands;
 #[cfg(windows)]
 mod companion_attention;
@@ -86,8 +87,14 @@ mod unified_product_context_tests {
     #[test]
     fn default_runtime_uses_the_single_product_identity() {
         let context: tauri::Context<tauri::Wry> = tauri::generate_context!();
-        assert_eq!(context.config().product_name.as_deref(), Some("圆圆提醒"));
-        assert_eq!(context.config().identifier, "com.yuanyuan.reminder");
+        assert_eq!(
+            context.config().product_name.as_deref(),
+            Some(crate::brand::application_display_name())
+        );
+        assert_eq!(
+            context.config().identifier,
+            crate::brand::application_identifier()
+        );
     }
 }
 
@@ -319,7 +326,9 @@ pub fn run() {
                     return;
                 };
 
-                if !state.is_quitting() {
+                let quitting = state.is_quitting();
+                tracing::info!(quitting, "application exit requested");
+                if !quitting {
                     api.prevent_exit();
                     if let Some(panel) = app.get_webview_window("panel") {
                         let _ = panel.hide();
@@ -335,6 +344,14 @@ pub fn run() {
 }
 
 fn prepare_app_state(identifier: &str) -> AppResult<AppState> {
+    #[cfg(not(feature = "runtime-qa"))]
+    if identifier != brand::application_identifier()
+        || identifier != brand::storage_directory_name()
+    {
+        return Err(error::AppError::Window(
+            "configured application identifier does not match product-brand.json".into(),
+        ));
+    }
     #[cfg(feature = "runtime-qa")]
     let app_data = runtime_qa::app_data_directory(identifier)?;
     #[cfg(not(feature = "runtime-qa"))]
@@ -342,9 +359,9 @@ fn prepare_app_state(identifier: &str) -> AppResult<AppState> {
         .ok_or_else(|| error::AppError::Window("local app data directory is unavailable".into()))?
         .join(identifier);
     let log_dir = app_data.join("logs");
-    let guard = logging::init(&log_dir);
+    let guard = logging::init(&log_dir, brand::log_file());
     fs::create_dir_all(&app_data)?;
-    let database_path = app_data.join("yuanyuan-reminder.sqlite3");
+    let database_path = app_data.join(brand::main_database_file());
     #[cfg(not(feature = "learning"))]
     if let Err(error) = backups::create_startup_backup(&database_path, &app_data.join("backups")) {
         tracing::warn!(error = %error, "startup backup could not be created");
@@ -355,7 +372,7 @@ fn prepare_app_state(identifier: &str) -> AppResult<AppState> {
     #[cfg(feature = "learning")]
     {
         let learning_data_dir = app_data.join("learning-data");
-        app_state.configure_learning(&learning_data_dir.join("yuanyuan-learning.sqlite3"));
+        app_state.configure_learning(&learning_data_dir.join(brand::learning_database_file()));
         let repository = app_state.repository.lock();
         let learning = app_state.learning.lock();
         if let Err(error) = backups::create_unified_startup_backup(

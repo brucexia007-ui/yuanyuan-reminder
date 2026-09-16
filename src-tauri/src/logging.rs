@@ -6,8 +6,8 @@ use tracing_appender::{
 };
 use tracing_subscriber::{fmt, EnvFilter};
 
-pub fn init(log_dir: &Path) -> WorkerGuard {
-    let (writer, guard, persistent) = log_writer(log_dir);
+pub fn init(log_dir: &Path, file_name: &str) -> WorkerGuard {
+    let (writer, guard, persistent) = log_writer(log_dir, file_name);
     let subscriber = fmt()
         .with_env_filter(EnvFilter::new("info"))
         .with_ansi(false)
@@ -21,11 +21,11 @@ pub fn init(log_dir: &Path) -> WorkerGuard {
     guard
 }
 
-fn log_writer(log_dir: &Path) -> (NonBlocking, WorkerGuard, bool) {
+fn log_writer(log_dir: &Path, file_name: &str) -> (NonBlocking, WorkerGuard, bool) {
     if fs::create_dir_all(log_dir).is_ok() {
         let appender = RollingFileAppender::builder()
             .rotation(Rotation::DAILY)
-            .filename_prefix("yuanyuan-reminder.log")
+            .filename_prefix(file_name)
             .build(log_dir);
         if let Ok(appender) = appender {
             let (writer, guard) = tracing_appender::non_blocking(appender);
@@ -47,7 +47,7 @@ mod tests {
             std::env::temp_dir().join(format!("yuanyuan-log-blocker-{}", uuid::Uuid::new_v4()));
         fs::write(&blocker, b"not a directory").unwrap();
 
-        let (_writer, _guard, persistent) = log_writer(&blocker);
+        let (_writer, _guard, persistent) = log_writer(&blocker, "test.log");
 
         assert!(!persistent);
         fs::remove_file(blocker).unwrap();

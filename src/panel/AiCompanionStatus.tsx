@@ -39,7 +39,7 @@ const statusCopy: Record<
   },
   stopped: {
     label: "已经停止",
-    description: "智能陪伴组件已停止，下次启动圆圆时会重新检查。",
+    get description() { return petText("智能陪伴组件已停止，下次启动{pet}时会重新检查。"); },
   },
 };
 
@@ -218,7 +218,7 @@ export function AiCompanionStatusCard({
           <p>
             不包含：任务内容、工作区路径、用户名、提示词、代码、凭据或倾诉内容；不会自动上传。
           </p>
-          <p>确认后由 Windows 选择本机保存位置；圆圆不会在应用目录额外保留副本。</p>
+          <p>{petText("确认后由 Windows 选择本机保存位置；{pet}不会在应用目录额外保留副本。")}</p>
           <div className="diagnostic-actions">
             <button
               ref={previewConfirmRef}

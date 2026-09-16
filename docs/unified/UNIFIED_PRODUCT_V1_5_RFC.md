@@ -70,7 +70,7 @@ v1.5.0 表示一次向后兼容的产品范围扩展，不表示删除提醒、�
 统一产品继续使用两个故障域：
 
 - 主提醒库：`yuanyuan-reminder.sqlite3`，统一版本支持 schema 12；
-- 学习库：`learning-data/yuanyuan-learning.sqlite3`，统一迁移凭证加入后为 schema 7。
+- 学习库：`learning-data/yuanyuan-learning.sqlite3`，加入通用内容包元数据后为 schema 8。
 
 它们属于同一个产品的备份、恢复、导出和删除体验，但学习库损坏或迁移失败不能阻止主提醒库启动。
 

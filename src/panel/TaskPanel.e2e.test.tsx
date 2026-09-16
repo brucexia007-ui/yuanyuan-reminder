@@ -4,6 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { petDisplayName } from "../brand";
 import type { AppSettings, TodaySnapshot } from "../types";
 
 const nativeDialog = vi.hoisted(() => ({ invoke: vi.fn() }));
@@ -50,9 +51,9 @@ const backend = vi.hoisted(() => ({
   tauriAvailable: vi.fn(),
 }));
 
-vi.mock("../lib/backend", () => ({
+vi.mock("../lib/backend", async () => ({
   ...backend,
-  DELETE_ALL_LOCAL_DATA_CONFIRMATION: "删除圆圆全部本地数据",
+  DELETE_ALL_LOCAL_DATA_CONFIRMATION: `删除${(await import("../brand")).petDisplayName}全部本地数据`,
 }));
 
 vi.mock("@tauri-apps/plugin-notification", () => ({
@@ -313,7 +314,7 @@ describe("TaskPanel complete reminder workflows", () => {
       "道具标签",
     );
     expect(document.getElementById(labelDescriptionId ?? "")?.textContent).toContain(
-      "不会变成圆圆的对白",
+      `不会变成${petDisplayName}的对白`,
     );
     const cursorSwitch = [...container.querySelectorAll('[role="switch"]')].find(
       (item) =>
@@ -338,16 +339,57 @@ describe("TaskPanel complete reminder workflows", () => {
     });
 
     backend.requestSleep.mockResolvedValue(undefined);
-    await click("让圆圆睡觉");
+    await click(`让${petDisplayName}睡觉`);
     expect(backend.requestSleep).toHaveBeenCalledOnce();
-    expect(container.textContent).toContain("圆圆已经去睡觉了");
+    expect(container.textContent).toContain(`${petDisplayName}已经去睡觉了`);
 
     backend.showPetWindow.mockResolvedValue(undefined);
     backend.requestWake.mockResolvedValue(undefined);
-    await click("显示并叫醒圆圆");
+    await click(`显示并叫醒${petDisplayName}`);
     expect(backend.showPetWindow).toHaveBeenCalledOnce();
     expect(backend.requestWake).toHaveBeenCalledOnce();
-    expect(container.textContent).toContain("圆圆已经显示并醒来了");
+    expect(container.textContent).toContain(`${petDisplayName}已经显示并醒来了`);
+  });
+
+  it("exposes and persists the installed missed-reminder policy controls", async () => {
+    await click("管理");
+    await click("前往设置");
+    const policy = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="错过提醒策略，可选恢复后仍提醒、自动归入已跳过"]',
+    );
+    expect(policy).not.toBeNull();
+    expect(policy?.hasAttribute("aria-labelledby")).toBe(false);
+    expect(policy?.hasAttribute("aria-describedby")).toBe(true);
+    expect(Array.from(policy?.options ?? []).map((option) => option.value)).toEqual([
+      "notify",
+      "skipOld",
+    ]);
+    await act(async () => {
+      if (!policy) return;
+      policy.value = "skipOld";
+      policy.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await flush();
+    expect(backend.updateSettings).toHaveBeenCalledWith({
+      missedReminderPolicy: "skipOld",
+    });
+
+    const grace = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="错过提醒宽限，可选 15、30、60、120、240 分钟"]',
+    );
+    expect(grace).not.toBeNull();
+    expect(Array.from(grace?.options ?? []).map((option) => Number(option.value))).toEqual([
+      15, 30, 60, 120, 240,
+    ]);
+    await act(async () => {
+      if (!grace) return;
+      grace.value = "15";
+      grace.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await flush();
+    expect(backend.updateSettings).toHaveBeenCalledWith({
+      missedReminderGraceMinutes: 15,
+    });
   });
 
   it("drags the frameless panel from its header without hijacking header buttons", async () => {
@@ -397,7 +439,7 @@ describe("TaskPanel complete reminder workflows", () => {
     expect(document.activeElement).toBe(button("打开三张陪伴小牌"));
     await click("打开三张陪伴小牌");
     expect(document.activeElement?.textContent).toContain("只陪我一会");
-    await click("陪我动一动圆圆先伸懒腰，不计分");
+    await click(`陪我动一动${petDisplayName}先伸懒腰，不计分`);
     await click("开始");
 
     expect(backend.startBasicSupport).toHaveBeenCalledWith("move_together", 1);
@@ -488,7 +530,7 @@ describe("TaskPanel complete reminder workflows", () => {
         "value",
       )?.set;
       if (!setInputValue) throw new Error("native input value setter is unavailable");
-      setInputValue.call(confirmationInput, "删除圆圆全部本地数据");
+      setInputValue.call(confirmationInput, `删除${petDisplayName}全部本地数据`);
       confirmationInput.dispatchEvent(new Event("input", { bubbles: true }));
       acknowledgement.click();
     });
@@ -509,7 +551,7 @@ describe("TaskPanel complete reminder workflows", () => {
     nativeDialog.invoke.mockResolvedValueOnce("Ok");
     await click("永久删除本地数据并退出");
     expect(backend.deleteAllLocalDataAndExit).toHaveBeenCalledWith(
-      "删除圆圆全部本地数据",
+      `删除${petDisplayName}全部本地数据`,
       true,
     );
     expect(backend.deleteAllLocalDataAndExit).toHaveBeenCalledOnce();

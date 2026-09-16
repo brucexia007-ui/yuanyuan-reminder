@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { petText } from "../brand";
 
 import {
   disconnectModeCopy,
@@ -38,7 +39,7 @@ export function ConnectorDisconnectReview({
       <header>
         <div>
           <strong id={titleId}>安全断开任务守望</strong>
-          <small>圆圆不会用一个含糊按钮同时代表删配置和撤权限</small>
+          <small>{petText("圆圆不会用一个含糊按钮同时代表删配置和撤权限")}</small>
         </div>
         {onCancel && state.phase !== "applying" ? (
           <button className="connector-disconnect-close" type="button" onClick={onCancel}>
@@ -67,7 +68,7 @@ export function ConnectorDisconnectReview({
       )}
 
       <p className="connector-disconnect-invariant">
-        无论结果如何，圆圆都不会停止、批准或改变来源工具中的任务。
+        {petText("无论结果如何，圆圆都不会停止、批准或改变来源工具中的任务。")}
       </p>
     </section>
   );
@@ -117,7 +118,7 @@ function PreviewStep({
         <div className="connector-disconnect-notice danger" role="alert">
           <strong>Hook 配置需要人工复核</strong>
           <p>
-            圆圆不会删除被改动、重复或无法证明所有权的内容。
+            {petText("圆圆不会删除被改动、重复或无法证明所有权的内容。")}
             {preview.trustOnlyAvailable
               ? "如需立即关闭权限，请明确改选“仅撤销认证权限”。"
               : preview.trustAlreadyRevoked
@@ -135,7 +136,7 @@ function PreviewStep({
           <strong>{modeCopy.title}</strong>
           <ol>
             {preview.mode === "remove_configuration_and_revoke_trust" ? (
-              <li>精确移除 {preview.expectedRemovedHandlers} 项仍由圆圆所有的 Hook，并创建配置备份。</li>
+              <li>{petText(`精确移除 ${preview.expectedRemovedHandlers} 项仍由圆圆所有的 Hook，并创建配置备份。`)}</li>
             ) : (
               <li>跳过 Hook 配置读取与写入。</li>
             )}
@@ -183,10 +184,10 @@ function ApplyingStep({
 }) {
   const configurationCopy =
     state.configurationStage === "complete"
-      ? "圆圆 Hook 已安全处理"
+      ? petText("圆圆 Hook 已安全处理")
       : state.configurationStage === "skipped"
         ? "已按选择跳过 Hook 配置"
-        : "正在复核并处理圆圆 Hook";
+        : petText("正在复核并处理圆圆 Hook");
   const trustCopy =
     state.trustStage === "complete"
       ? "认证权限已撤销"
@@ -200,7 +201,7 @@ function ApplyingStep({
         <li data-state={state.configurationStage}>{configurationCopy}</li>
         <li data-state={state.trustStage}>{trustCopy}</li>
       </ol>
-      <p>请不要关闭圆圆；来源工具中的任务不受影响。</p>
+      <p>{petText("请不要关闭圆圆；来源工具中的任务不受影响。")}</p>
     </div>
   );
 }

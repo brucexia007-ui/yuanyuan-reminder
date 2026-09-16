@@ -281,10 +281,10 @@ pub(crate) fn select_project_with_native_picker(
     // user to choose anything. `preview` repeats this after the dialog.
     ProjectInspectionCoordinator::authorized_context(&connector_id, &source_instance)?;
     let panel = app.get_webview_window("panel");
-    let mut picker = app
-        .dialog()
-        .file()
-        .set_title("选择允许圆圆只读检查 Hook 的项目文件夹");
+    let mut picker = app.dialog().file().set_title(format!(
+        "选择允许{}只读检查 Hook 的项目文件夹",
+        crate::brand::pet_display_name()
+    ));
     if let Some(panel) = panel.as_ref() {
         picker = picker.set_parent(panel);
     }

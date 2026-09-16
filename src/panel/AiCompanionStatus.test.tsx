@@ -4,6 +4,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { petDisplayName } from "../brand";
+
 const backend = vi.hoisted(() => ({
   clearAiDiagnostics: vi.fn(),
   exportAiDiagnostics: vi.fn(),
@@ -84,7 +86,7 @@ describe("AI companion diagnostics", () => {
     await act(async () => retry.click());
     await flush();
     expect(backend.retryAiAfterFailure).toHaveBeenCalledTimes(1);
-    expect(onNotice).toHaveBeenCalledWith("圆圆正在重新检查智能陪伴组件。");
+    expect(onNotice).toHaveBeenCalledWith(`${petDisplayName}正在重新检查智能陪伴组件。`);
     expect(container.textContent).toContain("正在醒来");
     expect(
       [...container.querySelectorAll("button")].some(
