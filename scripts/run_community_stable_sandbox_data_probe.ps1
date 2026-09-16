@@ -1151,8 +1151,6 @@ try {
         [bool]$candidateStageManifest.source.dirty -ne [bool]$sourceMetadata.dirty -or
         [string]$brandConfig.application.identifier -ne [string]$tauriConfig.identifier -or
         [string]::IsNullOrWhiteSpace($petDisplayName) -or
-        [string]::IsNullOrWhiteSpace($petBreed) -or
-        [string]::IsNullOrWhiteSpace($petPersonality) -or
         [string]::IsNullOrWhiteSpace($databaseFile) -or
         [string]::IsNullOrWhiteSpace($installerBaseName) -or
         $installerBaseName -ne [string]$tauriConfig.productName -or
@@ -1794,6 +1792,7 @@ try {
 catch {
     Write-ProbeProgress "result:failed"
     $status.failure = [string]$_.Exception.Message
+    $status.failureLocation = [string]$_.InvocationInfo.PositionMessage
     $candidateExit = $null
     if ($null -ne $candidateProcess) {
         try {
@@ -1811,8 +1810,8 @@ catch {
         catch {}
     }
     $copiedApplicationLogs = @()
-    $applicationLogRoot = Join-Path $dataRoot "logs"
-    if (Test-Path -LiteralPath $applicationLogRoot -PathType Container) {
+    $applicationLogRoot = if ($dataRoot) { Join-Path $dataRoot "logs" } else { $null }
+    if ($applicationLogRoot -and (Test-Path -LiteralPath $applicationLogRoot -PathType Container)) {
         $applicationLogIndex = 0
         foreach ($applicationLog in @(
             Get-ChildItem -LiteralPath $applicationLogRoot -File -Filter "*.log" |
@@ -1834,9 +1833,11 @@ catch {
             }
         }
     }
-    $edgeUpdateLogRoot = Join-Path $env:ProgramData "Microsoft\EdgeUpdate\Log"
+    $edgeUpdateLogRoot = if ($env:ProgramData) {
+        Join-Path $env:ProgramData "Microsoft\EdgeUpdate\Log"
+    } else { $null }
     $logRoots = @($env:TEMP, $edgeUpdateLogRoot) |
-        Where-Object { Test-Path -LiteralPath $_ -PathType Container }
+        Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Container) }
     $recentLogs = @(
         foreach ($logRoot in $logRoots) {
             Get-ChildItem -LiteralPath $logRoot -File -Filter "*.log" -Recurse `
