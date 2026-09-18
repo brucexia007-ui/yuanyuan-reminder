@@ -23,8 +23,8 @@ async function main(args) {
   const [, tag, , commit, , outputDirectory] = args;
   const [authority, brand, policy, acceptance] = await Promise.all([
     json("product-version.json"), json("product-brand.json"),
-    json("docs/release/COMMUNITY_STABLE_RELEASE_POLICY_V1.json"),
-    json("docs/release/COMMUNITY_STABLE_ACCEPTANCE_V1.json"),
+    json("docs/release/COMMUNITY_STABLE_RELEASE_POLICY_V2.json"),
+    json("docs/release/COMMUNITY_STABLE_ACCEPTANCE_V2.json"),
   ]);
   const product = communityProductFromBrand(brand);
   validateCommunityStablePolicy(policy, product);
@@ -52,8 +52,10 @@ async function main(args) {
     `验收安装器 SHA-256：\`${acceptance.candidate.installerSha256}\`。`,
     `源码提交：\`${commit}\`。`,
     "",
-    "Windows 未签名程序可能出现未知发布者或 SmartScreen 提示。数据库升级后回退必须同时恢复升级前完整数据目录。",
-    "饺饺宠物包的原许可限制了素材用途；公开分发前须由权利人确认授权范围。",
+    "Windows 程序未签名，可能出现未知发布者或 SmartScreen 提示。数据库升级后回退必须同时恢复升级前完整数据目录。",
+    "24 小时运行观察未覆盖系统睡眠恢复与锁屏解锁，两项已明确豁免，原始报告仍未通过。",
+    "真实 1.3.2 用户历史数据未验证；官方 1.3.2 程序合成数据和真实 1.5.27 升级回退仅提供替代覆盖，不能证明真实历史记录兼容。",
+    "饺饺宠物包原许可限制素材用途；仅依随附的权利人补充许可免费分发本次原字节包，不授予图片再利用权。",
     "",
   ].join("\n");
   await mkdir(output);

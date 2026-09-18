@@ -28,8 +28,9 @@ async function ordinaryBytes(filePath) {
 }
 
 async function main(args) {
-  if (args.length !== 2 || args[0] !== "--candidate-dir" || !args[1]) {
-    fail("usage: --candidate-dir <pending-candidate-directory>");
+  if (args.length !== 4 || args[0] !== "--candidate-dir" || !args[1] ||
+      args[2] !== "--permission-file" || !args[3]) {
+    fail("usage: --candidate-dir <pending-candidate-directory> --permission-file <signed-supplement>");
   }
   if (git("status", "--porcelain=v1")) fail("stable promotion source must be clean");
   const releaseCommit = git("rev-parse", "HEAD");
@@ -37,7 +38,7 @@ async function main(args) {
   const [authority, brand, acceptance, source, pending] = await Promise.all([
     json(path.join(root, "product-version.json")),
     json(path.join(root, "product-brand.json")),
-    json(path.join(root, "docs/release/COMMUNITY_STABLE_ACCEPTANCE_V1.json")),
+    json(path.join(root, "docs/release/COMMUNITY_STABLE_ACCEPTANCE_V2.json")),
     json(path.join(root, "docs/pet-packs/JIAOJIAO_PACKAGE_SOURCE.json")),
     json(path.join(candidateDirectory, "accepted-artifacts.json")),
   ]);
@@ -50,12 +51,18 @@ async function main(args) {
   validateCommunityStableAcceptance(acceptance, {
     authority, expectedProduct, releaseCommit, changedPaths,
   });
-  const [portable, setup, pet, sourceLicense] = await Promise.all([
+  const [portable, setup, pet, sourceLicense, permission] = await Promise.all([
     ordinaryBytes(path.join(candidateDirectory, `圆圆提醒_${authority.version}_windows-x64-portable.exe`)),
     ordinaryBytes(path.join(candidateDirectory, `圆圆提醒_${authority.version}_x64-setup.exe`)),
     ordinaryBytes(path.join(candidateDirectory, "饺饺.yuanyuan-pet")),
     ordinaryBytes(path.join(root, source.sourceLicenseFile)),
+    ordinaryBytes(path.resolve(args[3])),
   ]);
+  if (sha256(permission) !== acceptance.review.permissionSha256 ||
+      !permission.toString("utf8").includes(source.packageSha256) ||
+      !permission.toString("utf8").includes("brucexia007-ui/yuanyuan-reminder")) {
+    fail("signed rightsholder permission does not match acceptance, pet bytes, or project");
+  }
   for (const [entry, bytes] of pending.artifacts.map((entry, index) => [entry, [portable, setup, pet][index]])) {
     if (entry.sha256 !== sha256(bytes) || entry.bytes !== bytes.length) fail("pending artifact bytes changed after candidate freeze");
   }
@@ -71,6 +78,7 @@ async function main(args) {
     [accepted.artifacts[0].fileName, portable],
     [accepted.artifacts[1].fileName, setup],
     [accepted.artifacts[2].fileName, pet],
+    ["JIAOJIAO_RELEASE_PERMISSION_SUPPLEMENT.md", permission],
   ]) await writeFile(path.join(output, name), bytes, { flag: "wx" });
   await writeFile(path.join(output, "accepted-artifacts.json"), `${JSON.stringify(accepted, null, 2)}\n`, { flag: "wx" });
   process.stdout.write(`Human-accepted original artifact bytes promoted: ${output}\n`);

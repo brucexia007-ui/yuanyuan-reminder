@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const COMMUNITY_RELEASE_SCHEMA_VERSION = 1;
+export const COMMUNITY_RELEASE_SCHEMA_VERSION = 2;
 
 export class CommunityReleaseContractError extends Error {}
 
@@ -82,6 +82,7 @@ export function validateCommunityStablePolicy(policy, expectedProduct) {
       "acceptanceContract",
       "blockingCommands",
       "blockingQualityGates",
+      "permittedWaivers",
       "advisoryOnly",
       "requiredWarnings",
     ],
@@ -130,9 +131,9 @@ export function validateCommunityStablePolicy(policy, expectedProduct) {
   );
   if (
     policy.acceptanceContract.file !==
-      "docs/release/COMMUNITY_STABLE_ACCEPTANCE_V1.json" ||
+      "docs/release/COMMUNITY_STABLE_ACCEPTANCE_V2.json" ||
     policy.acceptanceContract.template !==
-      "docs/release/COMMUNITY_STABLE_ACCEPTANCE_V1.template.json" ||
+      "docs/release/COMMUNITY_STABLE_ACCEPTANCE_V2.template.json" ||
     policy.acceptanceContract.codeSigningEvidenceRequired !== false
   ) {
     fail("community acceptance contract must stay focused on product stability");
@@ -155,9 +156,9 @@ export function validateCommunityStablePolicy(policy, expectedProduct) {
     [
       "clean-main-tag",
       "version-tag-match",
-      "current-candidate-24-hour-endurance-with-sleep-and-lock",
+      "current-candidate-24-hour-endurance-with-exact-two-event-waivers",
       "current-installer-critical-e2e",
-      "authentic-legacy-data-upgrade-backup-and-rollback",
+      "official-v132-synthetic-and-real-v1527-upgrade-backup-rollback",
       "integrated-learning-real-runtime",
       "system-stability-regressions",
       "critical-e2e",
@@ -168,6 +169,11 @@ export function validateCommunityStablePolicy(policy, expectedProduct) {
     ],
     "policy.blockingQualityGates",
   );
+  exactStringArray(policy.permittedWaivers, [
+    "power_suspend_resume_pair_missing",
+    "session_lock_unlock_pair_missing",
+    "real_1_3_2_user_history_unavailable",
+  ], "policy.permittedWaivers");
   exactStringArray(
     policy.advisoryOnly,
     [
@@ -186,6 +192,9 @@ export function validateCommunityStablePolicy(policy, expectedProduct) {
       "Windows may show an unknown-publisher or SmartScreen warning for this community release.",
       "Smart App Control or organization policy may block unsigned executables.",
       "Download only from the official GitHub Release and verify SHA256SUMS.txt, or build from the matching source tag.",
+      "Sleep/resume and lock/unlock were not observed during the 24-hour run and are explicitly waived.",
+      "Real 1.3.2 user history was unavailable and remains unverified; official 1.3.2 synthetic data and real 1.5.27 upgrade/rollback are substitute coverage.",
+      "Database rollback requires restoring the matching pre-upgrade complete application data directory.",
     ],
     "policy.requiredWarnings",
   );
@@ -225,6 +234,7 @@ export function buildCommunityReleaseBundle({
   installerBytes,
   petPackBytes,
   sourceLicenseBytes,
+  supplementalPermissionBytes,
   sourceInfoBytes,
 }) {
   validateCommunityStablePolicy(policy, expectedProduct);
@@ -239,11 +249,13 @@ export function buildCommunityReleaseBundle({
     !Buffer.isBuffer(installerBytes) ||
     !Buffer.isBuffer(petPackBytes) ||
     !Buffer.isBuffer(sourceLicenseBytes) ||
+    !Buffer.isBuffer(supplementalPermissionBytes) ||
     !Buffer.isBuffer(sourceInfoBytes) ||
     portableBytes.length === 0 ||
     installerBytes.length === 0 ||
     petPackBytes.length === 0 ||
     sourceLicenseBytes.length === 0 ||
+    supplementalPermissionBytes.length === 0 ||
     sourceInfoBytes.length === 0
   ) {
     fail("community release inputs must be non-empty bytes");
@@ -275,6 +287,12 @@ export function buildCommunityReleaseBundle({
       sha256: sha256(sourceLicenseBytes),
     },
     {
+      id: "jiaojiao-release-permission",
+      fileName: "JIAOJIAO_RELEASE_PERMISSION_SUPPLEMENT.md",
+      bytes: supplementalPermissionBytes.length,
+      sha256: sha256(supplementalPermissionBytes),
+    },
+    {
       id: "pet-pack-source",
       fileName: "PET_PACK_SOURCE.md",
       bytes: sourceInfoBytes.length,
@@ -295,8 +313,10 @@ export function buildCommunityReleaseBundle({
     "- Smart App Control 或组织安全策略可能阻止未签名程序运行；这种环境请从对应标签自行构建，或等待未来签名/商店渠道。",
     "- 只从本项目的官方 GitHub Release 下载，并核对 `SHA256SUMS.txt`；也可以从完全对应的源码标签自行构建。",
     "- 饺饺作为独立宠物包安装，圆圆仍是主程序的默认形象。来源与许可见随附文件。",
-    "- 饺饺原许可限定素材用途，公开分发前须由权利人确认授权范围。",
+    "- 饺饺原许可限定素材用途；本次仅依随附的权利人补充许可免费分发原字节宠物包，不授予图片再利用权。",
     "- 数据库升级后如需回退，须同时恢复升级前的完整应用数据目录，不能只降级程序。",
+    "- 24 小时运行观察未覆盖系统睡眠恢复和锁屏解锁，这两项获得明确豁免，并未被记录为已通过。",
+    "- 真实 1.3.2 用户历史数据未取得、未验证；官方 1.3.2 程序生成的合成数据和真实 1.5.27 升级回退仅提供替代覆盖。",
     "",
     "## 文件校验",
     "",

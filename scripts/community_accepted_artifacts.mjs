@@ -72,7 +72,7 @@ export function petPackSourceSummary(source) {
     `包内 \`${source.embeddedLicenseFileName}\` 与随附原许可的 SHA-256：\`${source.embeddedLicenseSha256}\`。`,
     "",
     "圆圆仍是统一主程序的默认形象、图标和应用身份。饺饺素材只通过独立宠物包交付。",
-    "原许可限制了素材用途；公开分发前须由权利人确认授权范围。原始照片及用户数据不随附。",
+    "原许可限制素材用途；本次免费 GitHub Release 的原字节分发范围由随附的权利人补充许可单独确认，不授予图片再利用权。原始照片及用户数据不随附。",
     "",
   ].join("\n");
 }

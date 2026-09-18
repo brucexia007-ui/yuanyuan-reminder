@@ -12,7 +12,7 @@ import {
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const policyBytes = await readFile(
-  path.join(projectRoot, "docs", "release", "COMMUNITY_STABLE_RELEASE_POLICY_V1.json"),
+  path.join(projectRoot, "docs", "release", "COMMUNITY_STABLE_RELEASE_POLICY_V2.json"),
 );
 const policy = JSON.parse(policyBytes.toString("utf8"));
 const brand = JSON.parse(await readFile(path.join(projectRoot, "product-brand.json"), "utf8"));
@@ -72,6 +72,7 @@ test("builds source-bound assets, checksums, and mandatory unsigned-download gui
     installerBytes: Buffer.from("installer"),
     petPackBytes: Buffer.from("pet-pack"),
     sourceLicenseBytes: Buffer.from("original-license"),
+    supplementalPermissionBytes: Buffer.from("signed one-release permission"),
     sourceInfoBytes: Buffer.from("source-summary"),
   });
   assert.deepEqual(
@@ -81,6 +82,7 @@ test("builds source-bound assets, checksums, and mandatory unsigned-download gui
       `${expectedProduct.installerBaseName}_1.5.2_x64-setup.exe`,
       "饺饺.yuanyuan-pet",
       "JIAOJIAO_STANDALONE_ASSETS_LICENSE.md",
+      "JIAOJIAO_RELEASE_PERMISSION_SUPPLEMENT.md",
       "PET_PACK_SOURCE.md",
     ],
   );
@@ -90,6 +92,7 @@ test("builds source-bound assets, checksums, and mandatory unsigned-download gui
   assert.match(bundle.notes, /Smart App Control/u);
   assert.match(bundle.notes, /SHA256SUMS\.txt/u);
   assert.match(bundle.notes, /完整应用数据目录/u);
+  assert.match(bundle.notes, /真实 1\.3\.2 用户历史数据未取得、未验证/u);
   assert.equal(bundle.manifest.codeSigning.required, false);
   assert.equal(bundle.manifest.source.commit, "a".repeat(40));
   assert.doesNotMatch(JSON.stringify(bundle.manifest), /[A-Z]:\\/u);
@@ -107,6 +110,7 @@ test("rejects development builds, tag drift, and malformed source identity", () 
     installerBytes: Buffer.from("installer"),
     petPackBytes: Buffer.from("pet-pack"),
     sourceLicenseBytes: Buffer.from("original-license"),
+    supplementalPermissionBytes: Buffer.from("signed one-release permission"),
     sourceInfoBytes: Buffer.from("source-summary"),
   };
   assert.throws(

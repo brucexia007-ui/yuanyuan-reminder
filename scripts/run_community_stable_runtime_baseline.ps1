@@ -40,7 +40,7 @@ $measureOutput = @(
 )
 $measureExitCode = $LASTEXITCODE
 $measureOutput | ForEach-Object { Write-Output $_ }
-if ($measureExitCode -ne 0) {
+if ($measureExitCode -ne 0 -and $measureExitCode -ne 2) {
     throw "Formal learning-on 24-hour runtime baseline failed with exit code $measureExitCode."
 }
 
@@ -62,7 +62,8 @@ if ([string]::IsNullOrWhiteSpace($reportPath) -or -not [IO.Path]::IsPathRooted($
     (Join-Path $PSScriptRoot "verify_community_stable_runtime_baseline_candidate.mjs") `
     --binding $sourceBindingPath `
     --report $reportPath `
-    --tested-commit $sourceCommit
+    --tested-commit $sourceCommit `
+    --allow-v2-event-waivers
 if ($LASTEXITCODE -ne 0) {
     throw "Formal learning-on runtime baseline independent verification failed."
 }

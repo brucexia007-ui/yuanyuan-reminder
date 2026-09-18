@@ -39,6 +39,10 @@ export function buildCommunityStableAcceptanceDraft({
   v132StatusSha256,
   v132Capture,
   v132Migration,
+  v132MigrationSha256,
+  v1527Report,
+  v1527ReportSha256,
+  waiverAuthorizationSha256,
   learningEnvelope,
   learningEnvelopeSha256,
   learningRuntime,
@@ -55,10 +59,23 @@ export function buildCommunityStableAcceptanceDraft({
     ["endurance source binding", enduranceBindingSha256],
     ["installed E2E status", installedStatusSha256],
     ["v1.3.2 status", v132StatusSha256],
+    ["v1.3.2 synthetic migration", v132MigrationSha256],
+    ["1.5.27 upgrade rollback", v1527ReportSha256],
+    ["waiver authorization", waiverAuthorizationSha256],
     ["learning envelope", learningEnvelopeSha256],
   ]) requireValue(sha256Pattern.test(digest), `${label} SHA-256 is invalid`);
 
-  requireValue(endurance?.ready === true && endurance.acceptanceGate?.passed === true, "endurance report is not accepted");
+  requireValue(endurance?.ready === false && endurance.smokePassed === true && endurance.acceptanceGate?.passed === false,
+    "raw endurance report must remain failed with a passing smoke gate");
+  requireValue(JSON.stringify(endurance.acceptanceGate.failures) === JSON.stringify([
+    "power_suspend_resume_pair_missing", "session_lock_unlock_pair_missing",
+  ]), "endurance failures exceed the two authorized event waivers");
+  requireValue(endurance.clock?.wallClockObservedSeconds >= 86_400 &&
+    endurance.clock?.activeSampleCoverageSeconds >= 72_000, "24-hour duration or coverage is short");
+  requireValue(endurance.transitions.powerSuspendResumeObserved === false &&
+    endurance.transitions.sessionLockUnlockObserved === false, "waived system events must remain unobserved");
+  requireValue(endurance.process.controlledExit === true && endurance.isolation.applicationErrorCount === 0 &&
+    endurance.storage.formalUserFilesWritten === 0, "runtime error, exit, or data isolation failed");
   requireValue(endurance.request?.acceptanceGateRequested === true, "endurance acceptance gate was not requested");
   requireValue(enduranceBinding?.schemaVersion === 1 && enduranceBinding.buildVariant === "runtime-qa-learning", "endurance source binding is not learning-on");
   requireValue(enduranceBinding.source?.commit === testedCommit && enduranceBinding.source?.dirty === false, "endurance source binding differs from the tested commit");
@@ -80,9 +97,21 @@ export function buildCommunityStableAcceptanceDraft({
   requireValue(v132Migration.migratedMatchedSourceRowsSha256 === v132Migration.sourceLogicalSha256, "v1.3.2 rows changed during migration");
   requireValue(checkPassed(v132Migration, "backup_restore"), "v1.3.2 backup/restore did not pass");
   requireValue(checkPassed(v132Migration, "failed_restore_rollback"), "v1.3.2 failure rollback did not pass");
+  requireValue(v132Status.source?.v132PortableSha256 === "D142095E41EA4A1D6BB89D7A20D8F44CBA3519C085E4EC5E674E4FB25CFF89AD",
+    "official v1.3.2 binary digest differs from the pinned release");
+  requireValue(v1527Report?.schemaVersion === 1 && v1527Report.status === "passed" &&
+    v1527Report.candidateCommit === testedCommit && v1527Report.candidateInstallerSha256 === installerSha256 &&
+    v1527Report.baselineInstallerSha256 === "424E2D607E08CA274672DFF343D12393DE3CF9C4FBC7BA3789FC7A8ACFFF4C7E" &&
+    v1527Report.baselineFileCount === 218 &&
+    v1527Report.databaseMigration7to8Passed === true &&
+    v1527Report.oldRowsAndSettingsPreserved === true &&
+    v1527Report.petPackRecoveryPassed === true &&
+    v1527Report.rollbackBothDatabasesIntegrityPassed === true &&
+    v1527Report.rollbackVisibleStatePassed === true,
+    "real 1.5.27 installer upgrade and matching-data rollback is incomplete");
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     status: "pending",
     product: {
       name: authority.productName,
@@ -95,7 +124,7 @@ export function buildCommunityStableAcceptanceDraft({
     },
     checks: {
       endurance24h: {
-        status: "passed",
+        status: "passed_with_waivers",
         reportSha256: enduranceSha256,
         sourceBindingSha256: enduranceBindingSha256,
         observedSeconds: endurance.clock.wallClockObservedSeconds,
@@ -105,6 +134,8 @@ export function buildCommunityStableAcceptanceDraft({
         controlledExit: endurance.process.controlledExit,
         applicationErrorCount: endurance.isolation.applicationErrorCount,
         formalUserFilesWritten: endurance.storage.formalUserFilesWritten,
+        rawReportPassed: endurance.acceptanceGate.passed,
+        rawFailureCodes: structuredClone(endurance.acceptanceGate.failures),
       },
       installedCandidateE2e: {
         status: "passed",
@@ -115,14 +146,16 @@ export function buildCommunityStableAcceptanceDraft({
         cleanupVerified: Object.values(installedStatus.functional.cleanup).every((value) => value === true),
       },
       legacyDataCompatibility: {
-        status: "passed",
+        status: "waived_with_substitutes",
         sourceVersion: "1.3.2",
-        normalizedSourceSha256: v132Capture.fixtureLogicalSha256,
-        reportSha256: v132StatusSha256,
-        sourceUnchanged: v132Capture.sourceStableDuringCapture === true,
-        allRowsPreserved: v132Migration.migratedMatchedSourceRowsSha256 === v132Migration.sourceLogicalSha256,
-        backupRestorePassed: true,
-        failureRollbackPassed: true,
+        realHistoricalDataVerified: false,
+        officialBinarySha256: v132Status.source.v132PortableSha256,
+        syntheticMigrationReportSha256: v132MigrationSha256,
+        v1527UpgradeRollbackReportSha256: v1527ReportSha256,
+        syntheticRowsPreserved: v132Migration.migratedMatchedSourceRowsSha256 === v132Migration.sourceLogicalSha256,
+        syntheticBackupRestorePassed: true,
+        syntheticFailureRollbackPassed: true,
+        v1527UpgradeRollbackPassed: true,
       },
       learningRuntime: {
         status: "passed",
@@ -137,9 +170,16 @@ export function buildCommunityStableAcceptanceDraft({
         backupRestorePassed: learningRuntime.backupRestorePassed,
       },
     },
+    waivers: {
+      authorizationRecordSha256: waiverAuthorizationSha256,
+      candidateCommit: testedCommit,
+      ids: ["power_suspend_resume_pair_missing", "session_lock_unlock_pair_missing", "real_1_3_2_user_history_unavailable"],
+      evidenceSha256: { endurance: enduranceSha256, synthetic132: v132MigrationSha256, upgrade1527: v1527ReportSha256 },
+    },
     review: {
       operator: null,
       completedAt: null,
+      permissionSha256: null,
       unresolvedFindings: [],
     },
   };
@@ -154,6 +194,8 @@ function parseArguments(argv) {
     "--installed-evidence-root",
     "--v132-evidence-root",
     "--learning-report",
+    "--v1527-upgrade-report",
+    "--v1527-input-root",
     "--output-dir",
   ]);
   const options = {};
@@ -221,6 +263,7 @@ async function main() {
   const installedRoot = path.resolve(options["--installed-evidence-root"]);
   const v132Root = path.resolve(options["--v132-evidence-root"]);
   const learningPath = path.resolve(options["--learning-report"]);
+  const v1527Path = path.resolve(options["--v1527-upgrade-report"]);
   const outputDir = path.resolve(options["--output-dir"]);
   const resolvedOutputBase = await validateOwnedAcceptanceOutputPath(outputDir);
   runVerifier("verify_community_stable_runtime_baseline_candidate.mjs", [
@@ -230,9 +273,16 @@ async function main() {
     endurancePath,
     "--tested-commit",
     testedCommit,
+    "--allow-v2-event-waivers",
   ]);
   runVerifier("verify_community_stable_installed_e2e.mjs", ["--evidence-root", installedRoot]);
   runVerifier("verify_community_stable_v132_evidence.mjs", ["--evidence-root", v132Root]);
+  runVerifier("verify_community_stable_v1527_evidence.mjs", [
+    "--input-root", path.resolve(options["--v1527-input-root"]),
+    "--report", v1527Path,
+    "--installer", installerPath,
+    "--tested-commit", testedCommit,
+  ]);
   runVerifier("verify_community_stable_learning_runtime_evidence.mjs", [
     "--report",
     learningPath,
@@ -251,6 +301,9 @@ async function main() {
     v132Capture,
     v132Migration,
     learningEnvelope,
+    v132MigrationDocument,
+    v1527Document,
+    waiverAuthorizationBytes,
   ] = await Promise.all([
     readJsonDocument(path.join(projectRoot, "product-version.json")),
     readJsonDocument(path.join(projectRoot, "product-brand.json")),
@@ -262,6 +315,9 @@ async function main() {
     readJsonDocument(path.join(v132Root, "v132-capture-report.json")),
     readJsonDocument(path.join(v132Root, "current-migration-report.json")),
     readJsonDocument(learningPath),
+    readJsonDocument(path.join(v132Root, "current-migration-report.json")),
+    readJsonDocument(v1527Path),
+    readFile(path.join(projectRoot, "docs/release/COMMUNITY_STABLE_V2_WAIVER_DECISION.md")),
   ]);
   const learningRuntimePath = path.join(path.dirname(learningPath), learningEnvelope.value.runtimeReportFile);
   const learningRuntime = await readJsonDocument(learningRuntimePath);
@@ -280,6 +336,10 @@ async function main() {
     v132StatusSha256: sha256(v132Status.bytes),
     v132Capture: v132Capture.value,
     v132Migration: v132Migration.value,
+    v132MigrationSha256: sha256(v132MigrationDocument.bytes),
+    v1527Report: v1527Document.value,
+    v1527ReportSha256: sha256(v1527Document.bytes),
+    waiverAuthorizationSha256: sha256(waiverAuthorizationBytes),
     learningEnvelope: learningEnvelope.value,
     learningEnvelopeSha256: sha256(learningEnvelope.bytes),
     learningRuntime: learningRuntime.value,
@@ -303,7 +363,10 @@ async function main() {
         },
       },
       installedCandidateE2e: { path: relativeEvidencePath(path.join(installedRoot, "sandbox-data-probe-status.json")), sha256: draft.checks.installedCandidateE2e.reportSha256 },
-      legacyDataCompatibility: { path: relativeEvidencePath(path.join(v132Root, "v132-sandbox-status.json")), sha256: draft.checks.legacyDataCompatibility.reportSha256 },
+      legacyDataCompatibility: {
+        synthetic132: { path: relativeEvidencePath(path.join(v132Root, "current-migration-report.json")), sha256: draft.checks.legacyDataCompatibility.syntheticMigrationReportSha256 },
+        upgrade1527: { path: relativeEvidencePath(v1527Path), sha256: draft.checks.legacyDataCompatibility.v1527UpgradeRollbackReportSha256 },
+      },
       learningRuntime: { path: relativeEvidencePath(learningPath), sha256: draft.checks.learningRuntime.reportSha256 },
     },
   };
@@ -313,7 +376,7 @@ async function main() {
     "created output directory resolves outside work/customization",
   );
   await Promise.all([
-    writeFile(path.join(outputDir, "COMMUNITY_STABLE_ACCEPTANCE_V1.draft.json"), draftBytes, { flag: "wx" }),
+    writeFile(path.join(outputDir, "COMMUNITY_STABLE_ACCEPTANCE_V2.draft.json"), draftBytes, { flag: "wx" }),
     writeFile(path.join(outputDir, "community-stable-acceptance-evidence.json"), `${JSON.stringify(receipt, null, 2)}\n`, { encoding: "utf8", flag: "wx" }),
   ]);
   process.stdout.write(`Community stable acceptance draft prepared: ${outputDir}\n`);

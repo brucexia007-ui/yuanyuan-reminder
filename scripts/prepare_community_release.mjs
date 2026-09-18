@@ -7,6 +7,7 @@ import {
   buildCommunityReleaseBundle,
   communityProductFromBrand,
   CommunityReleaseContractError,
+  sha256,
 } from "./community_release_contract.mjs";
 import {
   petPackSourceSummary,
@@ -70,10 +71,10 @@ export async function prepareCommunityRelease(options) {
     fail("release source must be the exact clean tagged commit");
   }
   const [policyBytes, authority, brand, acceptance, source, manifest] = await Promise.all([
-    readFile(path.join(projectRoot, "docs/release/COMMUNITY_STABLE_RELEASE_POLICY_V1.json")),
+    readFile(path.join(projectRoot, "docs/release/COMMUNITY_STABLE_RELEASE_POLICY_V2.json")),
     json(path.join(projectRoot, "product-version.json")),
     json(path.join(projectRoot, "product-brand.json")),
-    json(path.join(projectRoot, "docs/release/COMMUNITY_STABLE_ACCEPTANCE_V1.json")),
+    json(path.join(projectRoot, "docs/release/COMMUNITY_STABLE_ACCEPTANCE_V2.json")),
     json(path.join(projectRoot, "docs/pet-packs/JIAOJIAO_PACKAGE_SOURCE.json")),
     json(path.join(acceptedDirectory, "accepted-artifacts.json")),
   ]);
@@ -86,12 +87,16 @@ export async function prepareCommunityRelease(options) {
   validateCommunityStableAcceptance(acceptance, {
     authority, expectedProduct, releaseCommit: options.sourceCommit, changedPaths,
   });
-  const [portableBytes, installerBytes, petPackBytes, sourceLicenseBytes] = await Promise.all([
+  const [portableBytes, installerBytes, petPackBytes, sourceLicenseBytes, supplementalPermissionBytes] = await Promise.all([
     readOrdinaryFile(path.join(acceptedDirectory, `圆圆提醒_${authority.version}_windows-x64-portable.exe`)),
     readOrdinaryFile(path.join(acceptedDirectory, `圆圆提醒_${authority.version}_x64-setup.exe`)),
     readOrdinaryFile(path.join(acceptedDirectory, "饺饺.yuanyuan-pet")),
     readOrdinaryFile(path.join(projectRoot, source.sourceLicenseFile)),
+    readOrdinaryFile(path.join(acceptedDirectory, "JIAOJIAO_RELEASE_PERMISSION_SUPPLEMENT.md")),
   ]);
+  if (acceptance.review.permissionSha256 !== sha256(supplementalPermissionBytes)) {
+    fail("rightsholder permission bytes differ from human acceptance");
+  }
   validateAcceptedArtifactManifest({
     manifest, acceptance, authority, source,
     files: { portable: portableBytes, setup: installerBytes, "jiaojiao-pet-pack": petPackBytes, sourceLicense: sourceLicenseBytes },
@@ -100,7 +105,7 @@ export async function prepareCommunityRelease(options) {
   const bundle = buildCommunityReleaseBundle({
     policy: JSON.parse(policyBytes.toString("utf8")), authority, expectedProduct,
     tag: options.tag, sourceCommit: options.sourceCommit, policyBytes,
-    portableBytes, installerBytes, petPackBytes, sourceLicenseBytes, sourceInfoBytes,
+    portableBytes, installerBytes, petPackBytes, sourceLicenseBytes, supplementalPermissionBytes, sourceInfoBytes,
   });
   await mkdir(output);
   const bytesById = {
@@ -108,6 +113,7 @@ export async function prepareCommunityRelease(options) {
     setup: installerBytes,
     "jiaojiao-pet-pack": petPackBytes,
     "jiaojiao-source-license": sourceLicenseBytes,
+    "jiaojiao-release-permission": supplementalPermissionBytes,
     "pet-pack-source": sourceInfoBytes,
   };
   for (const artifact of bundle.artifacts) {
