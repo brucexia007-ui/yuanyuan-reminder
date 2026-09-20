@@ -7,6 +7,7 @@
 - 主程序固定为 `圆圆提醒`、`com.yuanyuan.reminder`，沿用原主库和学习库路径。圆圆图集、图标、服装、热身动作和专注静止保持原样。饺饺仅作为独立 `.yuanyuan-pet` 包交付。
 - 在独立 `release/unified-1.5.33` 分支整合 `main`。候选必须来自干净提交；源码、脚本或许可有任何后续修改，都要重新冻结提交、重新构建并重做与产物相关的验收。
 - 执行 `npm.cmd run verify`、`cargo test --manifest-path src-tauri/Cargo.toml --locked`、`npm.cmd run tauri build`、发布边界与许可检查。用 `npm.cmd run release:community:candidate:freeze -- --pet-pack <原始饺饺包路径>` 保存安装器、便携程序、宠物包的原始字节和 SHA-256。冻结清单先标为 `PENDING`。
+- 正式安装器 E2E 需要先由 `scripts/build_community_stable_e2e_stage.ps1` 执行受控构建并生成精确安装器测试阶段，随即从**同一次构建输出**冻结候选；确认测试阶段与冻结候选的安装器、便携程序哈希逐项一致后再运行沙箱 E2E。NSIS 重建可能产生不同字节，冻结后不得再构建并拿新安装器冒充已冻结候选。
 - 饺饺包的固定哈希、来源提交和包内许可哈希见 [`JIAOJIAO_PACKAGE_SOURCE.json`](../pet-packs/JIAOJIAO_PACKAGE_SOURCE.json)。原许可逐字节归档在 [`JIAOJIAO_STANDALONE_ASSETS_LICENSE.md`](../pet-packs/JIAOJIAO_STANDALONE_ASSETS_LICENSE.md)。该许可描述来源独立程序的素材路径；统一主程序的同名素材路径仍属于圆圆。宠物包内的 `LICENSE.txt` 与归档原许可哈希一致。
 
 ## 最终候选的必需验收
