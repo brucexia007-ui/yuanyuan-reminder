@@ -94,6 +94,11 @@ $mappedGitExecutable = Join-Path $gitRoot "cmd\git.exe"
 if (-not (Test-Path -LiteralPath $mappedGitExecutable -PathType Leaf)) {
     throw "Git installation root could not be mapped into Windows Sandbox"
 }
+$gitCommonDir = Read-GitValue @("rev-parse", "--git-common-dir")
+if (-not [IO.Path]::IsPathRooted($gitCommonDir) -or
+    -not (Test-Path -LiteralPath $gitCommonDir -PathType Container)) {
+    throw "Git common directory could not be mapped into Windows Sandbox"
+}
 
 $resolvedTagCommit = Read-GitValue @("rev-parse", "v1.3.2^{commit}")
 if ($resolvedTagCommit -ne $expected.tagCommit) {
@@ -181,6 +186,7 @@ try {
     $outputXml = Escape-Xml $outputRoot
     $webView2RuntimeXml = Escape-Xml $webView2RuntimeRoot
     $gitRootXml = Escape-Xml $gitRoot
+    $gitCommonDirXml = Escape-Xml $gitCommonDir
     $logonBootstrap = @'
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
@@ -190,6 +196,8 @@ $completePath = Join-Path $outputRoot "v132-sandbox.complete"
 $systemModuleRoot = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\Modules"
 $env:PSModulePath = $systemModuleRoot
 $env:Path = "C:\YuanyuanGit\cmd;$env:WINDIR\System32;$env:WINDIR\System32\WindowsPowerShell\v1.0"
+$env:GIT_DIR = "C:\YuanyuanGitCommon"
+$env:GIT_WORK_TREE = "C:\YuanyuanRepo"
 $status = [ordered]@{
     schemaVersion = 1
     generatedAt = $null
@@ -352,7 +360,7 @@ try {
     if (
         $migration.status -ne "passed" -or
         $migration.sourceDatabaseVersion -ne 6 -or
-        $migration.migratedDatabaseVersion -ne 12 -or
+        $migration.migratedDatabaseVersion -ne 13 -or
         $migration.sourceSha256 -ne $status.fixtureSha256 -or
         $migration.sourceLogicalSha256 -ne $migration.migratedMatchedSourceRowsSha256 -or
         @($requiredMigrationChecks | Where-Object {
@@ -416,6 +424,11 @@ if (-not $status.ready) { exit 2 }
     <MappedFolder>
       <HostFolder>$gitRootXml</HostFolder>
       <SandboxFolder>C:\YuanyuanGit</SandboxFolder>
+      <ReadOnly>true</ReadOnly>
+    </MappedFolder>
+    <MappedFolder>
+      <HostFolder>$gitCommonDirXml</HostFolder>
+      <SandboxFolder>C:\YuanyuanGitCommon</SandboxFolder>
       <ReadOnly>true</ReadOnly>
     </MappedFolder>
   </MappedFolders>
