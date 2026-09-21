@@ -104,11 +104,11 @@ import {
   followOffsetTowardPointer,
   gentleHeadOffsetTowardPointer,
   shouldAdvancePettingFrame,
-  shouldAdvanceWandFrame,
   shouldMirrorTowardPointer,
   shouldMirrorTowardPointerWithHysteresis,
   transitionToolInteraction,
   treatFrameFromPointerHeight,
+  wandDirectionFrame,
 } from "./interactionMotion";
 import {
   COMPACT_PET_WINDOW_GUTTER,
@@ -211,6 +211,13 @@ interface ActiveToolInteraction {
   flightDuration: number;
   ballVisible: boolean;
 }
+
+const wandPhaseAnimations = [
+  "wand-reach",
+  "wand-swipe",
+  "wand-return",
+  "wand-swipe",
+] as const satisfies readonly AnimationName[];
 
 const lifeAnimations: Array<{
   name: Exclude<LifeAnimationName, "belly-down">;
@@ -1422,7 +1429,7 @@ export function PetWindow() {
                 : kind === "treat"
                   ? 30
                   : 48,
-            frame: kind === "treat" ? 6 : 0,
+            frame: kind === "treat" ? 6 : kind === "wand" ? 1 : 0,
             mirrored: false,
             offsetX: kind === "pet" || kind === "ball" ? 0 : 8,
             engaged: kind !== "pet" && kind !== "wand" && kind !== "ball",
@@ -1516,6 +1523,28 @@ export function PetWindow() {
     toolInteraction?.id,
     toolInteraction?.expiresAtUnixMs,
   ]);
+
+  useEffect(() => {
+    if (
+      toolInteraction?.kind !== "wand" ||
+      !toolInteraction.engaged ||
+      petProfile.staticOnly ||
+      settings.animationMode === "off" ||
+      (settings.animationMode === "system" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+    ) return;
+    const timer = window.setInterval(() => {
+      const current = toolInteractionRef.current;
+      if (!current || current.kind !== "wand" || !current.engaged) return;
+      const phase = (current.phase + 1) % wandPhaseAnimations.length;
+      const next = { ...current, phase };
+      toolInteractionRef.current = next;
+      setToolInteraction(next);
+      setAnimation(wandPhaseAnimations[phase]);
+    }, 130);
+    return () => window.clearInterval(timer);
+  }, [toolInteraction?.engaged, toolInteraction?.id, toolInteraction?.kind,
+    petProfile.staticOnly, settings.animationMode]);
 
   useEffect(() => {
     if (
@@ -1942,13 +1971,11 @@ export function PetWindow() {
       const advanceFrame =
         current.kind === "pet"
           ? shouldAdvancePettingFrame(distance, elapsedMs)
-          : current.kind === "wand"
-            ? shouldAdvanceWandFrame(distance, elapsedMs)
-            : true;
+          : true;
       const mirrored =
-        current.kind === "pet" ||
-        current.kind === "treat" ||
         current.kind === "wand"
+          ? false
+          : current.kind === "pet" || current.kind === "treat"
           ? shouldMirrorTowardPointerWithHysteresis(
               x,
               bounds.width,
@@ -1969,9 +1996,7 @@ export function PetWindow() {
           current.kind === "treat"
             ? treatFrameFromPointerHeight(y, bounds.height)
             : current.kind === "wand"
-              ? advanceFrame
-                ? advanceInteractionFrame(current.frame, distance)
-                : current.frame
+              ? wandDirectionFrame(x, y, bounds.width, bounds.height, current.frame)
             : advanceFrame
               ? advanceInteractionFrame(current.frame, distance)
               : current.frame,
@@ -1980,7 +2005,7 @@ export function PetWindow() {
         frameX: advanceFrame ? x : current.frameX,
         frameY: advanceFrame ? y : current.frameY,
         lastFrameAt:
-          (current.kind === "pet" || current.kind === "wand") && advanceFrame
+          current.kind === "pet" && advanceFrame
             ? eventTime
             : current.lastFrameAt,
       };
@@ -2036,7 +2061,7 @@ export function PetWindow() {
     toolInteractionRef.current = next;
     setToolInteraction(next);
     setLookFrame(null);
-    setAnimation(engaged ? "wand-play" : "idle");
+    setAnimation(engaged ? "wand-reach" : "idle");
   }, []);
 
   const startBallCharge = useCallback(() => {

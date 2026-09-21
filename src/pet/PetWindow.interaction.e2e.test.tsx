@@ -146,6 +146,10 @@ describe("PetWindow interaction bubble E2E", () => {
 
   const flush = async () => {
     await act(async () => {
+      if (vi.isFakeTimers()) {
+        await vi.advanceTimersByTimeAsync(0);
+        return;
+      }
       await new Promise((resolve) => window.setTimeout(resolve, 0));
     });
   };
@@ -250,6 +254,7 @@ describe("PetWindow interaction bubble E2E", () => {
   afterEach(async () => {
     await act(async () => root.unmount());
     container.remove();
+    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
@@ -341,7 +346,7 @@ describe("PetWindow interaction bubble E2E", () => {
     expect(tool.style.top).toBe("12px");
   });
 
-  it("matches the original Yuanyuan pointer-driven wand row", async () => {
+  it("restores the original directional reach, swipe and return poses while holding the wand", async () => {
     await startInteraction("wand-original", "wand");
     setInteractionBounds();
     const tool = container.querySelector<HTMLButtonElement>(".pet-tool-wand");
@@ -352,43 +357,80 @@ describe("PetWindow interaction bubble E2E", () => {
     expect(sprite?.dataset.animation).toBe("idle");
     expect(sprite?.dataset.frameOverride).toBe("");
 
+    vi.useFakeTimers();
     await dispatchPointer(tool, "pointerdown", 138, 48, 0);
     sprite = container.querySelector<HTMLButtonElement>(".sprite-animator");
-    expect(sprite?.dataset.animation).toBe("wand-play");
-    expect(sprite?.dataset.frameOverride).toBe("0");
+    expect(sprite?.dataset.animation).toBe("wand-reach");
+    expect(sprite?.dataset.frameOverride).toBe("1");
     expect(sprite?.dataset.mirrored).toBe("false");
     expect(sprite?.dataset.offsetX).toBe("0");
 
-    await dispatchPointer(tool, "pointermove", 134, 48, 30);
+    await act(async () => { vi.advanceTimersByTime(130); });
     sprite = container.querySelector<HTMLButtonElement>(".sprite-animator");
-    expect(sprite?.dataset.frameOverride).toBe("0");
-
-    await dispatchPointer(tool, "pointermove", 126, 48, 90);
-    sprite = container.querySelector<HTMLButtonElement>(".sprite-animator");
+    expect(sprite?.dataset.animation).toBe("wand-swipe");
     expect(sprite?.dataset.frameOverride).toBe("1");
 
-    await dispatchPointer(tool, "pointermove", 90, 48, 100);
+    await act(async () => { vi.advanceTimersByTime(130); });
     sprite = container.querySelector<HTMLButtonElement>(".sprite-animator");
+    expect(sprite?.dataset.animation).toBe("wand-return");
     expect(sprite?.dataset.frameOverride).toBe("1");
 
-    await dispatchPointer(tool, "pointermove", 90, 48, 180);
+    await dispatchPointer(tool, "pointermove", 174, 96, 100);
     sprite = container.querySelector<HTMLButtonElement>(".sprite-animator");
-    expect(sprite?.dataset.frameOverride).toBe("3");
+    expect(sprite?.dataset.frameOverride).toBe("2");
 
-    await dispatchPointer(tool, "pointermove", 90, 48, 190);
+    await dispatchPointer(tool, "pointermove", 96, 96, 180);
     sprite = container.querySelector<HTMLButtonElement>(".sprite-animator");
-    expect(sprite?.dataset.frameOverride).toBe("3");
+    expect(sprite?.dataset.frameOverride).toBe("2");
+
+    await dispatchPointer(tool, "pointermove", 96, 196, 190);
+    sprite = container.querySelector<HTMLButtonElement>(".sprite-animator");
+    expect(sprite?.dataset.frameOverride).toBe("4");
 
     await dispatchPointer(tool, "pointermove", 22, 48, 270);
     sprite = container.querySelector<HTMLButtonElement>(".sprite-animator");
-    expect(sprite?.dataset.frameOverride).toBe("5");
-    expect(sprite?.dataset.mirrored).toBe("true");
+    expect(sprite?.dataset.frameOverride).toBe("7");
+    expect(sprite?.dataset.mirrored).toBe("false");
+    expect(tool.style.left).toBe("22px");
+    expect(tool.style.top).toBe("48px");
 
     await dispatchPointer(tool, "pointerup", 22, 48, 280);
     sprite = container.querySelector<HTMLButtonElement>(".sprite-animator");
     expect(sprite?.dataset.animation).toBe("idle");
     expect(sprite?.dataset.frameOverride).toBe("");
     expect(sprite?.dataset.mirrored).toBe("false");
+    await act(async () => { vi.advanceTimersByTime(520); });
+    expect(sprite?.dataset.animation).toBe("idle");
+    vi.useRealTimers();
+  });
+
+  it.each(["off", "system"] as const)("keeps the directional wand pose still with %s reduced motion", async (animationMode) => {
+    if (animationMode === "system") vi.mocked(window.matchMedia).mockReturnValue({ matches: true } as MediaQueryList);
+    await act(async () => handlers.get("settings-updated")?.({ ...settings, animationMode }));
+    await startInteraction("wand-still", "wand");
+    setInteractionBounds();
+    const tool = container.querySelector<HTMLButtonElement>(".pet-tool-wand")!;
+    vi.useFakeTimers();
+    await dispatchPointer(tool, "pointerdown", 138, 48, 0);
+    await act(async () => { vi.advanceTimersByTime(520); });
+    const sprite = container.querySelector<HTMLElement>(".sprite-animator")!;
+    expect(sprite.dataset.animation).toBe("wand-reach");
+    expect(sprite.dataset.frameOverride).toBe("1");
+    await dispatchPointer(tool, "pointercancel", 138, 48, 530);
+    await act(async () => { vi.advanceTimersByTime(520); });
+    expect(sprite.dataset.animation).toBe("idle");
+    expect(sprite.dataset.frameOverride).toBe("");
+  });
+
+  it("does not leave a wand timer running after switching tools", async () => {
+    await startInteraction("wand-switch", "wand");
+    setInteractionBounds();
+    vi.useFakeTimers();
+    await dispatchPointer(container.querySelector(".pet-tool-wand")!, "pointerdown", 138, 48, 0);
+    await startInteraction("treat-switch", "treat");
+    await act(async () => { vi.advanceTimersByTime(520); });
+    expect(container.querySelector(".pet-tool-wand")).toBeNull();
+    expect(container.querySelector<HTMLElement>(".sprite-animator")?.dataset.animation).toBe("treat-follow");
   });
 
   it("exposes every snooze level and sends the selected duration from a strong reminder", async () => {
