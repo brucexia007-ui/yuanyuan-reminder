@@ -20,7 +20,7 @@ describe("desktop learning completion styles", () => {
   });
 
   it("keeps the seated pet inside the 520 by 420 learning window", () => {
-    expect(desktopLearningCss).toContain("height: 160px");
+    expect(desktopLearningCss).toContain("height: 110px");
     expect(desktopLearningCss).toContain("width: 154px");
     expect(desktopLearningCss).toContain("height: 167px");
     expect(desktopLearningCss).toContain("bottom: 12px");

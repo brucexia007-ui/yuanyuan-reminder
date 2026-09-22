@@ -44,7 +44,7 @@ const BOARD_EXIT_MS = 280;
 const QUESTION_WRITE_MS = 260;
 const QUESTION_ERASE_MS = 140;
 const BUTTON_REBOUND_MS = 170;
-const CURIOUS_DELAY_MS = 15_000;
+const CURIOUS_DELAY_MS = 60_000;
 const FEEDBACK_BUBBLE_MS = 1_200;
 const CORRECT_AUTO_ADVANCE_MS = 200;
 
@@ -1046,6 +1046,7 @@ export function LearningDesktopStage({
             key={`${petProfile.effectivePackId}:${petProfile.staticOnly}`}
             animation={petAnimation}
             settings={settings}
+            forceStill={petAnimation === "study-focus-loop" || petAnimation === "learning-study-sit"}
             fallbackAnimation={
               petAnimation === "study-curious"
                 ? "learning-study-curious"

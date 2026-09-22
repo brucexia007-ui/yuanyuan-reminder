@@ -21,11 +21,13 @@ vi.mock("../pet/SpriteAnimator", () => ({
   SpriteAnimator: ({
     animation,
     mirrored = false,
+    forceStill = false,
     onFrameChange,
     onComplete,
   }: {
     animation: string;
     mirrored?: boolean;
+    forceStill?: boolean;
     onFrameChange?: (animation: string, frameIndex: number) => void;
     onComplete?: (animation: string) => void;
   }) => (
@@ -33,6 +35,7 @@ vi.mock("../pet/SpriteAnimator", () => ({
       data-testid="sprite"
       data-animation={animation}
       data-mirrored={String(mirrored)}
+      data-force-still={String(forceStill)}
     >
       {[4, 5, 6].map((frameIndex) => (
         <button
@@ -448,7 +451,7 @@ describe("desktop learning pet feedback", () => {
       .toContain("我看懂了，下一题");
   });
 
-  it("tilts and blinks once after 15 seconds without an answer", async () => {
+  it("rests still for a minute, makes one brief curious gesture, then rests again", async () => {
     await act(async () =>
       root.render(
         <LearningDesktopStage
@@ -463,13 +466,16 @@ describe("desktop learning pet feedback", () => {
     await finishQuestionWriting();
 
     expect(sprite().dataset.animation).toBe("learning-study-sit");
-    await advanceTimers(14_999);
+    expect(sprite().dataset.forceStill).toBe("true");
+    await advanceTimers(59_999);
     expect(sprite().dataset.animation).toBe("learning-study-sit");
     await advanceTimers(1);
     expect(sprite().dataset.animation).toBe("learning-study-curious");
+    expect(sprite().dataset.forceStill).toBe("false");
 
     await act(async () => testButton("complete-animation").click());
     expect(sprite().dataset.animation).toBe("learning-study-sit");
+    expect(sprite().dataset.forceStill).toBe("true");
     await advanceTimers(30_000);
     expect(sprite().dataset.animation).toBe("learning-study-sit");
   });
@@ -493,7 +499,7 @@ describe("desktop learning pet feedback", () => {
     );
     await flushPromises();
     await finishQuestionWriting();
-    await advanceTimers(14_950);
+    await advanceTimers(59_950);
 
     act(() => choice("correct").click());
     await advanceTimers(100);
@@ -520,7 +526,7 @@ describe("desktop learning pet feedback", () => {
     );
     await flushPromises();
     await finishQuestionWriting();
-    await advanceTimers(15_000);
+    await advanceTimers(60_000);
     expect(sprite().dataset.animation).toBe("learning-study-curious");
 
     await act(async () => choice("wrong").click());
@@ -567,7 +573,7 @@ describe("desktop learning pet feedback", () => {
     expect(container.querySelector(".desktop-learning-word-row h2")?.textContent)
       .toBe("stone");
     await finishQuestionWriting();
-    await advanceTimers(15_000);
+    await advanceTimers(60_000);
     expect(sprite().dataset.animation).toBe("learning-study-curious");
   });
 
