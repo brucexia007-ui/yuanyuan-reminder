@@ -7,6 +7,8 @@
 *.md text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
+# Generated archive verification compares exact bytes on Windows as well.
+THIRD_PARTY_LICENSES.txt text eol=lf
 *.png binary
 *.jpg binary
 *.gif binary
