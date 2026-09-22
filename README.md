@@ -146,6 +146,7 @@
 
 - 安装版适合长期使用；便携版可直接运行，文件名以对应 Release 附件为准。
 - 1.5.35 已提供 [Preview 1 预览安装包](../../releases/tag/yuanyuan-1.5.35-preview.1)，尚未发布正式稳定版；需要时也可从源码构建。
+- **饺饺宠物包**：在同一预览版下载 [jiaojiao.yuanyuan-pet](../../releases/download/yuanyuan-1.5.35-preview.1/jiaojiao.yuanyuan-pet)，无需解压，在“设置 → 我的宠物”中导入并切换。安装包默认仍为圆圆。请同时保留附件中的原许可与[补充许可](docs/pet-packs/JIAOJIAO_ASSET_LICENSE_ADDENDUM.md)，素材适用与圆圆一致的个人非商业使用范围。
 - 升级前在“设置 → 数据备份”创建备份。回退旧版本时应配套恢复升级前的数据，不要直接让旧程序读取已迁移的新库。
 
 当前支持 Windows 10/11 x64。GitHub 社区稳定版以系统稳定、核心功能、数据迁移/备份、关键 E2E 和可重复构建为发布硬门，不把商业代码签名证书作为阻断条件。由于程序尚未购买商业代码签名证书，Windows 可能显示“未知发布者”或 SmartScreen 提示，Smart App Control/组织策略也可能直接阻止运行。请只从本项目的 GitHub Release 下载并核对 `SHA256SUMS.txt`，受限环境可从完全对应的源码标签自行构建。

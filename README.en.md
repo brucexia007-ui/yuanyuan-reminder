@@ -34,6 +34,8 @@ As of September 22, 2026, the latest stable [Release](../../releases/latest) is 
 
 Choose the Windows x64 installer or portable executable listed on the relevant Release and verify its `SHA256SUMS.txt`. The project is unsigned, so Windows SmartScreen may show an unknown-publisher warning. Back up data before upgrading; reverting to an older executable requires its matching pre-upgrade data backup.
 
+The same pre-release now includes the separate [Jiaojiao pet package](../../releases/download/yuanyuan-1.5.35-preview.1/jiaojiao.yuanyuan-pet). Import it through **Settings → My Pet** without extracting it, then switch to Jiaojiao. The installer still defaults to Yuanyuan. Keep the original license and [supplemental permission](docs/pet-packs/JIAOJIAO_ASSET_LICENSE_ADDENDUM.md); Jiaojiao uses the same personal, non-commercial asset terms as Yuanyuan.
+
 ## A calmer learning board
 
 ![Learning board in 1.5.35, using isolated demo data](docs/images/learning-board-v1.5.35.png)
