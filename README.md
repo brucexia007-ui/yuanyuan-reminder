@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="../../releases/latest"><strong>下载已发布版本</strong></a>
+  <a href="../../releases/tag/yuanyuan-1.5.35-preview.1"><strong>下载 1.5.35 预览版</strong></a>
   · <a href="docs/CUSTOMIZE_YOUR_PET.md">换成自己的宠物</a>
   · <a href="README.en.md">English</a>
 </p>
@@ -34,7 +34,7 @@
 - **逗猫棒**：恢复原来的八方向伸爪、挥爪和收回动作，跟随拖动方向，松手后恢复。
 - **本地数据**：更换宠物保留共享学习进度与设置，更新前可完整备份。
 
-1.5.35 已通过本地完整校验、Rust 测试和生产构建，并在维护者本机安装；用户反馈人工核查正常。本轮已取消新的 24 小时观察，不将未执行的观察记为通过。稳定版发布验收仍为 `PENDING`；源码合并不等于已经发布同版本安装包。版本与原始安装器绑定见[交付说明](docs/release/UNIFIED_1_5_35_GITHUB_HANDOFF.md)，近期变化见[更新日志](CHANGELOG.md)。
+1.5.35 已通过本地完整校验、Rust 测试和生产构建，并在维护者本机安装；用户反馈人工核查正常。本轮已取消新的 24 小时观察，不将未执行的观察记为通过。稳定版发布验收仍为 `PENDING`；已发布 [1.5.35 Preview 1 安装包](../../releases/tag/yuanyuan-1.5.35-preview.1)，作为预览版提供下载，不标记为稳定版。版本与原始安装器绑定见[交付说明](docs/release/UNIFIED_1_5_35_GITHUB_HANDOFF.md)，近期变化见[更新日志](CHANGELOG.md)。
 
 ## 圆圆会陪你做什么
 
@@ -145,7 +145,7 @@
 请在 [Releases](../../releases/latest) 页面按该版本说明选择安装版或便携版，并核对附件与 `SHA256SUMS.txt`。截至 2026-09-22，最新正式 Release 为 **v1.3.2**，并非当前 **1.5.35 源码**；另有独立饺饺预览版，不要混作圆圆统一主程序更新。
 
 - 安装版适合长期使用；便携版可直接运行，文件名以对应 Release 附件为准。
-- 1.5.35 尚未提供正式 Release 下载，需要时可按下方步骤从源码构建。
+- 1.5.35 已提供 [Preview 1 预览安装包](../../releases/tag/yuanyuan-1.5.35-preview.1)，尚未发布正式稳定版；需要时也可从源码构建。
 - 升级前在“设置 → 数据备份”创建备份。回退旧版本时应配套恢复升级前的数据，不要直接让旧程序读取已迁移的新库。
 
 当前支持 Windows 10/11 x64。GitHub 社区稳定版以系统稳定、核心功能、数据迁移/备份、关键 E2E 和可重复构建为发布硬门，不把商业代码签名证书作为阻断条件。由于程序尚未购买商业代码签名证书，Windows 可能显示“未知发布者”或 SmartScreen 提示，Smart App Control/组织策略也可能直接阻止运行。请只从本项目的 GitHub Release 下载并核对 `SHA256SUMS.txt`，受限环境可从完全对应的源码标签自行构建。

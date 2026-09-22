@@ -2,7 +2,7 @@
 
 An offline Windows desktop pet that helps with hydration, tasks, focus sessions, breaks, and healthy movement — while still acting like a playful cat.
 
-[Download a published release](../../releases/latest) · [Customize your pet](docs/CUSTOMIZE_YOUR_PET.md) · [中文](README.md)
+[Download 1.5.35 Preview 1](../../releases/tag/yuanyuan-1.5.35-preview.1) · [Customize your pet](docs/CUSTOMIZE_YOUR_PET.md) · [中文](README.md)
 
 ![Yuanyuan showing a prominent reminder](docs/images/yuanyuan-alert.jpg)
 
@@ -14,7 +14,7 @@ One Yuanyuan application now combines reminders, learning, and independently imp
 - Yuanyuan stays still while you read. After one minute without an answer, she makes at most one brief curious gesture per question. Answer feedback still animates.
 - The wand interaction restores the original eight-direction reach, swipe, and return poses.
 
-Local verification, Rust tests, and the production build passed. Version 1.5.35 is installed on the maintainer's computer, and the user reported normal behavior after manual review. The user removed the new 24-hour observation from this round; no completed endurance run is claimed. Stable release acceptance remains `PENDING`. A source merge does not publish an installer. See the [source and installer handoff](docs/release/UNIFIED_1_5_35_GITHUB_HANDOFF.md) and [changelog](CHANGELOG.md).
+Local verification, Rust tests, and the production build passed. Version 1.5.35 is installed on the maintainer's computer, and the user reported normal behavior after manual review. The user removed the new 24-hour observation from this round; no completed endurance run is claimed. Stable release acceptance remains `PENDING`. The [1.5.35 Preview 1 installer](../../releases/tag/yuanyuan-1.5.35-preview.1) is now available as a pre-release, not a stable release. See the [source and installer handoff](docs/release/UNIFIED_1_5_35_GITHUB_HANDOFF.md) and [changelog](CHANGELOG.md).
 
 ## What Yuanyuan does
 
@@ -30,7 +30,7 @@ Local verification, Rust tests, and the production build passed. Version 1.5.35 
 
 ## Download
 
-As of September 22, 2026, the latest stable [Release](../../releases/latest) is **v1.3.2**, while this source is **1.5.35**. The separate Jiaojiao preview is not an update to the unified Yuanyuan application. Version 1.5.35 has no official Release download yet; you can build it from source below.
+As of September 22, 2026, the latest stable [Release](../../releases/latest) is **v1.3.2**, while this source is **1.5.35**. The separate Jiaojiao preview is not an update to the unified Yuanyuan application. Version 1.5.35 is available as [Preview 1](../../releases/tag/yuanyuan-1.5.35-preview.1); it is not yet a stable release. You can also build it from source below.
 
 Choose the Windows x64 installer or portable executable listed on the relevant Release and verify its `SHA256SUMS.txt`. The project is unsigned, so Windows SmartScreen may show an unknown-publisher warning. Back up data before upgrading; reverting to an older executable requires its matching pre-upgrade data backup.
 
