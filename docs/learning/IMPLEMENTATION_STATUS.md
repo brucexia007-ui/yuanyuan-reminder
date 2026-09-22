@@ -1,20 +1,22 @@
 # 学习模块实施状态
 
-日期：2026-08-28<br>
-基线：饺饺提醒统一产品 v1.5.7 开发态（真实社区稳定验收仍独立保持 pending）<br>
-状态：学习能力已进入统一产品，自动学习邀请仍默认关闭，稳定版不捆绑个人学习内容。阶段 0 的 REL-001/002 工程、全呈现方后端合同、强提醒、崩溃/事务回滚、原生菜单睡眠/唤醒、当前 150% DPI 窗口/辅助显示及真实标准系统模式/Narrator 并发核心 Windows 状态链已完成。20,000 卡真实 Tauri CSV 导入、事务中途取消、分页、1,000 次答案、数据库增长和统一备份恢复曾在 v1.5.4 开发态候选通过；正式发布只接受由同一严格门在最新干净提交上生成的 `sourceDirty=false` 证据。通用 `learning-pack v1` 的工程合同、严格校验、后台进度、preview/confirm、文件身份绑定、同包差异预览与原子增量更新已经实现；GEN-000 的具名签字、真实候选规模门和 PACK 发布批准仍为 pending，不能由代码完成状态代签。
+2026-09-13 更新：1.5.28 本地候选已接入通用知识包（learning-pack v1），支持声明的选择题、回忆题、导入进度与取消、更新预览及原生完整导出；学习库独立从第 7 版迁移到第 8 版。主库与学习库继续使用 `yuanyuan-reminder.sqlite3` 和 `yuanyuan-learning.sqlite3`，宠物包共用设置与进度。以下 2026-08-27 及更早的结论作为历史记录保留，不替代 1.5.28 的验收。当前原生播放、系统缩放与安装升级/回退门仍待完成，详见 [本轮验收边界](../unified/UNIFIED_1_5_28_CANDIDATE.md)。
+
+日期：2026-08-27<br>
+基线：圆圆提醒统一产品 v1.5.4 候选<br>
+状态：学习能力已进入统一产品，自动学习邀请仍默认关闭，稳定版不捆绑个人学习内容。阶段 0 的 REL-001/002 工程、全呈现方后端合同、强提醒、崩溃/事务回滚、原生菜单睡眠/唤醒、当前 150% DPI 窗口/辅助显示及真实标准系统模式/Narrator 并发核心 Windows 状态链已完成。20,000 卡真实 Tauri CSV 导入、事务中途取消、分页、1,000 次答案、数据库增长和统一备份恢复已在 v1.5.4 开发态候选通过；正式发布只接受由同一严格门在最新干净提交上生成的 `sourceDirty=false` 证据。GEN-000/PACK-001 的通用内容包研究未冻结，不属于“不捆绑内容、由用户自行导入”的本轮稳定版范围。
 
 本文件第 1—7 节记录统一产品内英语学习模块的实现清单；`STAGE_0_1_COMPLETION_AUDIT.md` 保留早期 Preview 阶段的历史判定。个人构建可内置本地词库，但不得作为稳定版或通用内容包发布结论。
 
 ## 1. 已落地的用户闭环
 
 ```text
-用户导入 learning-pack v1 / CSV / 应用原生 JSON
+用户导入 CSV / 圆圆原生 JSON
   → 只读预览与风险校验
   → 用户确认后原子写入独立学习库
   → 手动开始，或明确开启“专注结束邀请”
   → 到期卡优先、新卡受每日额度限制
-  → 饺饺拉出小黑板 → 用户选择中文释义 → 饺饺按绿色勾或红色叉
+  → 圆圆拉出小黑板 → 用户选择中文释义 → 圆圆按绿色勾或红色叉
   → 答对/答错映射为 FSRS-6 Good/Again 并原子落库
   → 本轮错题在原计划卡后回看一次，不重复调度
   → 首页显示到期、新卡、本周复习和相对稳定量
@@ -28,22 +30,20 @@
 | 层 | 主要位置 | 当前职责 |
 | --- | --- | --- |
 | 构建边界 | `src-tauri/Cargo.toml`、`vite.config.ts` | 统一产品默认启用 Cargo `learning` feature 和学习前端；`--no-default-features` 仅保留兼容/隔离验证 |
-| 学习后端 | `src-tauri/src/learning/` | 独立数据库、通用包/CSV/原生数据导入、FSRS 调度、资格引擎、Windows 适宜性、运行时协调 |
+| 学习后端 | `src-tauri/src/learning/` | 独立数据库、导入、FSRS 调度、资格引擎、Windows 适宜性、运行时协调 |
 | IPC | `src-tauri/src/commands.rs`、`src/lib/backend.ts`、`src/types.ts` | 版本化 DTO、会话命令、邀请命令、导入导出和删除命令 |
 | 学习界面 | `src/learning/` | 首页、小黑板选择题、错题/已学列表、设置、导入确认、数据管理和浏览器内存演示 |
 | 宠物表达 | `src/pet/`、`src-tauri/src/companion_core.rs` | 合上学习卡、打开/忽略/今日暂停、非语言递卡与抢占清理 |
 | 注意力预算 | `src-tauri/migrations/012_learning_invitation_attention.sql`、`repository.rs` | 主库只保存无内容 claim；学习事件保存在独立学习库 |
-| 内容包合同 | `customization/learning/`、`learning/pack.rs` | 公共 Schema、Agent 提示、模板、权利与预算校验、生产解析适配器和进度事件 |
-| 边界验证 | `verify_learning_enabled_bundle.mjs`、`verify_unified_product_boundary.mjs`、fragment/pack boundary verifier | 验证统一包包含学习命令和独立前端分包，同时不混入研究材料、Agent 工具或个人内容 |
+| 边界验证 | `verify_learning_enabled_bundle.mjs`、`verify_unified_product_boundary.mjs`、fragment/pack-spike verifier | 验证统一包包含学习命令和独立前端分包，同时不混入研究材料、解析 spike 或个人内容 |
 
 ## 3. 数据合同
 
-- 数据库：`jiaojiao-learning.sqlite3`，当前内部 schema v8；与 `jiaojiao-reminder.sqlite3` 提醒主库保持物理隔离，但会作为同一可见备份项的配套文件进入统一备份和恢复。旧的提醒单库备份恢复时保留当前学习数据。
+- 数据库：`yuanyuan-learning.sqlite3`，当前内部 schema v6 会话部分；与提醒主库保持物理隔离，但会作为同一可见备份项的配套文件进入统一备份和恢复。旧的提醒单库备份恢复时保留当前学习数据。
 - SQLite：`foreign_keys=ON`、WAL、`synchronous=NORMAL`、`busy_timeout=2000ms`、打开时 `quick_check`。
 - 内容来源：当前仅用户导入；没有生产内置词包。
 - CSV：UTF-8、普通文件，最大 25 MiB/20,000 行，并限制字段和文本长度；读取、解析和确认写入支持协作取消，确认阶段取消会回滚整个事务；稳定卡 ID 来自 `user.local + 规范化 headword` 的 SHA-256。
 - 原生 JSON：格式标识 `yuanyuan.learning.export`、schema v1；可以完整恢复内容、调度、会话、复习日志、客观题记录和错题回看队列，并兼容旧导出。
-- 通用 JSON：文件名以 `.yuanyuan-learning.json` 或 `.learning-pack.json` 结尾；25 MiB/20,000 卡；权利未知时拒绝，个人自用内容禁止声明可再分发；预览 token 有效 10 分钟且单次消费，确认前重新读取并绑定文件 SHA-256。更新只重置答案或 `scheduleEpoch` 变化的卡，缺失卡转入停用归档，全部写入在 `BEGIN IMMEDIATE` 事务和外键检查通过后一次提交。
 - 导出：完整 JSON、卡片 CSV、复习记录 CSV；新文件原子写入、不覆盖现有文件、CSV 公式前缀转义。
 - 删除：清空进度会保留内容与设置；彻底删除会移除学习库及 WAL/SHM 后创建空库，均不触碰提醒主库。
 
@@ -51,7 +51,7 @@
 
 默认模式为 `manual_only`。用户可以主动改为低频自动模式，但阶段 2A 只有 `focus_finished` 一个触发源；定时时段设置在数据结构中保留为不可开启状态。
 
-自动邀请必须依次通过：用户明确同意、存在到期内容、未暂停、冷却和小时/日预算、没有活跃学习会话、饺饺当前可展示主动表达、Windows 明确允许通知、非锁屏/演示/全屏。未知系统状态或任何探测失败都抑制邀请。
+自动邀请必须依次通过：用户明确同意、存在到期内容、未暂停、冷却和小时/日预算、没有活跃学习会话、圆圆当前可展示主动表达、Windows 明确允许通知、非锁屏/演示/全屏。未知系统状态或任何探测失败都抑制邀请。
 
 展示前由主库 `BEGIN IMMEDIATE` 原子取得无内容 claim；若后续学习库、表达导演或展示失败，只补偿尚未展示的同一 claim。接受邀请时，学习会话与 `engaged` 事件在学习库同一事务提交。
 
@@ -75,7 +75,6 @@
 - 商业背词应用私有格式兼容；
 - 定时时段、空闲检测、摄像头/麦克风感知；
 - 以调度稳定度声明“已掌握”或“保证提分”。
-- 自动联网更新、远程内容商店、压缩可执行内容包，以及将私人内容写入 Git、安装包或公开 Release。
 
 ## 7. 开发与构建入口
 
@@ -96,7 +95,7 @@ cargo test --locked -p yuanyuan-reminder --lib --no-default-features
 # 干净提交上的真实 Tauri 规模门
 cd ..
 npm.cmd run runtime:qa:learning:build
-npm.cmd run release:community:learning:gate -- -SourceBindingPath "<release:community:runtime-baseline:prepare 生成的候选绑定清单>"
+npm.cmd run release:community:learning:gate
 ```
 
-开发测量可使用受排他保护的 `runtime:qa:learning:build`；正式规模门不得以该开发构建代替受控候选，必须复用 learning-on 24 小时准备器生成的干净源码绑定。统一产品可以发布用户自行导入内容的学习功能，但不得捆绑个人词库。正式发布仍需 `QA_MATRIX.md` 中的干净证据、全量回归、安装态 E2E、24 小时稳定运行和人工 Go/No-Go 全部关闭。
+统一产品可以发布用户自行导入内容的学习功能，但不得捆绑个人词库。正式发布仍需 `QA_MATRIX.md` 中的干净证据、全量回归、安装态 E2E、24 小时稳定运行和人工 Go/No-Go 全部关闭。

@@ -12,7 +12,7 @@ import {
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const policyBytes = await readFile(
-  path.join(projectRoot, "docs", "release", "COMMUNITY_STABLE_RELEASE_POLICY_V1.json"),
+  path.join(projectRoot, "docs", "release", "COMMUNITY_STABLE_RELEASE_POLICY_V2.json"),
 );
 const policy = JSON.parse(policyBytes.toString("utf8"));
 const brand = JSON.parse(await readFile(path.join(projectRoot, "product-brand.json"), "utf8"));
@@ -70,12 +70,20 @@ test("builds source-bound assets, checksums, and mandatory unsigned-download gui
     policyBytes,
     portableBytes: Buffer.from("portable"),
     installerBytes: Buffer.from("installer"),
+    petPackBytes: Buffer.from("pet-pack"),
+    sourceLicenseBytes: Buffer.from("original-license"),
+    supplementalPermissionBytes: Buffer.from("signed one-release permission"),
+    sourceInfoBytes: Buffer.from("source-summary"),
   });
   assert.deepEqual(
     bundle.artifacts.map((artifact) => artifact.fileName),
     [
       `${expectedProduct.portableBaseName}_1.5.2_windows-x64-portable.exe`,
       `${expectedProduct.installerBaseName}_1.5.2_x64-setup.exe`,
+      "饺饺.yuanyuan-pet",
+      "JIAOJIAO_STANDALONE_ASSETS_LICENSE.md",
+      "JIAOJIAO_RELEASE_PERMISSION_SUPPLEMENT.md",
+      "PET_PACK_SOURCE.md",
     ],
   );
   assert.match(bundle.checksums, /^[0-9a-f]{64}  /mu);
@@ -83,6 +91,8 @@ test("builds source-bound assets, checksums, and mandatory unsigned-download gui
   assert.match(bundle.notes, /未知发布者/u);
   assert.match(bundle.notes, /Smart App Control/u);
   assert.match(bundle.notes, /SHA256SUMS\.txt/u);
+  assert.match(bundle.notes, /完整应用数据目录/u);
+  assert.match(bundle.notes, /真实 1\.3\.2 用户历史数据未取得、未验证/u);
   assert.equal(bundle.manifest.codeSigning.required, false);
   assert.equal(bundle.manifest.source.commit, "a".repeat(40));
   assert.doesNotMatch(JSON.stringify(bundle.manifest), /[A-Z]:\\/u);
@@ -98,6 +108,10 @@ test("rejects development builds, tag drift, and malformed source identity", () 
     policyBytes,
     portableBytes: Buffer.from("portable"),
     installerBytes: Buffer.from("installer"),
+    petPackBytes: Buffer.from("pet-pack"),
+    sourceLicenseBytes: Buffer.from("original-license"),
+    supplementalPermissionBytes: Buffer.from("signed one-release permission"),
+    sourceInfoBytes: Buffer.from("source-summary"),
   };
   assert.throws(
     () => buildCommunityReleaseBundle({ ...input, authority: { ...authority, channel: "rc" } }),
@@ -129,12 +143,13 @@ test("keeps the GitHub workflow bound to a stable main tag and generated disclos
   assert.match(workflow, /merge-base --is-ancestor/u);
   assert.match(workflow, /COMMUNITY_SOURCE_COMMIT/u);
   assert.match(workflow, /release:community:acceptance/u);
-  assert.match(workflow, /release:community:artifact-binding/u);
+  assert.doesNotMatch(workflow, /release:community:artifact-binding/u);
   assert.match(workflow, /COMMUNITY_PRODUCT_NAME/u);
   assert.match(workflow, /--release-commit\s+"\$env:COMMUNITY_SOURCE_COMMIT"/u);
   assert.match(workflow, /release build changed tracked source/u);
-  assert.match(workflow, /release:community:prepare/u);
+  assert.match(workflow, /prepare_community_release_draft\.mjs/u);
   assert.match(workflow, /--commit\s+"\$env:COMMUNITY_SOURCE_COMMIT"/u);
-  assert.match(workflow, /--verify-tag --notes-file/u);
+  assert.match(workflow, /--draft --verify-tag --notes-file/u);
+  assert.doesNotMatch(workflow, /gh release create[^\n]*release-assets/u);
   assert.doesNotMatch(workflow, /--title\s+"圆圆提醒/u);
 });

@@ -4,9 +4,35 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  validateV2RuntimeWaiver,
   validateRuntimeBaselineCandidateManifest,
   validateRuntimeBaselineSourceBindingManifest,
 } from "./verify_community_stable_runtime_baseline_candidate.mjs";
+
+test("V2 runtime waiver accepts only a failed raw gate with exact event failures and full duration", () => {
+  const report = {
+    request: { acceptanceGateRequested: true },
+    smokePassed: true,
+    ready: false,
+    acceptanceGate: { passed: false, failures: ["power_suspend_resume_pair_missing", "session_lock_unlock_pair_missing"] },
+    transitions: { powerSuspendResumeObserved: false, sessionLockUnlockObserved: false },
+    clock: { wallClockObservedSeconds: 86_400, activeSampleCoverageSeconds: 72_000 },
+    isolation: { applicationErrorCount: 0 },
+    storage: { formalUserFilesWritten: 0 },
+  };
+  assert.equal(validateV2RuntimeWaiver(report), true);
+  for (const mutate of [
+    (value) => { value.acceptanceGate.passed = true; },
+    (value) => { value.ready = true; },
+    (value) => { value.acceptanceGate.failures.push("cpu_limit_exceeded"); },
+    (value) => { value.clock.activeSampleCoverageSeconds = 71_999; },
+    (value) => { value.isolation.applicationErrorCount = 1; },
+  ]) {
+    const invalid = structuredClone(report);
+    mutate(invalid);
+    assert.throws(() => validateV2RuntimeWaiver(invalid));
+  }
+});
 
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex").toUpperCase();
 const testedCommit = "a".repeat(40);

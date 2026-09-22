@@ -67,6 +67,20 @@ pub(super) fn build_question(
     let declared_answer = answer_text.as_deref().unwrap_or(&correct_meaning);
     let target_pos: Vec<String> = serde_json::from_str(&target_pos_json)?;
     let declared_choices: Vec<String> = serde_json::from_str(&choices_json)?;
+    if exercise_kind == "recall" {
+        return Ok(LearningQuestionDto {
+            schema_version: 1,
+            question_id,
+            kind: LearningQuestionKind::RecallFallback,
+            card_id: card.card_id.clone(),
+            headword: card.headword.clone(),
+            phonetic: card.phonetic.clone(),
+            part_of_speech: card.part_of_speech.clone(),
+            stage: card.stage,
+            is_remediation,
+            options: Vec::new(),
+        });
+    }
     if exercise_kind == "choice"
         && (2..=MAX_OPTIONS).contains(&declared_choices.len())
         && declared_choices

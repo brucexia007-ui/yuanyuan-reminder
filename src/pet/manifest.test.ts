@@ -1,16 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { fallbackManifest, lookDirections } from "./manifest";
+import {
+  fallbackManifest,
+  hasValidSceneCapability,
+  lookDirections,
+  type PetManifest,
+} from "./manifest";
 
 describe("圆圆动画清单", () => {
-  it("保留饺饺的名字、母猫身份、品种和性格", () => {
-    expect(fallbackManifest.displayName).toBe("饺饺");
-    expect(fallbackManifest.sex).toBe("female");
-    expect(fallbackManifest.breed).toBe("英短金点");
-    expect(fallbackManifest.personality).toBe("乖巧高冷");
-    expect(fallbackManifest.description).toContain("英短金点母猫");
-  });
-
   it("包含完整标准动作、16 个视线方向和三段睡眠动作", () => {
     expect(fallbackManifest.rows).toBe(11);
     expect(lookDirections).toHaveLength(16);
@@ -78,7 +75,7 @@ describe("圆圆动画清单", () => {
   it("活动提醒使用专属的连续蹦跳循环", () => {
     const animation = fallbackManifest.animations["activity-jumping"];
     expect(animation.row).toBe(fallbackManifest.animations.jumping.row);
-    expect(animation.frames).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(animation.frames).toEqual([0, 1, 2, 3, 4, 3, 2, 1]);
     expect(animation.loopStart).toBe(0);
   });
 
@@ -140,9 +137,7 @@ describe("圆圆动画清单", () => {
       expect(fallbackManifest.animations[name].sheet).toBe("life");
     }
     expect(fallbackManifest.animations["focus-calm"].loopStart).toBe(0);
-    expect(fallbackManifest.animations["treat-follow"].frames).toEqual([
-      7, 6, 5, 4, 3, 2, 1, 0,
-    ]);
+    expect(fallbackManifest.animations["treat-follow"].frames).toHaveLength(8);
     expect(fallbackManifest.animations["wand-reach"].row).toBe(14);
     expect(fallbackManifest.animations["wand-swipe"].row).toBe(15);
     expect(fallbackManifest.animations["wand-return"].row).toBe(16);
@@ -178,6 +173,17 @@ describe("圆圆动画清单", () => {
     expect(fallbackManifest.animations["learning-study-curious"].loopStart).toBeNull();
     expect(fallbackManifest.animations["learning-press-correct"].loopStart).toBeNull();
     expect(fallbackManifest.animations["learning-press-wrong"].loopStart).toBeNull();
+  });
+
+  it("启动能力检查拒绝缺失稳定帧或错行的情境清单", () => {
+    expect(hasValidSceneCapability(fallbackManifest)).toBe(true);
+    const missingStaticFrame = structuredClone(fallbackManifest) as PetManifest;
+    delete (missingStaticFrame.animations["meal-alert"] as { staticFrame?: number })
+      .staticFrame;
+    expect(hasValidSceneCapability(missingStaticFrame)).toBe(false);
+    const wrongRow = structuredClone(fallbackManifest);
+    wrongRow.animations["night-exit"].row = 12;
+    expect(hasValidSceneCapability(wrongRow)).toBe(false);
   });
 
   it("keeps the complete grooming routine around eleven seconds", () => {

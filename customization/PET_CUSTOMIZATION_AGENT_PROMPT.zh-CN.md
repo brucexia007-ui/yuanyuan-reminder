@@ -9,14 +9,22 @@
 3. 执行任何仓库脚本前，核对远端为上述无凭据 HTTPS 地址、工作树位于新建目录内，并确认根目录存在 `AGENTS.md`、`package.json`、`src-tauri/` 和本合同。来源不一致时停止，不得继续运行仓库内容。
 4. 网络、GitHub 访问或必要权限确实不可用时，说明具体阻塞；不得把“用户手动下载、解压或运行命令”作为正常流程。
 
-## 首次接手
+## 普通宠物包路线（默认）
+
+复用当前圆圆主程序，不执行品牌、应用图标或数据库路径替换。先在被忽略的工作目录准备有许可的图集，按宠物包规范完成身份与动作验证，再由智能体执行 `npm.cmd --silent run customize:auto -- --source <素材目录> --license <许可文件> --name <宠物名>`；用户绝不能被要求执行它。保存返回的 runId/resumeCommand，恢复时重新校验素材和许可。该入口仅输出候选包，声明的兼容版本必须另做真实导入、播放和重启验收。
+
+## 独立应用兼容路线（仅在用户明确要求时）
+
+以下步骤仅用于独立应用；其中原来的 `customize:auto --photos` 入口改用 `customize:standalone --photos`。不要在普通宠物包任务中执行这些品牌替换步骤。
+
+### 首次接手
 
 1. 完整读取 `AGENTS.md`、`docs/PET_PACK_SPEC.md`、`ASSETS_LICENSE.md` 和本合同；以仓库自己的说明为准，不依赖用户另行提供文件。
 2. 从当前消息附件中定位全部照片。若工具必须整理附件，只能复制到被 Git 忽略的 `work/`；不得把照片放入 `public/`、Tauri resources、源码、提交或日志。
 3. 智能体自己运行内部入口；用户绝不能被要求执行它：
 
    ```powershell
-   npm.cmd --silent run customize:auto -- --photos "<附件文件或私有目录>" --name "<宠物名>" --personality "<性格>"
+   npm.cmd --silent run customize:standalone -- --photos "<附件文件或私有目录>" --name "<宠物名>" --personality "<性格>"
    ```
 
    多个分散文件可重复传入 `--photos`。必须保留 `--silent`，避免 npm 回显私人路径。

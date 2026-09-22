@@ -9,9 +9,10 @@ use crate::{
     companion_attention::{TerminalObservation, TERMINAL_AGGREGATION_WINDOW_MS},
     companion_core::{
         BasicSupportPath, CompanionExpressionSnapshot, ExpressionKey, ExpressionSignal,
+        WorkSceneStage,
     },
     error::{AppError, AppResult},
-    models::{BasicSupportSession, TodaySnapshot},
+    models::{BasicSupportSession, SceneRestSession, TodaySnapshot},
     presentation_arbiter::PresentationOwner,
     repository::{TaskWatchAttentionDeferral, SYSTEM_ACTIVITY_REMINDER_ID},
     state::AppState,
@@ -25,6 +26,7 @@ const TERMINAL_SUMMARY_SIGNAL_KEY: ExpressionKey = ExpressionKey::system(2);
 const FOCUS_FINISHED_SIGNAL_KEY: ExpressionKey = ExpressionKey::system(3);
 const BASIC_SUPPORT_SIGNAL_KEY: ExpressionKey = ExpressionKey::system(4);
 const REUNION_SIGNAL_KEY: ExpressionKey = ExpressionKey::system(5);
+const SCENE_REST_SIGNAL_KEY: ExpressionKey = ExpressionKey::system(8);
 #[cfg(feature = "learning")]
 const LEARNING_INVITATION_SIGNAL_KEY: ExpressionKey = ExpressionKey::system(6);
 #[cfg(feature = "learning")]
@@ -94,6 +96,7 @@ pub fn sync_local_occurrences(app: &AppHandle) -> AppResult<CompanionExpressionS
         app,
         desired_local_presentation_owner(&today),
         focus_active,
+        state.scene_rest.lock().is_some(),
         Utc::now().timestamp_millis(),
     )?;
     #[cfg(feature = "learning")]
@@ -150,6 +153,7 @@ pub fn sync_external_tasks(
     };
     let (mut desired, terminal_observations, due_terminal_summary, mut due_to_acknowledge) =
         external_task_signals(&candidates, &active_deferrals, &due_deferrals, now_unix_ms);
+    let task_work_stage = task_work_stage(app, &candidates, now_unix_ms)?;
     let support_active = state.basic_support.lock().is_some();
     let (suppress_terminal, terminal_summary) = {
         let mut repository = state.repository.lock();
@@ -192,8 +196,23 @@ pub fn sync_external_tasks(
             },
         ));
     }
-    let _task_watch_transition =
-        crate::presentation_runtime::reconcile_task_watch(app, !desired.is_empty(), now_unix_ms)?;
+    let task_attention = desired
+        .iter()
+        .any(|(_, signal)| matches!(signal, ExpressionSignal::TaskWaitingUser { .. }));
+    let focus_active = state
+        .repository
+        .lock()
+        .get_focus_state()?
+        .session
+        .is_some_and(|session| session.phase == "focus");
+    let _task_watch_transition = crate::presentation_runtime::reconcile_task_watch(
+        app,
+        !desired.is_empty(),
+        task_attention,
+        focus_active,
+        state.scene_rest.lock().is_some(),
+        now_unix_ms,
+    )?;
     #[cfg(feature = "learning")]
     if _task_watch_transition.preempted_learning_invitation {
         let pending = state.learning.lock().pending_invitation();
@@ -205,6 +224,7 @@ pub fn sync_external_tasks(
     let mut known_keys = state.companion_task_keys.lock();
     let mut director = state.companion_expression.lock();
     let previous_revision = director.snapshot().revision;
+    director.set_task_work_stage(task_work_stage);
     for removed in known_keys
         .difference(&desired_keys)
         .copied()
@@ -346,7 +366,20 @@ fn clear_external_tasks(app: &AppHandle) -> AppResult<CompanionExpressionSnapsho
     if snapshot.revision != previous_revision {
         emit(app, &snapshot)?;
     }
-    crate::presentation_runtime::reconcile_task_watch(app, false, Utc::now().timestamp_millis())?;
+    state.work_timing.lock().task_started_at_unix_ms.clear();
+    crate::presentation_runtime::reconcile_task_watch(
+        app,
+        false,
+        false,
+        state
+            .repository
+            .lock()
+            .get_focus_state()?
+            .session
+            .is_some_and(|session| session.phase == "focus"),
+        state.scene_rest.lock().is_some(),
+        Utc::now().timestamp_millis(),
+    )?;
     Ok(snapshot)
 }
 
@@ -481,6 +514,60 @@ fn external_task_signals(
     (signals, terminals, due_terminal_summary, due_to_acknowledge)
 }
 
+fn task_work_stage(
+    app: &AppHandle,
+    candidates: &[TaskExpressionCandidate],
+    now_unix_ms: i64,
+) -> AppResult<WorkSceneStage> {
+    let interval_minutes = app
+        .state::<AppState>()
+        .repository
+        .lock()
+        .get_settings()?
+        .activity_interval_minutes;
+    let active = candidates
+        .iter()
+        .filter(|candidate| {
+            candidate.state == yuanyuan_protocol::TaskState::Running
+                && candidate.updated_at_unix_ms <= now_unix_ms
+                && now_unix_ms.saturating_sub(candidate.updated_at_unix_ms)
+                    <= MAX_ACTIVE_TASK_AGE_MS
+        })
+        .map(|candidate| candidate.task_digest)
+        .collect::<HashSet<_>>();
+    let state = app.state::<AppState>();
+    let mut timing = state.work_timing.lock();
+    timing
+        .task_started_at_unix_ms
+        .retain(|digest, _| active.contains(digest));
+    for digest in &active {
+        let recovered_at = timing.recovered_at_unix_ms;
+        timing
+            .task_started_at_unix_ms
+            .entry(*digest)
+            .or_insert(now_unix_ms.max(recovered_at));
+    }
+    let elapsed = timing
+        .task_started_at_unix_ms
+        .values()
+        .map(|started_at| now_unix_ms.saturating_sub(*started_at))
+        .max()
+        .unwrap_or_default();
+    Ok(work_scene_stage(elapsed, interval_minutes))
+}
+
+fn work_scene_stage(elapsed_ms: i64, interval_minutes: u32) -> WorkSceneStage {
+    let fatigue_point_ms = i64::from(interval_minutes.clamp(20, 60)) * 60 * 1_000;
+    let transition_at_ms = fatigue_point_ms.saturating_mul(4) / 5;
+    if elapsed_ms >= fatigue_point_ms {
+        WorkSceneStage::Fatigued
+    } else if elapsed_ms >= transition_at_ms {
+        WorkSceneStage::Transition
+    } else {
+        WorkSceneStage::Fresh
+    }
+}
+
 pub fn defer_task_watch_attention(
     app: &AppHandle,
     source: &str,
@@ -561,9 +648,14 @@ fn desired_local_signals(today: &TodaySnapshot) -> HashMap<ExpressionKey, Expres
         .occurrences
         .iter()
         .find(|item| active(&item.status) && item.category == "water");
+    let meal = today
+        .occurrences
+        .iter()
+        .find(|item| active(&item.status) && item.category == "meal");
     let work = today.occurrences.iter().find(|item| {
         active(&item.status)
             && item.category != "water"
+            && item.category != "meal"
             && item.reminder_id != SYSTEM_ACTIVITY_REMINDER_ID
     });
     let activity = today
@@ -573,6 +665,7 @@ fn desired_local_signals(today: &TodaySnapshot) -> HashMap<ExpressionKey, Expres
 
     for (occurrence, signal) in [
         water.map(|item| (item, ExpressionSignal::StrongWaterReminder)),
+        meal.map(|item| (item, ExpressionSignal::DueMealReminder)),
         work.map(|item| (item, ExpressionSignal::DueWorkReminder)),
         activity.map(|item| (item, ExpressionSignal::ActivityReminder)),
     ]
@@ -588,19 +681,27 @@ fn desired_local_signals(today: &TodaySnapshot) -> HashMap<ExpressionKey, Expres
 
 fn desired_local_presentation_owner(today: &TodaySnapshot) -> Option<PresentationOwner> {
     let active = |status: &str| matches!(status, "pending" | "overdue");
-    if today.occurrences.iter().any(|item| {
-        active(&item.status)
-            && item.category != "water"
-            && item.reminder_id != SYSTEM_ACTIVITY_REMINDER_ID
-    }) {
-        return Some(PresentationOwner::StrongReminder);
-    }
     if today
         .occurrences
         .iter()
         .any(|item| active(&item.status) && item.category == "water")
     {
         return Some(PresentationOwner::WaterReminder);
+    }
+    if today
+        .occurrences
+        .iter()
+        .any(|item| active(&item.status) && item.category == "meal")
+    {
+        return Some(PresentationOwner::MealReminder);
+    }
+    if today.occurrences.iter().any(|item| {
+        active(&item.status)
+            && item.category != "water"
+            && item.category != "meal"
+            && item.reminder_id != SYSTEM_ACTIVITY_REMINDER_ID
+    }) {
+        return Some(PresentationOwner::StrongReminder);
     }
     today
         .occurrences
@@ -619,19 +720,66 @@ pub fn set_focus_active(app: &AppHandle, active: bool) -> AppResult<CompanionExp
         app,
         desired_local_presentation_owner(&today),
         active,
+        app.state::<AppState>().scene_rest.lock().is_some(),
         Utc::now().timestamp_millis(),
     )?;
     #[cfg(feature = "learning")]
     if _transition.preempted_learning_session || _transition.preempted_learning_invitation {
         preempt_learning_for_high_priority(app, "focus_started", Utc::now().timestamp_millis())?;
     }
-    let snapshot = app
-        .state::<AppState>()
-        .companion_expression
-        .lock()
-        .set_focus_active(active);
+    let state = app.state::<AppState>();
+    let mut director = state.companion_expression.lock();
+    director.set_focus_active(active);
+    if !active {
+        director.set_focus_work_stage(WorkSceneStage::Fresh);
+    }
+    let snapshot = director.snapshot();
+    drop(director);
     emit(app, &snapshot)?;
+    if active {
+        refresh_focus_work_stage(app, Utc::now().timestamp_millis())?;
+    }
     Ok(snapshot)
+}
+
+pub fn refresh_focus_work_stage(
+    app: &AppHandle,
+    now_unix_ms: i64,
+) -> AppResult<CompanionExpressionSnapshot> {
+    let state = app.state::<AppState>();
+    let (focus, interval_minutes) = {
+        let repository = state.repository.lock();
+        (
+            repository.get_focus_state()?.session,
+            repository.get_settings()?.activity_interval_minutes,
+        )
+    };
+    let stage = focus
+        .filter(|session| session.phase == "focus")
+        .and_then(|session| chrono::DateTime::parse_from_rfc3339(&session.started_at).ok())
+        .map(|started_at| {
+            let recovered_at = state.work_timing.lock().recovered_at_unix_ms;
+            let baseline = started_at.timestamp_millis().max(recovered_at);
+            work_scene_stage(now_unix_ms.saturating_sub(baseline), interval_minutes)
+        })
+        .unwrap_or(WorkSceneStage::Fresh);
+    let mut director = state.companion_expression.lock();
+    let previous_revision = director.snapshot().revision;
+    let snapshot = director.set_focus_work_stage(stage);
+    drop(director);
+    if snapshot.revision != previous_revision {
+        emit(app, &snapshot)?;
+    }
+    Ok(snapshot)
+}
+
+pub fn mark_work_recovered(app: &AppHandle, now_unix_ms: i64) -> AppResult<()> {
+    app.state::<AppState>()
+        .work_timing
+        .lock()
+        .mark_recovered(now_unix_ms);
+    refresh_focus_work_stage(app, now_unix_ms)?;
+    Ok(())
 }
 
 pub fn try_present_focus_finished_ritual(app: &AppHandle, now_unix_ms: i64) -> AppResult<bool> {
@@ -690,16 +838,7 @@ fn try_present_learning_invitation(
         None,
         now_unix_ms,
     )?;
-    if let crate::learning::LearningInvitationDecision::Suppressed(reason) =
-        state.learning.lock().evaluate_invitation(&context)
-    {
-        state.learning.lock().record_invitation_event(
-            &invitation_id,
-            trigger_source,
-            "suppressed",
-            Some(reason),
-            now_unix_ms,
-        )?;
+    if crate::learning::record_invitation_suppression(&state.learning, &context, &invitation_id)? {
         return Ok(false);
     }
 
@@ -712,16 +851,11 @@ fn try_present_learning_invitation(
         now_unix_ms,
         &local_day,
     )?;
-    if let crate::learning::LearningInvitationDecision::Suppressed(reason) =
-        state.learning.lock().evaluate_invitation(&final_context)
-    {
-        state.learning.lock().record_invitation_event(
-            &invitation_id,
-            trigger_source,
-            "suppressed",
-            Some(reason),
-            now_unix_ms,
-        )?;
+    if crate::learning::record_invitation_suppression(
+        &state.learning,
+        &final_context,
+        &invitation_id,
+    )? {
         return Ok(false);
     }
     state.learning.lock().record_invitation_event(
@@ -747,12 +881,13 @@ fn try_present_learning_invitation(
         return Ok(false);
     };
 
-    let invitation = match state.learning.lock().begin_invitation(
+    let invitation_result = state.learning.lock().begin_invitation(
         invitation_id.clone(),
         trigger_source,
         final_context.due_review_count,
         now_unix_ms,
-    ) {
+    );
+    let invitation = match invitation_result {
         Ok(value) => value,
         Err(error) => {
             let _ = state
@@ -762,13 +897,15 @@ fn try_present_learning_invitation(
             return Err(error);
         }
     };
-    if let Err(error) = state.learning.lock().record_invitation_event(
+    // End the learning guard before error handling may withdraw the invitation.
+    let claimed_event_result = state.learning.lock().record_invitation_event(
         &invitation_id,
         trigger_source,
         "claimed",
         None,
         now_unix_ms,
-    ) {
+    );
+    if let Err(error) = claimed_event_result {
         let _ = state
             .repository
             .lock()
@@ -823,13 +960,14 @@ fn try_present_learning_invitation(
             )
             .map_err(|_| AppError::Validation("companion expression capacity reached".into()))?
     };
-    if let Err(error) = state.learning.lock().record_invitation_event(
+    let presented_event_result = state.learning.lock().record_invitation_event(
         &invitation_id,
         trigger_source,
         "presented",
         None,
         now_unix_ms,
-    ) {
+    );
+    if let Err(error) = presented_event_result {
         rollback_unpresented_learning_invitation(app, &invitation_id, &claim, now_unix_ms);
         return Err(error);
     }
@@ -989,6 +1127,7 @@ pub fn set_learning_session_active(
                 "a higher priority presentation is active".into(),
             ));
         }
+        stop_scene_rest(app)?;
         if transition.preempted_learning_invitation {
             let pending = app.state::<AppState>().learning.lock().pending_invitation();
             if let Some(pending) = pending {
@@ -1226,6 +1365,91 @@ pub fn stop_basic_support(app: &AppHandle) -> AppResult<bool> {
     finish_basic_support_if_current(app, None)
 }
 
+pub fn start_scene_rest(app: &AppHandle, duration_minutes: u32) -> AppResult<SceneRestSession> {
+    if ![5, 10, 20].contains(&duration_minutes) {
+        return Err(AppError::Validation(
+            "scene rest duration must be 5, 10, or 20 minutes".into(),
+        ));
+    }
+    let state = app.state::<AppState>();
+    let now = Utc::now();
+    if !crate::presentation_runtime::acquire_scene_rest(
+        app,
+        now.timestamp_millis(),
+        (now + chrono::Duration::minutes(i64::from(duration_minutes))).timestamp_millis(),
+    )? {
+        return Err(AppError::Validation(
+            "a higher priority companion presentation is active".into(),
+        ));
+    }
+    if let Err(error) = stop_basic_support(app) {
+        let _ = crate::presentation_runtime::release_scene_rest(app, Utc::now().timestamp_millis());
+        return Err(error);
+    }
+    let session = SceneRestSession {
+        id: uuid::Uuid::new_v4().to_string(),
+        duration_minutes,
+        started_at: now.to_rfc3339(),
+        ends_at: (now + chrono::Duration::minutes(i64::from(duration_minutes))).to_rfc3339(),
+    };
+    let mut director = state.companion_expression.lock();
+    let previous_revision = director.snapshot().revision;
+    let snapshot = match director.upsert(SCENE_REST_SIGNAL_KEY, ExpressionSignal::SceneRest) {
+        Ok(snapshot) => snapshot,
+        Err(_) => {
+            drop(director);
+            crate::presentation_runtime::release_scene_rest(app, Utc::now().timestamp_millis())?;
+            return Err(AppError::Validation(
+                "companion expression capacity reached".into(),
+            ));
+        }
+    };
+    drop(director);
+    *state.scene_rest.lock() = Some(session.clone());
+    if snapshot.revision != previous_revision {
+        emit(app, &snapshot)?;
+    }
+    app.emit("scene-rest-updated", Some(session.clone()))
+        .map_err(|error| AppError::Window(error.to_string()))?;
+
+    let app = app.clone();
+    let expected_id = session.id.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(u64::from(duration_minutes) * 60)).await;
+        let _ = finish_scene_rest_if_current(&app, Some(&expected_id));
+    });
+    Ok(session)
+}
+
+pub fn stop_scene_rest(app: &AppHandle) -> AppResult<bool> {
+    finish_scene_rest_if_current(app, None)
+}
+
+fn finish_scene_rest_if_current(app: &AppHandle, expected_id: Option<&str>) -> AppResult<bool> {
+    let state = app.state::<AppState>();
+    let removed = {
+        let mut current = state.scene_rest.lock();
+        if expected_id.is_some_and(|id| current.as_ref().is_none_or(|session| session.id != id)) {
+            return Ok(false);
+        }
+        current.take().is_some()
+    };
+    if !removed {
+        return Ok(false);
+    }
+    crate::presentation_runtime::release_scene_rest(app, Utc::now().timestamp_millis())?;
+    let mut director = state.companion_expression.lock();
+    let previous_revision = director.snapshot().revision;
+    let snapshot = director.remove(SCENE_REST_SIGNAL_KEY);
+    drop(director);
+    if snapshot.revision != previous_revision {
+        emit(app, &snapshot)?;
+    }
+    app.emit("scene-rest-updated", Option::<SceneRestSession>::None)
+        .map_err(|error| AppError::Window(error.to_string()))?;
+    Ok(true)
+}
+
 fn finish_basic_support_if_current(app: &AppHandle, expected_id: Option<&str>) -> AppResult<bool> {
     let state = app.state::<AppState>();
     let removed = {
@@ -1313,8 +1537,22 @@ pub fn set_sleeping(
     sleeping: bool,
     source: crate::presentation_arbiter::PetActivitySource,
 ) -> AppResult<CompanionExpressionSnapshot> {
+    if sleeping {
+        stop_scene_rest(app)?;
+    }
     #[cfg(feature = "learning")]
     if sleeping {
+        // Sleeping closes a finished result; it must not leave a resumable
+        // reference to a database session that can no longer be resumed.
+        let completed = app
+            .state::<AppState>()
+            .presentation_arbiter
+            .lock()
+            .completed_learning_session_id()
+            .map(str::to_owned);
+        if let Some(session_id) = completed {
+            set_learning_session_active(app, false, Some(&session_id))?;
+        }
         preempt_learning_for_high_priority(app, "sleep_started", Utc::now().timestamp_millis())?;
     }
     crate::presentation_runtime::set_sleeping(app, sleeping, source)?;
@@ -1388,6 +1626,26 @@ mod tests {
             &settings,
             chrono::NaiveTime::from_hms_opt(12, 0, 0).unwrap()
         ));
+    }
+
+    #[test]
+    fn work_scene_stage_uses_clamped_interval_and_exact_boundaries() {
+        let minute = 60 * 1_000;
+        assert_eq!(
+            work_scene_stage(15 * minute + 59_999, 20),
+            WorkSceneStage::Fresh
+        );
+        assert_eq!(
+            work_scene_stage(16 * minute, 20),
+            WorkSceneStage::Transition
+        );
+        assert_eq!(work_scene_stage(20 * minute, 20), WorkSceneStage::Fatigued);
+        assert_eq!(work_scene_stage(16 * minute, 5), WorkSceneStage::Transition);
+        assert_eq!(
+            work_scene_stage(48 * minute, 240),
+            WorkSceneStage::Transition
+        );
+        assert_eq!(work_scene_stage(60 * minute, 240), WorkSceneStage::Fatigued);
     }
 
     #[test]

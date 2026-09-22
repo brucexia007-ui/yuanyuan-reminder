@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import tauriConfig from "../../src-tauri/tauri.conf.json";
 
 import {
   ALERT_STAGE_HEIGHT,
@@ -6,9 +7,24 @@ import {
   alertPetHeight,
   alertPetWidth,
   alertStagePosition,
+  warmupStageLayout,
 } from "./alertStage";
 
 describe("强提醒舞台", () => {
+  it.each([120, 192, 256, 320])("热身在尺寸 %s 保持坐姿尺度并为卡片留出空间", (width) => {
+    const layout = warmupStageLayout(width);
+    expect(Math.abs(layout.spriteWidth * 124 / 192 - width * 198 / 192)).toBeLessThan(1);
+    expect(layout.height - 2 - layout.spriteHeight).toBeGreaterThanOrEqual(138);
+    expect(layout.width - layout.spriteWidth).toBeGreaterThanOrEqual(40);
+    const nativePet = tauriConfig.app.windows.find(window => window.label === "pet")!;
+    expect(layout.width).toBeLessThanOrEqual(nativePet.maxWidth);
+    expect(layout.height).toBeLessThanOrEqual(nativePet.maxHeight);
+    for (const scale of [1, 1.25, 1.5]) {
+      const next = alertStagePosition({ x: 1500, y: 900 }, { width: 220, height: 240 }, scale, undefined, layout);
+      expect(next.x + Math.round(layout.width * scale)).toBe(1720);
+      expect(next.y + Math.round(layout.height * scale)).toBe(1140);
+    }
+  });
   it("正常情况下保持原窗口右下角锚点", () => {
     const current = { x: 1500, y: 760 };
     const currentSize = { width: 220, height: 240 };

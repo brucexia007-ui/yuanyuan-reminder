@@ -1,47 +1,64 @@
 <p align="center">
-  <img src="src-tauri/icons/128x128.png" width="112" alt="饺饺提醒图标">
+  <img src="docs/images/icon.png" width="112" alt="圆圆提醒图标">
 </p>
 
-<h1 align="center">饺饺提醒</h1>
+<h1 align="center">圆圆提醒</h1>
 
 <p align="center">
   一只会陪你喝水、专注、休息、安排工作，也愿意和你玩一会儿的 Windows 桌面小猫。
 </p>
 
 <p align="center">
-  <a href="../../releases/latest"><strong>下载最新版本</strong></a>
+  <a href="../../releases/latest"><strong>下载已发布版本</strong></a>
   · <a href="docs/CUSTOMIZE_YOUR_PET.md">换成自己的宠物</a>
   · <a href="README.en.md">English</a>
 </p>
 
 <p align="center">
-  <img alt="Version 1.5.10" src="https://img.shields.io/badge/version-1.5.10-bb835c">
+  <img alt="Source 1.5.35" src="https://img.shields.io/badge/source-1.5.35-bb835c">
   <img alt="Windows 10/11 x64" src="https://img.shields.io/badge/Windows-10%20%2F%2011-5b8fb9">
   <img alt="Code license MIT" src="https://img.shields.io/badge/code-MIT-76a985">
   <img alt="Offline first" src="https://img.shields.io/badge/runtime-offline-8a78a8">
 </p>
 
-![饺饺](public/assets/pet/fallback.png)
+![圆圆用醒目的大气泡提醒喝水](docs/images/yuanyuan-alert.jpg)
 
-饺饺提醒是一款完全本地运行的桌面宠物与任务提醒工具。安装和日常使用不需要 Codex、Kimi Code、Node.js、Rust、Python、账号或云服务；Coding 工具只在你希望修改代码或把饺饺换成自己的宠物时才会用到。
+圆圆提醒是一款完全本地运行的桌面宠物与任务提醒工具。安装和日常使用不需要 Codex、Kimi Code、Node.js、Rust、Python、账号或云服务；Coding 工具只在你希望修改代码或把圆圆换成自己的宠物时才会用到。
 
-## 饺饺会陪你做什么
+## 当前版本：1.5.35
 
-| 你的事情 | 饺饺的配合 |
+当前源码包含统一主程序、独立宠物包、英语与通用知识复习，以及近期的窗口和互动修复。
+
+- **学习黑板**：题目、答题结论和“下一题”在一个界面内显示，无需滚动，宠物不遮挡内容。
+- **安静学习**：读题时圆圆保持静止；未作答一分钟后最多做一次短动作，答题时仍保留动作反馈。
+- **逗猫棒**：恢复原来的八方向伸爪、挥爪和收回动作，跟随拖动方向，松手后恢复。
+- **本地数据**：更换宠物保留共享学习进度与设置，更新前可完整备份。
+
+1.5.35 已通过本地完整校验、Rust 测试和生产构建，并在维护者本机安装；用户反馈人工核查正常。本轮已取消新的 24 小时观察，不将未执行的观察记为通过。稳定版发布验收仍为 `PENDING`；源码合并不等于已经发布同版本安装包。版本与原始安装器绑定见[交付说明](docs/release/UNIFIED_1_5_35_GITHUB_HANDOFF.md)，近期变化见[更新日志](CHANGELOG.md)。
+
+## 圆圆会陪你做什么
+
+想换成自己的宠物，可以用[一段提示词制作自己的桌面宠物](AI_CUSTOMIZATION_PROMPT.md)。即使电脑上没有本项目，也可将提示词与照片交给 Coding 工具。普通换宠物默认得到独立宠物包，保留圆圆主程序和已有数据。
+
+| 你的事情 | 圆圆的配合 |
 | --- | --- |
 | 喝水提醒 | 弹出醒目的大气泡，用前爪拍“屏幕玻璃”；记录喝水后马上恢复日常状态。 |
 | 工作任务 | 提醒一次性、间隔、每日和自选星期事项；可编辑、启停、删除，并支持 5/10/30/60 分钟稍后。 |
 | 专注工作 | 乖乖坐着或趴着，不随意走动；专注结束后提醒你休息。 |
-| 久坐活动 | 连续使用电脑达到设定时间后，饺饺会开心地上蹦下跳。若与喝水重叠，会先提醒喝水。 |
+| 久坐活动 | 连续使用电脑达到设定时间后，圆圆会开心地上蹦下跳。若与喝水重叠，会先提醒喝水。 |
 | 离屏休息 | 可开始 5 或 10 分钟的定时休息，并锁定 Windows；回来解锁后继续使用。 |
 | 日常陪伴 | 会舔毛、伸懒腰、打哈欠、喵喵叫、翻肚皮、入睡、呼吸和醒来。 |
-| 需要安静陪伴 | 由你主动选择让饺饺靠近、陪你轻轻活动或退开留出空间；只用猫咪动作回应，不判断或记录情绪。 |
-| 离开后回来 | 白天确实离开较久后，饺饺会低频起身靠近、轻轻蹭一蹭；没有对白，也不会记录你去了哪里。夜间安静、短暂离开、专注或提醒占用时不触发。 |
+| 需要安静陪伴 | 由你主动选择让圆圆靠近、陪你轻轻活动或退开留出空间；只用猫咪动作回应，不判断或记录情绪。 |
+| 离开后回来 | 白天确实离开较久后，圆圆会低频起身靠近、轻轻蹭一蹭；没有对白，也不会记录你去了哪里。夜间安静、短暂离开、专注或提醒占用时不触发。 |
 | 互动玩耍 | 吃猫粮、喝水、追着猫条吃、左右伸爪抓逗猫棒、蹭鼠标、追球并把球叼回来。 |
+| 英语与知识复习 | 在桌面黑板做选择题或回忆题，查看答题反馈；支持暂停继续、错题练习和学习记录。 |
+| 我的宠物 | 修改昵称、导入和切换独立宠物包，主程序和已有数据保持统一。 |
 | 回顾记录 | 查询已经完成、手动跳过或因过期自动归档的工作、喝水和活动记录。 |
 | 数据安全 | 每天自动备份，保留最近 14 份；也可手动备份并在校验后安全恢复。 |
 
 ## 今天：喝水和事项放在一起
+
+![今日喝水进度和待处理事项](docs/images/today.jpg)
 
 - 一次性、间隔、每日、每周提醒；
 - 完成、5/10/30/60 分钟后提醒、跳过；
@@ -50,70 +67,113 @@
 
 ## 专注：工作时安静，休息时陪你离屏
 
-专注期间饺饺只使用安静的坐姿或趴姿。离屏休息可以锁定 Windows，计时结束后通过系统提示和饺饺动画提醒你回来；Windows 出于安全原因不允许应用绕过密码、PIN 或 Windows Hello 自动解锁。
+![专注和离屏休息](docs/images/focus.jpg)
 
-## 互动：饺饺不是一张会切换的图片
+专注期间圆圆只使用安静的坐姿或趴姿。离屏休息可以锁定 Windows，计时结束后通过系统提示和圆圆动画提醒你回来；Windows 出于安全原因不允许应用绕过密码、PIN 或 Windows Hello 自动解锁。
 
-| 互动 | 饺饺的动作 |
-| --- | --- |
-| 喂猫粮 | 走近小碗，低下脑袋慢慢吃。 |
-| 喂水 | 伏在水碗前，伸出舌头认真喝水。 |
-| 喂猫条 | 盯住猫条并随鼠标转向，猫条升高时站起来吃。 |
-| 逗猫棒 | 朝逗猫棒方向转头并伸出对应的爪子。 |
-| 摸摸饺饺 | 眯起眼睛，顺着鼠标轻轻蹭过去。 |
-| 扔球游戏 | 追到球后先扒拉，再叼起球走回来并放到脚边。 |
+## 互动：圆圆不是一张会切换的图片
 
-- 猫条会跟随鼠标，饺饺转头盯住猫条并逐步站起来吃；
+![喂食、摸摸、逗猫棒和扔球游戏](docs/images/care.jpg)
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/images/interaction-food.png" alt="圆圆低头吃猫粮">
+      <br><strong>喂猫粮</strong>
+      <br><sub>圆圆走近小碗，低下脑袋慢慢吃。</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/images/interaction-water.png" alt="圆圆认真舔水">
+      <br><strong>喂水</strong>
+      <br><sub>圆圆伏在水碗前，伸出舌头认真喝水。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/images/interaction-treat.png" alt="圆圆站起来追着猫条吃">
+      <br><strong>喂猫条</strong>
+      <br><sub>眼睛盯着猫条，随鼠标转向，猫条升高时会站起来吃。</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/images/interaction-wand.png" alt="圆圆伸爪抓逗猫棒">
+      <br><strong>逗猫棒</strong>
+      <br><sub>逗猫棒在哪个方向，圆圆就朝那个方向转头、伸出对应的爪子。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/images/interaction-petting.png" alt="圆圆眯着眼睛蹭手">
+      <br><strong>摸摸圆圆</strong>
+      <br><sub>鼠标进入头部区域后，圆圆会眯起眼睛，顺着你的手轻轻蹭过去。</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/images/interaction-ball.png" alt="圆圆伸爪扒拉小球">
+      <br><strong>扔球游戏</strong>
+      <br><sub>追到球后先用爪子扒拉，再叼起球慢慢走回来并放到脚边。</sub>
+    </td>
+  </tr>
+</table>
+
+- 猫条会跟随鼠标，圆圆转头盯住猫条并逐步站起来吃；
 - 逗猫棒在左边时伸左爪，在右边时伸右爪，在上方会站起来抓；
-- 鼠标进入头部区域时饺饺会轻轻蹭过去，移出后立即停下；
-- 扔球时按住蓄力、松手抛出，饺饺会追球、扒拉两下、叼回来并放到脚边；
+- 鼠标进入头部区域时圆圆会轻轻蹭过去，移出后立即停下；
+- 扔球时按住蓄力、松手抛出，圆圆会追球、扒拉两下、叼回来并放到脚边；
 - 切换互动会正确结束上一项玩具，不会把猫条或球带到下一个场景。
 
 ### 陪陪我：听得懂，但不替猫咪说人话
 
-照料页提供三张由你主动打开的陪伴小牌：饺饺可以安静靠近一会、先伸懒腰陪你轻轻活动，或退开并停止主动回看。简单反馈只使用表情和肢体动作，不出现猫咪对白气泡。
+照料页提供三张由你主动打开的陪伴小牌：圆圆可以安静靠近一会、先伸懒腰陪你轻轻活动，或退开并停止主动回看。简单反馈只使用表情和肢体动作，不出现猫咪对白气泡。
 
 这三种陪伴不判断你的情绪，不调用模型，也不保存原因或心情记录；状态只在当前应用内存中运行，到时自动结束，关闭应用后不恢复。喝水、到期工作事项和等待用户仍可优先出现。
 
+## 学习：一块安静的桌面黑板
+
+![1.5.35 学习黑板：题目同屏显示，圆圆在下方安静陪伴](docs/images/learning-board-v1.5.35.png)
+
+从“学习”页开始一轮复习，使用鼠标或数字键 1–4 选择答案。答题后黑板保留所选项与正确项，并完整显示结论；错题可以看懂后再继续。暂停会保留当前题，稍后可以接着学习。
+
+支持自行导入 CSV、原生 JSON 和通用知识包，查看导入预览、进度与取消，并导出自己的内容。重复导入保留已有排程；可能改变答案或重置排程的更新会先提示。官方源码不捆绑个人词库，学习内容与记录保存在本机。上图使用隔离演示数据。
+
 ## 设置：把提醒节奏交给你
 
-可以设置动画模式与速度、道具标签显示方式、朝向鼠标、置顶与穿透、安静时段、自动入睡、喝水与活动节奏、错过提醒策略、开机启动和提醒暂停。道具标签可选“纯动作 / 需要时显示 / 始终显示”，只贴在任务牌等工具上，不会成为饺饺的对白；默认仅在等待确认、失败、疑似停住或状态不明时显示。管理页支持修改、暂停和删除普通提醒；设置页可以创建、查看和恢复本地备份。
+![圆圆提醒设置](docs/images/settings.jpg)
+
+可以设置动画模式与速度、道具标签显示方式、朝向鼠标、置顶与穿透、安静时段、自动入睡、喝水与活动节奏、错过提醒策略、开机启动和提醒暂停。道具标签可选“纯动作 / 需要时显示 / 始终显示”，只贴在任务牌等工具上，不会成为圆圆的对白；默认仅在等待确认、失败、疑似停住或状态不明时显示。管理页支持修改、暂停和删除普通提醒；设置页可以创建、查看和恢复本地备份。
 
 ## 下载和使用
 
-在 [Releases](../../releases/latest) 页面选择：
+请在 [Releases](../../releases/latest) 页面按该版本说明选择安装版或便携版，并核对附件与 `SHA256SUMS.txt`。截至 2026-09-22，最新正式 Release 为 **v1.3.2**，并非当前 **1.5.35 源码**；另有独立饺饺预览版，不要混作圆圆统一主程序更新。
 
-- `饺饺提醒_*_x64-setup.exe`：安装版，适合长期使用；
-- `饺饺提醒_*_windows-x64-portable.exe`：便携版，下载后直接运行。
+- 安装版适合长期使用；便携版可直接运行，文件名以对应 Release 附件为准。
+- 1.5.35 尚未提供正式 Release 下载，需要时可按下方步骤从源码构建。
+- 升级前在“设置 → 数据备份”创建备份。回退旧版本时应配套恢复升级前的数据，不要直接让旧程序读取已迁移的新库。
 
 当前支持 Windows 10/11 x64。GitHub 社区稳定版以系统稳定、核心功能、数据迁移/备份、关键 E2E 和可重复构建为发布硬门，不把商业代码签名证书作为阻断条件。由于程序尚未购买商业代码签名证书，Windows 可能显示“未知发布者”或 SmartScreen 提示，Smart App Control/组织策略也可能直接阻止运行。请只从本项目的 GitHub Release 下载并核对 `SHA256SUMS.txt`，受限环境可从完全对应的源码标签自行构建。
 
 应用数据默认保存在：
 
 ```text
-%LOCALAPPDATA%\com.brucexia.jiaojiao.reminder\
+%LOCALAPPDATA%\com.yuanyuan.reminder\
 ```
 
 ## 用自己的宠物照片制作一个版本
 
-这套工具不仅可以运行饺饺，也可以成为你自己的桌面宠物项目：
+这套工具不仅可以运行圆圆，也可以成为你自己的桌面宠物项目：
 
 1. 准备 3–8 张你有权使用的宠物照片，覆盖正脸、侧脸、全身和标志性花纹；
-2. 打开 [一段提示词制作自己的桌面宠物](AI_CUSTOMIZATION_PROMPT.md)，只替换宠物名和性格；
-3. 把整段提示词与照片一起发给具备本地文件和 Coding 能力的 Kimi Code、WorkBuddy 或 Codex。即使电脑上没有本项目，Coding 工具也会从官方 GitHub 仓库自行获取源码，并完成环境、命令、配置、素材、验证和 Windows 打包。
-
-普通用户不需要下载或解压项目、运行命令、安装开发依赖、编辑 JSON、填写 Windows identifier，也不需要自己判断宠物品种或性别。
+2. 将仓库和照片交给 Codex、Kimi Code 或其他 Coding 工具，并附上 [AI 定制提示词](AI_CUSTOMIZATION_PROMPT.md)；
+3. 按照 [自定义宠物教程](docs/CUSTOMIZE_YOUR_PET.md) 生成、验证独立宠物包，然后在“设置 → 我的宠物”中导入。
 
 完整动作和文件格式见 [宠物包规范](docs/PET_PACK_SPEC.md)。生成过程中必须锁定毛色、脸型、眼睛、花纹和体态，不能用一张静态图代替连续动作帧。
 
 ## 本地开发
 
-需要：Node.js 20+、Rust stable、Visual C++ Build Tools、WebView2 Runtime。
+需要：Node.js 22+、Rust stable、Visual C++ Build Tools、WebView2 Runtime。
 
 ```powershell
 npm.cmd ci
 npm.cmd run verify
-npm.cmd run ai-off:verify
+cargo test --manifest-path src-tauri/Cargo.toml --locked
 npm.cmd run tauri dev
 ```
 
@@ -121,68 +181,15 @@ npm.cmd run tauri dev
 
 ```powershell
 npm.cmd run tauri build
-npm.cmd run release:preflight
 ```
 
-### GitHub 社区稳定版
+### 源码合并与正式发布
 
-准备标签前先从[社区稳定验收模板](docs/release/COMMUNITY_STABLE_ACCEPTANCE_V1.template.json)生成实际验收文件。它必须绑定已经测试的提交和安装包，并关闭四项核心门：干净提交上受控构建且带 `sourceBindingSha256` 的 learning-on 24 小时常驻（真实经历睡眠/锁屏），最终安装包关键 E2E，真实 v1.3.2 数据升级/备份/回滚，以及集成学习的真实导入/取消/分页/增长/恢复。实际文件缺失、任一结果待完成、存在未解决问题，或测试提交之后除验收文件和稳定通道外又改了源码时，稳定门都会拒绝发布。
+`main` 的源码更新通过 PR 和 CI 合并，不会自动发布安装包。当前 1.5.35 稳定发布验收仍为 `PENDING`；本轮新的 24 小时观察已按用户决定取消，不再启动或等待，也不记为测试通过。
 
-验收完成后，把 `product-version.json` 的 `channel` 改为 `stable`，并在只包含验收文件和通道提升的提交上运行 `npm.cmd run release:community:gate`。该门依次验证稳定通道、验收来源、统一版本、完整前端/合同/关键 E2E 回归、Rust 后端测试和 Windows 正式构建；发布工作流还要求标签精确等于 `v<版本号>`、提交属于 `main`，并自动生成带源码提交、两份 EXE 哈希和未签名风险提示的发布清单。冻结合同见[社区稳定版发布策略](docs/release/COMMUNITY_STABLE_RELEASE_POLICY_V1.json)。
+正式稳定标签仍使用独立验收流程，需绑定实际测试的源码与安装包，并完成适用的数据恢复、安装器、人工复核和素材许可事项。[既有 V2 策略](docs/release/COMMUNITY_STABLE_RELEASE_POLICY_V2.json)与历史失败、未验记录保留；取消本轮观察的决定见[1.5.35 交付说明](docs/release/UNIFIED_1_5_35_GITHUB_HANDOFF.md)。后续正式发布前须同步适用规则，源码合并和用户日常核查不代替尚未完成的发布验收。
 
-社区稳定版可以在未购买商业证书时发布，但证书缺失不能用于放宽功能、数据兼容、离线边界、许可证归档、哈希或构建门。推送精确版本标签后，GitHub 工作流只会发布与该稳定版本和源码提交绑定的产物。
-
-### 商业签名或商店分发
-
-`release:preflight` 会生成产物哈希、CycloneDX 依赖清单、许可证清单和签名状态报告，并执行安装/卸载、升级回退、失败恢复、首次启动恢复、安装后实际主程序和许可证落盘等隔离检查。需要商业签名、RFC 3161 时间戳、SmartScreen/第三方安全软件外部信任证明或 Microsoft Store 分发时，继续使用更严格的 `npm.cmd run release:gate`；未签名产物按设计会被这条商业门阻断，但不会阻断上面的 GitHub 社区稳定版。完整流程见[发布签名、误报与回退 SOP](docs/release/P0_RELEASE_SIGNING_AND_FALSE_POSITIVE_SOP.md)、[NSIS 实际安装主程序验收](docs/P0_NSIS_INSTALLED_PAYLOAD_QA_2026-08-09.md)、[安装升级与安全回装旧版隔离探测](docs/P0_RELEASE_UPGRADE_ROLLBACK_PROBE_2026-08-09.md)、[安装失败与恢复隔离验收](docs/P0_RELEASE_INSTALL_FAILURE_RECOVERY_QA_2026-08-09.md)、[首次启动数据库恢复验收](docs/P0_RELEASE_FIRST_START_RECOVERY_QA_2026-08-10.md)、[卸载数据选择验收](docs/P0_RELEASE_UNINSTALL_DATA_CHOICE_QA_2026-08-09.md)和[默认安装路径验收](docs/P0_RELEASE_DEFAULT_INSTALL_PATH_QA_2026-08-09.md)。
-
-许可证人工门不再接受裸布尔值。`release:preflight` 会生成候选绑定的 `release-license-review-packet.json`；发布渠道和精确发布者冻结后，具名人工复核人必须从 `docs/release/RELEASE_LICENSE_REVIEW_ATTESTATION_V1.template.json` 创建实际签字文件，逐项确认地区、NOTICE、回退来源、MPL 源码、素材权利、商标与适用的专业法律复核。`npm.cmd run release:license-review:verify` 会拒绝 AI/自动化签字、候选或渠道漂移、未解决发现及仅修改 `licenseReviewVerified` 的伪通过。当前实际签字文件不存在，因此许可证门继续待完成。
-
-SmartScreen 与第三方安全软件门也不再接受裸布尔值或乐观计数。预检会生成候选绑定的 `release-external-trust-test-packet.json`，冻结三项正式产物、干净机、真实 Internet Zone/Mark-of-the-Web、在线信誉、完整安装生命周期以及至少两款非 Defender 实时防护产品的零检测要求。具名人工测试人须从 `docs/release/RELEASE_EXTERNAL_TRUST_ATTESTATION_V1.template.json` 创建实际签字文件；`npm.cmd run release:external-trust:verify` 会拒绝 AI/自动化测试人、旧候选、无下载来源标记、SmartScreen 警告、Defender 冒充第三方产品、重复产品或任何检测。当前只生成测试包和模板，实际外部测试与签字仍待完成，详见[SmartScreen 与第三方安全软件外部信任门](docs/P0_RELEASE_EXTERNAL_TRUST_QA_2026-08-10.md)。
-
-RFC 3161 门同样不再接受裸布尔值。预检会生成 `release-signing-protocol-packet.json`；最终签名后，具名人工操作人必须从 `docs/release/RELEASE_SIGNING_PROTOCOL_ATTESTATION_V1.template.json` 创建无凭据签字，记录签名工具、三项最终产物、执行证据以及 `/fd SHA256`、`/tr`、`/td SHA256`。`npm.cmd run release:signing-protocol:verify` 还会实时采集Windows Authenticode事实，要求三项产物均为 `Valid`、同证书、发布者精确匹配且都有时间戳证书。当前渠道、Subject和时间戳URL未冻结，实际签字不存在，因此该门继续待完成，详见[签名与RFC 3161协议证据门](docs/P0_RELEASE_SIGNING_PROTOCOL_QA_2026-08-10.md)。
-
-无障碍体验门现已进入严格发布预检。`release-accessibility-acceptance-packet.json` 冻结三项正式候选，并要求最终签名版本完成100%/125%/150%/200% DPI、100%/150%/200%文本缩放、深浅高对比度、减少动态、五条全键盘路径、六条Windows Narrator人工听读路径以及安装/默认保留/显式删除卸载矩阵。具名人工测试人必须从 `docs/release/RELEASE_ACCESSIBILITY_ACCEPTANCE_ATTESTATION_V1.template.json` 创建实际签字；自动截图、DOM/CSS测试、UI Automation、AI测试人或只修改 `accessibilityAcceptanceVerified` 都不能通过。当前实际人工矩阵尚未执行，详见[发布候选无障碍验收门](docs/P0_RELEASE_ACCESSIBILITY_ACCEPTANCE_QA_2026-08-10.md)。
-
-完整升级回退门也不再接受裸布尔值。`release-upgrade-completion-packet.json` 把六个自动子门、默认路径控制面板注册、真实v1.3.2数据库迁移报告、签名/RFC3161候选、物理掉电或虚拟机硬重置、真实Windows重启、安全恢复旧库和具名人工签字绑定为同一合同。当前包明确缺少真实迁移报告与签名协议实际签字，因此 `upgrade_rollback_drill` 保持待完成；现有合成哨兵和受控进程终止不会被冒充成真实中断。详见[完整升级、中断与回退证据门](docs/P0_RELEASE_UPGRADE_COMPLETION_QA_2026-08-10.md)。
-
-`ai-off:verify`是当前默认发行方式的必跑门：确认安装声明不包含Bridge/AI、生产核心没有外部网络入口，并验证AI不存在时提醒和专注仍可使用。`verify`、发布预检和严格发布门均已自动包含该检查。
-
-隔离运行性能烟测：
-
-```powershell
-npm.cmd run runtime:qa:build
-npm.cmd run runtime:baseline -- -DurationSeconds 60 -SampleIntervalSeconds 2 -WarmupSeconds 10
-npm.cmd run runtime:reminder-latency -- -SampleCount 5 -ExitAfterSeconds 30
-npm.cmd run runtime:release-cold-start -- -SampleCount 3 -WindowTimeoutSeconds 30 -AcknowledgeFreshTestAccount
-```
-
-24小时常驻、睡眠和锁屏严格验收：
-
-```powershell
-npm.cmd run runtime:baseline:acceptance
-npm.cmd run runtime:baseline:verify -- --report "F:\绝对路径\runtime-baseline-<UTC>.json"
-```
-
-验收期间测试人员需在同一Windows会话中至少完成一次真实锁屏/解锁和睡眠/唤醒；执行器不会主动改变系统会话或绕过认证。完整口径见[24小时常驻、睡眠与锁屏验收门](docs/P0_RUNTIME_ENDURANCE_GATE_2026-08-09.md)。
-
-v1.3.2 真实数据库副本的隔离迁移验收：
-
-```powershell
-npm.cmd run database:migration:qa -- --fixture "F:\绝对路径\v1.3.2-copy.sqlite3" --report "F:\绝对路径\v1.3.2-migration-report.json" --attest-source-release 1.3.2
-```
-
-关闭态旧库仍有 WAL 时，可先用 `npm.cmd run database:migration:capture -- --source ... --fixture ... --report ... --attest-source-release 1.3.2` 通过 SQLite Backup API 生成稳定单文件副本。两个命令都拒绝用合成样本冒充真实来源；迁移报告覆盖逐值保留、备份恢复和失败回滚。GitHub 正式 v1.3.2 发布件已完成版本与双重哈希核对，但在当前隔离普通账户中未进入 `setup`、没有生成数据库，因此真实样本门仍保持开放。执行要求与当前边界见 [v1.3.2 真实数据库迁移验收](docs/P0_V132_DATABASE_MIGRATION_QA_2026-08-06.md)。
-
-任务守望数据库的一年等价保留与增量回收验收：
-
-```powershell
-npm.cmd run database:retention:qa -- --report "F:\绝对路径\annual-retention-report.json" --attest-synthetic-profile annual-175200-v1
-```
-
-该命令只生成固定合成数据，在随机所有临时目录中运行生产清理与有界增量回收，拒绝相对路径和覆盖已有报告。正式负载口径与结果见[任务事件一年等价负载验收](docs/P0_TASK_RETENTION_LOAD_QA_2026-08-06.md)。
-
-运行基线与提醒延迟使用专用数据根；迁移验收只读操作者显式提供的副本；保留验收只生成合成数据，均不改动正式用户数据库。冷启动命令运行从当前 NSIS 精确提取的实际安装主程序，只允许在正式数据目录完全不存在、且当前令牌/ProfileList与配置目录一致的一次性测试账户中执行；已有数据或仅伪造环境变量时会在启动前拒绝。当前候选已完成3次正向采样，P50/P95为136.4/230.1 ms，运行后零数据与进程残留。详细边界见[默认正式主程序新配置冷启动验收](docs/P0_RELEASE_COLD_START_QA_2026-08-06.md)。短时通过不能替代24小时、睡眠恢复或签名候选结论。
+安装器、许可证归档、商业签名和回退流程详见[发布 SOP](docs/release/P0_RELEASE_SIGNING_AND_FALSE_POSITIVE_SOP.md)。发布工具及历史验收材料保留在 `scripts/` 和 `docs/release/`，不要通过修改通过标记跳过未完成项。
 
 只预览界面：
 
@@ -197,7 +204,7 @@ npm.cmd run dev
 ```text
 src/                       React 界面、宠物状态机和交互
 src-tauri/                 Rust/Tauri 后端、SQLite、Windows 集成
-public/assets/pet/         当前饺饺宠物包
+public/assets/pet/         当前圆圆宠物包
 scripts/                   宠物图集构建与验证工具
 docs/                      使用、定制和格式说明
 .github/workflows/         自动测试和 Windows Release
@@ -205,15 +212,15 @@ docs/                      使用、定制和格式说明
 
 ## 隐私
 
-- 提醒、历史、喝水与互动记录只保存在本机 SQLite 数据库；
+- 提醒、历史、喝水、互动与学习记录只保存在本机 SQLite 数据库；
 - 程序不需要登录，不上传任务、照片或使用记录；
 - 程序不调用任何 AI 服务，也不会自行读取 Codex/Claude 的任务正文；只有你在设置中主动检查且已有授权时，才会在本机读取对应 Hook 配置；
 - 自动启动、通知和锁屏均通过本地 Windows 能力完成。
 
-完整的数据类型、备份、日志、删除方式和联系方式见[饺饺提醒隐私政策](PRIVACY.md)。
+完整的数据类型、备份、日志、删除方式和联系方式见[圆圆提醒隐私政策](PRIVACY.md)。
 
 ## 参与贡献
 
 请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)。安全问题请按照 [SECURITY.md](SECURITY.md) 报告。
 
-程序代码使用 [MIT License](LICENSE)。饺饺照片、图集和图标使用单独的 [饺饺素材许可](JIAOJIAO_ASSETS_LICENSE.md)；第三方摘要见[第三方声明](THIRD_PARTY_NOTICES.md)，逐组件全文见[第三方许可证归档](THIRD_PARTY_LICENSES.txt)。如果你发布自己的分支，建议替换成你自己的宠物素材并重新运行许可归档生成器。
+程序代码使用 [MIT License](LICENSE)。圆圆照片、图集、图标和演示图片使用单独的 [圆圆素材许可](ASSETS_LICENSE.md)；第三方摘要见[第三方声明](THIRD_PARTY_NOTICES.md)，逐组件全文见[第三方许可证归档](THIRD_PARTY_LICENSES.txt)。如果你发布自己的分支，建议替换成你自己的宠物素材并重新运行许可归档生成器。

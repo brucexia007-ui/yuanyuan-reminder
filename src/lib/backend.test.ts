@@ -13,6 +13,7 @@ import {
   discoverBuiltinConnectors,
   deferTaskWatchAttention,
   exportAiDiagnostics,
+  finishPetInteraction,
   getAiSupervisorStatus,
   getCompanionExpressionSnapshot,
   getConnectorTrustStatus,
@@ -30,6 +31,7 @@ import {
   resumeTaskWatchAttention,
   selectProjectForHookInspection,
 } from "./backend";
+import type { PetInteractionStarted } from "../types";
 
 describe("浏览器演示后端", () => {
   it("统一产品的浏览器演示提供通用学习能力但不启用自动邀请", async () => {
@@ -93,9 +95,27 @@ describe("浏览器演示后端", () => {
     ).rejects.toThrow("local data deletion is unavailable");
   });
 
+  it("互动结束必须匹配当前租约，迟到请求不影响新互动", async () => {
+    const received: PetInteractionStarted[] = [];
+    const unlisten = await onBackendEvent<PetInteractionStarted>(
+      "pet-interaction-started", (payload) => received.push(payload),
+    );
+    const before = Date.now();
+    await startPetInteraction("ball");
+    await startPetInteraction("wand");
+    const [first, second] = received;
+    expect(first.expiresAtUnixMs).toBeGreaterThanOrEqual(before + 30_000);
+    expect(second.leaseRevision).toBeGreaterThan(first.leaseRevision);
+    expect(await finishPetInteraction(first.id, first.leaseRevision)).toBe(false);
+    expect(await finishPetInteraction(second.id, second.leaseRevision + 1)).toBe(false);
+    expect(await finishPetInteraction(second.id, second.leaseRevision)).toBe(true);
+    expect(await finishPetInteraction(second.id, second.leaseRevision)).toBe(false);
+    unlisten();
+  });
+
   it("浏览器表达快照只有固定非语言字段", async () => {
     const snapshot = await getCompanionExpressionSnapshot();
-    expect(snapshot.schemaVersion).toBe(1);
+    expect(snapshot.schemaVersion).toBe(2);
     expect(snapshot.tier).toBe("n0");
     expect(snapshot.props).toEqual([]);
     expect(JSON.stringify(snapshot)).not.toMatch(

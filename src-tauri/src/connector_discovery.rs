@@ -427,12 +427,20 @@ fn executables_on_path(entries: &[PathBuf], stem: &str) -> Vec<PathBuf> {
 }
 
 pub(crate) fn is_codex_desktop_managed_path(path: &std::path::Path) -> bool {
+    is_codex_windows_app_package_path(path)
+        || path
+            .to_string_lossy()
+            .replace('/', "\\")
+            .to_ascii_lowercase()
+            .contains("\\appdata\\local\\openai\\codex\\bin\\")
+}
+
+pub(crate) fn is_codex_windows_app_package_path(path: &std::path::Path) -> bool {
     let normalized = path
         .to_string_lossy()
         .replace('/', "\\")
         .to_ascii_lowercase();
     normalized.contains("\\program files\\windowsapps\\openai.codex_")
-        || normalized.contains("\\appdata\\local\\openai\\codex\\bin\\")
 }
 
 fn same_windows_path(left: &std::path::Path, right: &std::path::Path) -> bool {
@@ -678,10 +686,15 @@ mod tests {
 
     #[test]
     fn codex_executable_managed_by_the_desktop_app_is_not_reported_as_a_second_cli() {
+        let store_path = std::path::Path::new(
+            r"C:\Program Files\WindowsApps\OpenAI.Codex_26.727.1.0_x64__publisher\app\resources\codex.exe",
+        );
+        assert!(is_codex_desktop_managed_path(store_path));
+        assert!(is_codex_windows_app_package_path(store_path));
         assert!(is_codex_desktop_managed_path(std::path::Path::new(
-            r"C:\Program Files\WindowsApps\OpenAI.Codex_26.727.1.0_x64__publisher\app\resources\codex.exe"
+            r"C:\Users\Example\AppData\Local\OpenAI\Codex\bin\version\codex.exe"
         )));
-        assert!(is_codex_desktop_managed_path(std::path::Path::new(
+        assert!(!is_codex_windows_app_package_path(std::path::Path::new(
             r"C:\Users\Example\AppData\Local\OpenAI\Codex\bin\version\codex.exe"
         )));
         assert!(!is_codex_desktop_managed_path(std::path::Path::new(

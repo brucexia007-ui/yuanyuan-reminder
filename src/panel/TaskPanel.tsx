@@ -1,3 +1,5 @@
+import { petText, getPetSnapshot } from "../pet/petProfile";
+import { confirmAction } from "../lib/confirmation";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   isPermissionGranted,
@@ -15,7 +17,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { applicationDisplayName, petText } from "../brand";
+import { applicationDisplayName } from "../brand";
 import {
   completeOccurrence,
   cancelFocus,
@@ -28,6 +30,7 @@ import {
   getBasicSupportState,
   getFocusState,
   getPetCare,
+  getSceneRestState,
   getRuntimeCapabilities,
   getSettings,
   getTaskWatchSnapshot,
@@ -49,7 +52,9 @@ import {
   startBasicSupport,
   startFocus,
   startPetInteraction,
+  startSceneRest,
   stopBasicSupport,
+  stopSceneRest,
   tauriAvailable,
   updateReminder,
   updateSettings,
@@ -67,6 +72,7 @@ import type {
   PetInteractionKind,
   Reminder,
   ReminderCategory,
+  SceneRestSession,
   ScheduleKind,
   TaskWatchSnapshot,
   TaskWatchSource,
@@ -79,6 +85,8 @@ import { AiCompanionStatusCard } from "./AiCompanionStatus";
 import { ConnectorDiscoveryStatusCard } from "./ConnectorDiscoveryStatus";
 import { plannedDueLabel, plannedReminders } from "./todayReminders";
 import "./panel.css";
+import { MyPetPage } from "./MyPetPage";
+import { usePetProfile } from "../pet/petProfile";
 
 type Tab = PanelRoute;
 
@@ -96,6 +104,8 @@ const emptySnapshot: TodaySnapshot = {
 
 const fallbackSettings: AppSettings = {
   animationMode: "always",
+  sceneWardrobeMode: "full",
+  petProfile: { schemaVersion: 1, selectedPackId: "builtin:yuanyuan", nicknames: {} },
   companionIntensity: "everyday",
   companionLabelMode: "adaptive",
   animationSpeed: 1,
@@ -155,6 +165,7 @@ const initialModuleErrors: Record<DashboardModule, string | null> = {
 };
 
 export function TaskPanel() {
+  usePetProfile();
   const panelWindow = useMemo(
     () => (tauriAvailable() ? getCurrentWindow() : null),
     [],
@@ -175,7 +186,7 @@ export function TaskPanel() {
   );
   const [tab, setTab] = useState<Tab>(() => {
     const requested = new URLSearchParams(window.location.search).get("tab");
-    return requested && ["today", "taskwatch", "focus", "care", "history", "manage", "add", "settings"].includes(requested)
+    return requested && ["today", "taskwatch", "focus", "care", "history", "manage", "add", "settings", "mypet"].includes(requested)
       ? (requested as Tab)
       : "today";
   });
@@ -256,7 +267,7 @@ export function TaskPanel() {
       try {
         setTaskWatch(await deferTaskWatchAttention(source, state, 10));
         setTaskWatchError(null);
-        setNotice(petText("已暂停圆圆对这组状态的主动提示 10 分钟，任务仍保留在守望台。"));
+        setNotice(petText("已暂停{pet}对这组状态的主动提示 10 分钟，任务仍保留在守望台。"));
       } catch {
         setNotice("暂时没能暂停主动提示，来源任务没有受到影响。");
       }
@@ -269,7 +280,7 @@ export function TaskPanel() {
       try {
         setTaskWatch(await resumeTaskWatchAttention(source, state));
         setTaskWatchError(null);
-        setNotice(petText("圆圆会重新留意这组状态。"));
+        setNotice(petText("{pet}会重新留意这组状态。"));
       } catch {
         setNotice("暂时没能恢复主动提示，来源任务没有受到影响。");
       }
@@ -451,14 +462,14 @@ export function TaskPanel() {
               : tab === "focus"
                 ? "专注"
               : tab === "care"
-                  ? petText("陪圆圆")
+                  ? petText("陪{pet}")
                   : tab === "learning"
                     ? "英语复习"
                   : tab === "history"
                     ? "历史记录"
                     : tab === "manage"
                       ? "提醒管理"
-                : tab === "add"
+                : tab === "mypet" ? "我的宠物" : tab === "add"
                   ? "新提醒"
                   : "设置"}
           </h1>
@@ -514,23 +525,23 @@ export function TaskPanel() {
         <TabButton active={tab === "add"} onClick={() => setTab("add")}>
           新建
         </TabButton>
-        <TabButton active={tab === "settings"} onClick={() => setTab("settings")}>
+        <TabButton active={tab === "settings" || tab === "mypet"} onClick={() => setTab("settings")}>
           设置
         </TabButton>
       </nav>
 
       <section className="panel-content">
         {activeModule && moduleLoading[activeModule] ? (
-          <div className="empty-state">{petText("圆圆正在整理今天的安排…")}</div>
+          <div className="empty-state">{petText("{pet}正在整理今天的安排…")}</div>
         ) : activeModule && moduleErrors[activeModule] ? (
           <ModuleLoadError
             module={activeModule}
             error={moduleErrors[activeModule]!}
             onRetry={retryActiveModule}
           />
-        ) : tab === "taskwatch" ? (
+        ) : tab === "mypet" ? <MyPetPage settings={settings} onBack={() => setTab("settings")} /> : tab === "taskwatch" ? (
           taskWatchLoading ? (
-            <div className="empty-state">{petText("圆圆正在看看任务牌…")}</div>
+            <div className="empty-state">{petText("{pet}正在看看任务牌…")}</div>
           ) : taskWatchError ? (
             <div className="empty-state module-error" role="alert">
               <strong>任务守望台暂时未能读取</strong>
@@ -568,7 +579,7 @@ export function TaskPanel() {
             onInteractiveStarted={() => void panelWindow?.hide()}
           />
         ) : tab === "learning" && learningAvailable && LazyLearningView ? (
-          <Suspense fallback={<div className="empty-state">{petText("圆圆正在取复习卡…")}</div>}>
+          <Suspense fallback={<div className="empty-state">{petText("{pet}正在取复习卡…")}</div>}>
             <LazyLearningView />
           </Suspense>
         ) : tab === "history" ? (
@@ -586,11 +597,12 @@ export function TaskPanel() {
             onSaved={async () => {
               await refresh();
               setTab("today");
-              setNotice(petText("提醒已交给圆圆。"));
+              setNotice(petText("提醒已交给{pet}。"));
             }}
           />
         ) : (
           <SettingsView
+            onOpenMyPet={() => setTab("mypet")}
             settings={settings}
             onChange={saveSetting}
             onNotice={setNotice}
@@ -654,11 +666,11 @@ export function TaskWatchView({
       <section className="task-watch-overview" aria-labelledby="task-watch-title">
         <div>
           <p className="card-kicker">只看状态，不看正文</p>
-          <h2 id="task-watch-title">{petText("圆圆的任务守望台")}</h2>
+          <h2 id="task-watch-title">{petText("{pet}的任务守望台")}</h2>
           <p>
             这里只显示来源、固定状态和数量，不显示任务标题、项目路径、任务标识或精确活动时间。
           </p>
-          <p>{petText("“稍后提醒”只暂停圆圆的主动提示，任务会一直保留在这里。")}</p>
+          <p>{petText("“稍后提醒”只暂停{pet}的主动提示，任务会一直保留在这里。")}</p>
         </div>
         <button className="secondary compact" type="button" onClick={() => void onRefresh()}>
           重新查看
@@ -666,9 +678,7 @@ export function TaskWatchView({
       </section>
 
       {!snapshot.available ? (
-        <div className="empty-state">
-          {petText("还没有可信任务状态。圆圆不会自行修改 Codex 或 Claude Code 的配置。")}
-        </div>
+        <div className="empty-state">{petText("还没有可信任务状态。{pet}不会自行修改 Codex 或 Claude Code 的配置。")}</div>
       ) : snapshot.states.length === 0 ? (
         <div className="empty-state">目前没有最近24小时内可守望的任务。</div>
       ) : (
@@ -759,40 +769,40 @@ const careActions: Array<{
     kind: "food",
     icon: "🍚",
     title: "喂猫粮",
-    description: petText("圆圆会走近小碗，低头慢慢吃。"),
+    get description() { return petText("{pet}会走近小碗，低头慢慢吃。"); },
   },
   {
     kind: "water",
     icon: "💧",
     title: "喂水",
-    description: petText("让圆圆伏下来，认真舔几口水。"),
+    get description() { return petText("让{pet}伏下来，认真舔几口水。"); },
   },
   {
     kind: "treat",
     icon: "🥣",
     title: "喂猫条",
-    description: petText("到桌面拖动猫条，圆圆会追着吃并站起来。"),
+    get description() { return petText("到桌面拖动猫条，{pet}会追着吃并站起来。"); },
     interactive: true,
   },
   {
     kind: "wand",
     icon: "🪶",
     title: "逗猫棒",
-    description: petText("按住逗猫棒移动，圆圆会追着连续扑抓。"),
+    get description() { return petText("按住并移动逗猫棒，{pet}会随着距离和停留时间伸爪追逐。"); },
     interactive: true,
   },
   {
     kind: "pet",
     icon: "🤍",
-    title: petText("摸摸圆圆"),
-    description: petText("把鼠标靠近圆圆，它会转头蹭你的手。"),
+    get title() { return petText("摸摸{pet}"); },
+    get description() { return petText("把鼠标靠近{pet}，它会转头蹭你的手。"); },
     interactive: true,
   },
   {
     kind: "ball",
     icon: "🔴",
     title: "扔球游戏",
-    description: petText("按住球蓄力，松手后圆圆会把球捡回来。"),
+    get description() { return petText("按住球蓄力，松手后{pet}会把球捡回来。"); },
     interactive: true,
   },
 ];
@@ -803,17 +813,17 @@ const basicSupportDetails: Record<
 > = {
   stay_close: {
     title: "只陪我一会",
-    description: petText("圆圆安静靠近，不追问"),
+    get description() { return petText("{pet}安静靠近，不追问"); },
     durations: [2, 5, 10],
   },
   move_together: {
     title: "陪我动一动",
-    description: petText("圆圆先伸懒腰，不计分"),
+    get description() { return petText("{pet}先伸懒腰，不计分"); },
     durations: [1, 3, 5, 10],
   },
   give_space: {
     title: "先别管我",
-    description: petText("圆圆退开，不再主动回看"),
+    get description() { return petText("{pet}退开，不再主动回看"); },
     durations: [5, 15, 30, 60],
   },
 };
@@ -839,6 +849,9 @@ function CareView({
   const [supportDuration, setSupportDuration] = useState(5);
   const [supportWorking, setSupportWorking] = useState(false);
   const [supportNow, setSupportNow] = useState(Date.now());
+  const [sceneRest, setSceneRest] = useState<SceneRestSession | null>(null);
+  const [sceneRestWorking, setSceneRestWorking] = useState(false);
+  const [sceneRestNow, setSceneRestNow] = useState(Date.now());
   const supportOpenButtonRef = useRef<HTMLButtonElement>(null);
   const firstSupportPathRef = useRef<HTMLButtonElement>(null);
   const supportEndButtonRef = useRef<HTMLButtonElement>(null);
@@ -864,11 +877,37 @@ function CareView({
   }, []);
 
   useEffect(() => {
+    let disposed = false;
+    let unlisten = () => {};
+    void getSceneRestState().then((session) => {
+      if (!disposed) setSceneRest(session);
+    });
+    void onBackendEvent<SceneRestSession | null>(
+      "scene-rest-updated",
+      (session) => setSceneRest(session),
+    ).then((cleanup) => {
+      if (disposed) cleanup();
+      else unlisten = cleanup;
+    });
+    return () => {
+      disposed = true;
+      unlisten();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!support) return;
     setSupportNow(Date.now());
     const timer = window.setInterval(() => setSupportNow(Date.now()), 1_000);
     return () => window.clearInterval(timer);
   }, [support]);
+
+  useEffect(() => {
+    if (!sceneRest) return;
+    setSceneRestNow(Date.now());
+    const timer = window.setInterval(() => setSceneRestNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [sceneRest]);
 
   useEffect(() => {
     const request = supportFocusRequest.current;
@@ -893,7 +932,7 @@ function CareView({
   const beginSupport = async () => {
     if (!selectedSupport) return;
     if (focusActive) {
-      onNotice(petText("请先结束当前专注计时，再让圆圆陪你一会。"));
+      onNotice(petText("请先结束当前专注计时，再让{pet}陪你一会。"));
       return;
     }
     setSupportWorking(true);
@@ -928,22 +967,18 @@ function CareView({
     kind: PetInteractionKind,
     interactive: boolean,
   ) => {
-    if (focusActive) {
-      onNotice(petText("专注期间圆圆会乖乖坐着或趴着，结束后再陪它玩吧。"));
-      return;
-    }
     setWorking(kind);
     try {
       onCare(await startPetInteraction(kind));
       if (interactive) {
         onNotice(
           kind === "treat"
-            ? petText("猫条已经出现在圆圆身边：按住它上下移动。")
+            ? petText("猫条已经出现在{pet}身边：按住它上下移动。")
             : kind === "wand"
-              ? petText("按住逗猫棒拖动；移动时圆圆才会推进扑抓动作。")
+              ? petText("按住并移动逗猫棒，{pet}会跟着伸爪；停留片刻也会继续追逐。")
               : kind === "pet"
-                ? petText("把鼠标移到圆圆头上轻轻移动，它会朝你的方向蹭一蹭。")
-                : petText("球已经放在圆圆脚边：按住鼠标左键蓄力，松手扔出。"),
+                ? petText("把鼠标移到{pet}头上轻轻移动，它会朝你的方向蹭一蹭。")
+                : petText("球已经放在{pet}脚边：按住鼠标左键蓄力，松手扔出。"),
         );
         onInteractiveStarted();
       }
@@ -954,20 +989,83 @@ function CareView({
     }
   };
 
+  const beginSceneRest = async (minutes: 5 | 10 | 20) => {
+    if (focusActive) {
+      onNotice("专注进行中，结束后再开始水疗休息。计时不会被改动。");
+      return;
+    }
+    setSceneRestWorking(true);
+    try {
+      setSceneRest(await startSceneRest(minutes));
+      onNotice(`${getPetSnapshot().nickname}开始休息 ${minutes} 分钟。`);
+    } catch (error) {
+      onNotice(String(error));
+    } finally {
+      setSceneRestWorking(false);
+    }
+  };
+
+  const endSceneRest = async () => {
+    setSceneRestWorking(true);
+    try {
+      await stopSceneRest();
+      setSceneRest(null);
+    } catch (error) {
+      onNotice(String(error));
+    } finally {
+      setSceneRestWorking(false);
+    }
+  };
+
   return (
     <div className="care-view stack">
       <article className={`care-summary ${focusActive ? "focus-locked" : ""}`}>
         <div className="care-heart">♡</div>
         <div>
           <p className="card-kicker">今日陪伴</p>
-          <h2>{focusActive ? petText("圆圆正在乖乖陪你专注") : `已经互动 ${care.total} 次`}</h2>
+          <h2>{focusActive ? petText("{pet}正在陪你专注") : `已经互动 ${care.total} 次`}</h2>
           <p>
             {focusActive
-              ? "此时不会走动或玩耍，只保留轻微呼吸和眨眼。"
+              ? "可以发起短互动，结束后会按最新工作状态继续陪伴，专注计时不中断。"
               : "这些记录不会变成惩罚式养成，想陪它时再来就好。"}
           </p>
         </div>
       </article>
+
+      <section className="scene-rest-card" aria-labelledby="scene-rest-title">
+        <div>
+          <p className="card-kicker">只保存在本次运行中</p>
+          <h2 id="scene-rest-title">休息一下</h2>
+          <p>{petText("让{pet}泡一会水疗；提醒或短互动只会临时遮挡，结束后继续。")}</p>
+        </div>
+        {sceneRest ? (
+          <div className="scene-rest-active" role="status" aria-live="polite">
+            <span>
+              还剩约 {Math.max(0, Math.ceil((new Date(sceneRest.endsAt).getTime() - sceneRestNow) / 60_000))} 分钟
+            </span>
+            <button
+              type="button"
+              disabled={sceneRestWorking}
+              onClick={() => void endSceneRest()}
+            >
+              提前结束
+            </button>
+          </div>
+        ) : (
+          <div className="duration-buttons" aria-label="选择休息时长">
+            {([5, 10, 20] as const).map((minutes) => (
+              <button
+                type="button"
+                key={minutes}
+                disabled={focusActive || sceneRestWorking}
+                onClick={() => void beginSceneRest(minutes)}
+              >
+                {minutes} 分钟
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className="basic-support-card" aria-labelledby="basic-support-title">
         <div className="basic-support-heading">
@@ -1078,7 +1176,7 @@ function CareView({
           <button
             className="care-action"
             type="button"
-            disabled={focusActive || working !== null}
+            disabled={working !== null}
             key={action.kind}
             onClick={() => void begin(action.kind, Boolean(action.interactive))}
           >
@@ -1096,7 +1194,7 @@ function CareView({
 
       <div className="care-tip">
         <strong>互动优先级</strong>
-        <span>{petText("到点提醒、睡眠和专注会优先，必要时会立即让圆圆停下玩耍。")}</span>
+        <span>到点提醒会优先；专注中可短暂互动，结束后自动恢复且计时持续。</span>
       </div>
     </div>
   );
@@ -1143,8 +1241,8 @@ function FocusView({
       setNow(Date.now());
       onNotice(
         phase === "focus"
-          ? petText(`圆圆开始陪你专注 ${duration} 分钟。`)
-          : petText(`圆圆开始陪你休息 ${duration} 分钟。`),
+          ? `${getPetSnapshot().nickname}开始陪你专注 ${duration} 分钟。`
+          : `${getPetSnapshot().nickname}开始陪你休息 ${duration} 分钟。`,
       );
     } finally {
       setWorking(false);
@@ -1167,13 +1265,13 @@ function FocusView({
         </div>
         <h2>
           {session.phase === "focus"
-            ? petText("圆圆正在认真陪你工作")
-            : petText("先放松一下，圆圆替你看着时间")}
+            ? petText("{pet}正在认真陪你工作")
+            : petText("先放松一下，{pet}替你看着时间")}
         </h2>
         <p>
           {remainingSeconds > 0
-            ? petText("隐藏面板也不会中断计时，结束时圆圆会用动作提醒你。")
-            : petText("时间到了，圆圆正在准备结束动作…")}
+            ? petText("隐藏面板也不会中断计时，结束时{pet}会用动作提醒你。")
+            : petText("时间到了，{pet}正在准备结束动作…")}
         </p>
         <button
           className="secondary large"
@@ -1199,8 +1297,8 @@ function FocusView({
     <div className="focus-setup stack">
       <article className="focus-choice focus-work">
         <p className="card-kicker">专注工作</p>
-        <h2>{petText("让圆圆陪你进入状态")}</h2>
-        <p>{petText("进行中圆圆会乖乖坐着或趴着，结束后再伸懒腰提醒休息。")}</p>
+        <h2>{petText("让{pet}陪你进入状态")}</h2>
+        <p>{petText("进行中{pet}会乖乖坐着或趴着，结束后再伸懒腰提醒休息。")}</p>
         <div className="duration-buttons">
           {[25, 45, 60].map((duration) => (
             <button
@@ -1287,7 +1385,7 @@ function TodayView({
         </div>
         <div>
           <p className="card-kicker">今日喝水</p>
-          <h2>{percent >= 100 ? "目标完成啦" : petText("让圆圆陪你补点水")}</h2>
+          <h2>{percent >= 100 ? "目标完成啦" : petText("让{pet}陪你补点水")}</h2>
           <button
             className="primary compact"
             type="button"
@@ -1406,7 +1504,7 @@ function HistoryView() {
       <article className="history-summary">
         <div>
           <p className="card-kicker">处理记录</p>
-          <h2>{loading ? petText("圆圆正在翻记录…") : `查询到 ${records.length} 项`}</h2>
+          <h2>{loading ? petText("{pet}正在翻记录…") : `查询到 ${records.length} 项`}</h2>
           <p>完成和跳过的提醒都会留在这里，不影响下一次提醒。</p>
         </div>
         <div className="history-counts" aria-label="历史记录统计">
@@ -1469,6 +1567,7 @@ function HistoryView() {
             <option value="work">工作</option>
             <option value="personal">生活</option>
             <option value="water">喝水</option>
+            <option value="meal">用餐</option>
           </select>
         </label>
       </div>
@@ -1476,7 +1575,7 @@ function HistoryView() {
       {error ? (
         <div className="empty-state history-error">{error}</div>
       ) : loading && records.length === 0 ? (
-        <div className="empty-state">{petText("圆圆正在整理历史记录…")}</div>
+        <div className="empty-state">{petText("{pet}正在整理历史记录…")}</div>
       ) : groups.length === 0 ? (
         <div className="empty-state">
           <span className="empty-dot" />
@@ -1519,7 +1618,9 @@ function HistoryRecordCard({ record }: { record: Occurrence }) {
       ? "工作"
       : record.category === "personal"
         ? "生活"
-        : "喝水";
+        : record.category === "meal"
+          ? "用餐"
+          : "喝水";
   const resultLabel = completed
     ? "已完成"
     : record.resolutionReason === "missed"
@@ -1608,7 +1709,7 @@ function PlannedReminderCard({ reminder }: { reminder: Reminder }) {
           <span className={`category-dot ${reminder.category}`} />
           <h3>{reminder.title}</h3>
         </div>
-        <p>{petText(`${cadence} · 已交给圆圆`)}</p>
+        <p>{cadence}{petText("· 已交给{pet}")}</p>
         <span className="planned-badge">等待提醒</span>
       </div>
     </article>
@@ -1782,9 +1883,9 @@ function ManageView({
                     type="button"
                     disabled={workingId === reminder.id}
                     onClick={async () => {
-                      if (!window.confirm(`确定删除“${reminder.title}”吗？历史记录仍会保留。`)) return;
                       setWorkingId(reminder.id);
                       try {
+                        if (!(await confirmAction(`确定删除“${reminder.title}”吗？历史记录仍会保留。`))) return;
                         await deleteReminder(reminder.id);
                         await onRefresh();
                         onNotice("提醒已删除，已有历史记录仍然保留。");
@@ -1930,6 +2031,7 @@ function AddView({
           <option value="work">工作</option>
           <option value="personal">生活</option>
           <option value="water">喝水</option>
+          <option value="meal">用餐</option>
         </select>
       </label>
       <label>
@@ -1996,17 +2098,19 @@ function AddView({
       )}
       {error && <div className="form-error" role="alert">{error}</div>}
       <button className="primary large" type="submit" disabled={saving || !title.trim()}>
-        {saving ? "正在保存…" : reminder ? "保存修改" : `交给${applicationDisplayName}`}
+        {saving ? "正在保存…" : reminder ? "保存修改" : petText("交给{pet}提醒")}
       </button>
     </form>
   );
 }
 
 function SettingsView({
+  onOpenMyPet,
   settings,
   onChange,
   onNotice,
 }: {
+  onOpenMyPet: () => void;
   settings: AppSettings;
   onChange: (patch: Partial<AppSettings>) => Promise<void>;
   onNotice: (notice: string) => void;
@@ -2044,7 +2148,8 @@ function SettingsView({
 
   return (
     <div className="settings-list">
-      <SettingRow title={petText("圆圆动画")} description="不受 Windows 动画关闭影响">
+      <button type="button" className="my-pet-entry" onClick={onOpenMyPet}><strong>我的宠物</strong><span>修改昵称、导入和切换形象 →</span></button>
+      <SettingRow title={petText("{pet}动画")} description="不受 Windows 动画关闭影响">
         <select
           value={settings.animationMode}
           onChange={(event) =>
@@ -2059,8 +2164,26 @@ function SettingsView({
         </select>
       </SettingRow>
       <SettingRow
+        title="情境装扮"
+        description="资源不可用时会自动回到原有动作，不影响提醒"
+      >
+        <select
+          value={settings.sceneWardrobeMode}
+          onChange={(event) =>
+            void onChange({
+              sceneWardrobeMode: event.target
+                .value as AppSettings["sceneWardrobeMode"],
+            })
+          }
+        >
+          <option value="full">全部情境</option>
+          <option value="reminders_only">仅用餐与补水</option>
+          <option value="off">关闭装扮</option>
+        </select>
+      </SettingRow>
+      <SettingRow
         title="陪伴亲密度"
-        description={petText("只控制圆圆主动靠近或庆祝，不影响你设置的提醒")}
+        description={petText("只控制{pet}主动靠近或庆祝，不影响你设置的提醒")}
       >
         <select
           value={settings.companionIntensity}
@@ -2078,7 +2201,7 @@ function SettingsView({
       </SettingRow>
       <SettingRow
         title="道具标签"
-        description={petText("文字只贴在任务牌等工具上，不会变成圆圆的对白")}
+        description={petText("文字只贴在任务牌等工具上，不会变成{pet}的对白")}
       >
         <select
           value={settings.companionLabelMode}
@@ -2108,13 +2231,13 @@ function SettingsView({
           ))}
         </select>
       </SettingRow>
-      <SettingRow title="看向鼠标" description={petText("只在圆圆空闲时工作")}>
+      <SettingRow title="看向鼠标" description={petText("只在{pet}空闲时工作")}>
         <Toggle
           checked={settings.cursorFollow}
           onChange={(checked) => void onChange({ cursorFollow: checked })}
         />
       </SettingRow>
-      <SettingRow title="总在最前" description={petText("让圆圆保持在其他窗口上方")}>
+      <SettingRow title="总在最前" description={petText("让{pet}保持在其他窗口上方")}>
         <Toggle
           checked={settings.alwaysOnTop}
           onChange={(checked) => void onChange({ alwaysOnTop: checked })}
@@ -2126,7 +2249,7 @@ function SettingsView({
           onChange={(checked) => void onChange({ clickThrough: checked })}
         />
       </SettingRow>
-      <SettingRow title="安静时段" description={petText("圆圆会进入睡眠")}>
+      <SettingRow title="安静时段" description={petText("{pet}会进入睡眠")}>
         <div className="time-pair">
           <input
             type="time"
@@ -2181,7 +2304,7 @@ function SettingsView({
             void onChange({ waterIntervalMinutes: Number(event.target.value) })
           }
         >
-          {[30, 45, 60, 90, 120].map((minutes) => (
+          {[20, 30, 45, 60, 90, 120].map((minutes) => (
             <option key={minutes} value={minutes}>
               {minutes} 分钟
             </option>
@@ -2233,7 +2356,7 @@ function SettingsView({
             })
           }
         >
-          {[30, 45, 60, 90, 120].map((minutes) => (
+          {[20, 30, 45, 60, 90, 120].map((minutes) => (
             <option key={minutes} value={minutes}>
               {minutes} 分钟
             </option>
@@ -2332,11 +2455,14 @@ function SettingsView({
                   type="button"
                   disabled={backupWorking}
                   onClick={async () => {
-                    if (!window.confirm(backup.learningIncluded
-                      ? "恢复后，当前提醒和学习数据会先自动备份，再替换为所选版本。确定继续吗？"
-                      : "这个旧备份不含学习数据；恢复时会替换提醒和设置，并保留当前学习数据。当前提醒和设置仍会先自动备份。确定继续吗？")) return;
                     setBackupWorking(true);
                     try {
+                      if (!(await confirmAction(backup.learningIncluded
+                        ? "恢复后，当前提醒和学习数据会先自动备份，再替换为所选版本。确定继续吗？"
+                        : "这个旧备份不含学习数据；恢复时会替换提醒和设置，并保留当前学习数据。当前提醒和设置仍会先自动备份。确定继续吗？"))) {
+                        setBackupWorking(false);
+                        return;
+                      }
                       await restoreBackup(backup.fileName);
                       onNotice("数据已恢复，正在重新加载界面。");
                       window.setTimeout(() => window.location.reload(), 250);
@@ -2404,16 +2530,13 @@ function SettingsView({
           disabled={!deleteReady || deleteWorking}
           onClick={async () => {
             if (!deleteReady) return;
-            if (
-              !window.confirm(
-                petText("最后确认：圆圆会完全退出，所有本地数据和应用内备份都将永久删除。确定继续吗？"),
-              )
-            ) {
-              return;
-            }
             setDeleteWorking(true);
             setDeleteError(null);
             try {
+              if (!(await confirmAction(petText("最后确认：{pet}会完全退出，所有本地数据和应用内备份都将永久删除。确定继续吗？")))) {
+                setDeleteWorking(false);
+                return;
+              }
               await deleteAllLocalDataAndExit(
                 deleteConfirmation,
                 deleteNoRecovery,
@@ -2433,28 +2556,24 @@ function SettingsView({
           onClick={async () => {
             try {
               await requestSleep();
-              onNotice(petText("圆圆已经去睡觉了；右键圆圆可叫醒它。"));
+              onNotice(petText("{pet}已经去睡觉了；右键{pet}可叫醒它。"));
             } catch (error) {
-              onNotice(petText(`圆圆暂时没能睡下：${String(error)}`));
+              onNotice(`${getPetSnapshot().nickname}暂时没能睡下：${String(error)}`);
             }
           }}
-        >
-          {petText("让圆圆睡觉")}
-        </button>
+        >{petText("让{pet}睡觉")}</button>
         <button
           type="button"
           onClick={async () => {
             try {
               await showPetWindow();
               await requestWake();
-              onNotice(petText("圆圆已经显示并醒来了。"));
+              onNotice(petText("{pet}已经显示并醒来了。"));
             } catch (error) {
-              onNotice(petText(`圆圆暂时没能显示或醒来：${String(error)}`));
+              onNotice(`${getPetSnapshot().nickname}暂时没能显示或醒来：${String(error)}`);
             }
           }}
-        >
-          {petText("显示并叫醒圆圆")}
-        </button>
+        >{petText("显示并叫醒{pet}")}</button>
         <button
           type="button"
           onClick={async () => {

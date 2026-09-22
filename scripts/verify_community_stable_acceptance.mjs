@@ -47,7 +47,7 @@ async function main() {
     projectRoot,
     "docs",
     "release",
-    "COMMUNITY_STABLE_ACCEPTANCE_V1.json",
+    "COMMUNITY_STABLE_ACCEPTANCE_V2.json",
   );
   const authorityPath = path.join(projectRoot, "product-version.json");
   const [acceptance, authority, brand, releaseCommit] = await Promise.all([
@@ -91,7 +91,7 @@ async function main() {
 
 main().catch((error) => {
   const detail = error?.code === "ENOENT"
-    ? "docs/release/COMMUNITY_STABLE_ACCEPTANCE_V1.json is missing"
+    ? "docs/release/COMMUNITY_STABLE_ACCEPTANCE_V2.json is missing"
     : error.message;
   process.stderr.write(`Community stable acceptance stopped: ${detail}\n`);
   process.exitCode = 1;

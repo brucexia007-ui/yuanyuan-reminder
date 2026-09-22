@@ -4,11 +4,11 @@ import {
   followOffsetTowardPointer,
   gentleHeadOffsetTowardPointer,
   shouldAdvancePettingFrame,
-  shouldAdvanceWandFrame,
   shouldMirrorTowardPointer,
   shouldMirrorTowardPointerWithHysteresis,
   transitionToolInteraction,
   treatFrameFromPointerHeight,
+  wandDirectionFrame,
 } from "./interactionMotion";
 
 describe("pointer-driven pet interactions", () => {
@@ -54,10 +54,14 @@ describe("pointer-driven pet interactions", () => {
     expect(shouldAdvancePettingFrame(8, 100)).toBe(true);
   });
 
-  it("paces wand frames by accumulated movement and a short minimum interval", () => {
-    expect(shouldAdvanceWandFrame(7, 120)).toBe(false);
-    expect(shouldAdvanceWandFrame(24, 79)).toBe(false);
-    expect(shouldAdvanceWandFrame(8, 80)).toBe(true);
+  it("selects the eight original wand directions and retains direction near the body center", () => {
+    const centerY = 208 * 0.46;
+    for (let direction = 0; direction < 8; direction += 1) {
+      const angle = direction * Math.PI / 4;
+      expect(wandDirectionFrame(96 + Math.sin(angle) * 70,
+        centerY - Math.cos(angle) * 70, 192, 208)).toBe(direction);
+    }
+    expect(wandDirectionFrame(96, centerY, 192, 208, 7)).toBe(7);
   });
 
   it("advances action frames from pointer motion instead of a slow autonomous loop", () => {

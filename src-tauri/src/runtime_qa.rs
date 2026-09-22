@@ -629,7 +629,7 @@ pub fn seed_animation_mode(animation_mode: &str) -> AppResult<()> {
             "runtime QA animation mode is invalid".into(),
         ));
     }
-    let database = app_data_directory(QA_IDENTIFIER)?.join(crate::brand::main_database_file());
+    let database = app_data_directory(QA_IDENTIFIER)?.join("yuanyuan-reminder.sqlite3");
     Repository::open(&database)?
         .update_settings(serde_json::json!({ "animationMode": animation_mode }))?;
     Ok(())
@@ -836,7 +836,7 @@ fn run_learning_scale_acceptance(app: &AppHandle) -> AppResult<LearningScaleAcce
     let root = root_from_env()?;
     let database = app_data_directory(QA_IDENTIFIER)?
         .join("learning-data")
-        .join(crate::brand::learning_database_file());
+        .join("yuanyuan-learning.sqlite3");
     let state = app.state::<crate::state::AppState>();
     let initial = state.learning.lock().data_summary()?;
     if initial.card_count != 0 || initial.review_count != 0 {
@@ -1131,13 +1131,13 @@ pub fn seed_learning_performance(card_count: u32) -> AppResult<LearningPerforman
     let content_sha256 = sha256_hex(csv.as_bytes());
     let reminder_pause_until = Utc::now() + ChronoDuration::hours(4);
     let reminder_database =
-        app_data_directory(QA_IDENTIFIER)?.join(crate::brand::main_database_file());
+        app_data_directory(QA_IDENTIFIER)?.join("yuanyuan-reminder.sqlite3");
     Repository::open(&reminder_database)?.update_settings(serde_json::json!({
         "pauseUntil": reminder_pause_until.to_rfc3339(),
     }))?;
     let database = app_data_directory(QA_IDENTIFIER)?
         .join("learning-data")
-        .join(crate::brand::learning_database_file());
+        .join("yuanyuan-learning.sqlite3");
     let now_unix_ms = Utc::now().timestamp_millis();
     let result = {
         let mut runtime = crate::learning::LearningRuntime::initialize(&database);
@@ -1173,7 +1173,7 @@ pub fn seed_learning_performance(card_count: u32) -> AppResult<LearningPerforman
 pub fn seed_learning_preemption(due_after_seconds: u64) -> AppResult<LearningPreemptionPlan> {
     let learning = seed_learning_performance(5)?;
     let reminder_database =
-        app_data_directory(QA_IDENTIFIER)?.join(crate::brand::main_database_file());
+        app_data_directory(QA_IDENTIFIER)?.join("yuanyuan-reminder.sqlite3");
     Repository::open(&reminder_database)?.update_settings(serde_json::json!({
         "pauseUntil": null,
     }))?;
@@ -1194,7 +1194,7 @@ pub fn seed_learning_preemption(due_after_seconds: u64) -> AppResult<LearningPre
 pub fn read_learning_recovery_state() -> AppResult<LearningRecoveryState> {
     let database = app_data_directory(QA_IDENTIFIER)?
         .join("learning-data")
-        .join(crate::brand::learning_database_file());
+        .join("yuanyuan-learning.sqlite3");
     read_learning_recovery_state_from_database(&database)
 }
 
@@ -1202,7 +1202,7 @@ pub fn read_learning_recovery_state() -> AppResult<LearningRecoveryState> {
 pub fn read_learning_preemption_state() -> AppResult<LearningPreemptionState> {
     let database = app_data_directory(QA_IDENTIFIER)?
         .join("learning-data")
-        .join(crate::brand::learning_database_file());
+        .join("yuanyuan-learning.sqlite3");
     read_learning_preemption_state_from_database(&database)
 }
 
@@ -1469,7 +1469,7 @@ pub fn seed_reminder_latency(due_after_seconds: u64) -> AppResult<ReminderLatenc
             "runtime QA reminder delay must be 1 to 120 seconds".into(),
         ));
     }
-    let database = app_data_directory(QA_IDENTIFIER)?.join(crate::brand::main_database_file());
+    let database = app_data_directory(QA_IDENTIFIER)?.join("yuanyuan-reminder.sqlite3");
     let repository = Repository::open(&database)?;
     let now = Utc::now();
     let scheduled = now + ChronoDuration::seconds(due_after_seconds as i64);
@@ -1497,7 +1497,7 @@ pub fn seed_reminder_latency(due_after_seconds: u64) -> AppResult<ReminderLatenc
 }
 
 pub fn read_reminder_latency_claim(reminder_id: &str) -> AppResult<ReminderLatencyClaim> {
-    let database = app_data_directory(QA_IDENTIFIER)?.join(crate::brand::main_database_file());
+    let database = app_data_directory(QA_IDENTIFIER)?.join("yuanyuan-reminder.sqlite3");
     let repository = Repository::open(&database)?;
     let (scheduled_at, claimed_at, status) = repository
         .runtime_qa_reminder_claim(reminder_id)?

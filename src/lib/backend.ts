@@ -6,6 +6,7 @@ import type {
   BackupInfo,
   BasicSupportPath,
   BasicSupportSession,
+  SceneRestSession,
   CompanionExpressionSnapshot,
   CreateReminderInput,
   FocusState,
@@ -421,6 +422,8 @@ let demoSnapshot: TodaySnapshot = {
 
 let demoSettings: AppSettings = {
   animationMode: "always",
+  sceneWardrobeMode: "full",
+  petProfile: { schemaVersion: 1, selectedPackId: "builtin:yuanyuan", nicknames: {} },
   companionIntensity: "everyday",
   companionLabelMode: "adaptive",
   animationSpeed: 1,
@@ -447,6 +450,7 @@ let demoSettings: AppSettings = {
 
 let demoFocusState: FocusState = { session: null };
 let demoBasicSupport: BasicSupportSession | null = null;
+let demoSceneRest: SceneRestSession | null = null;
 let demoCare: PetCareSnapshot = {
   total: 0,
   food: 0,
@@ -687,6 +691,7 @@ export async function completeOccurrence(id: string): Promise<void> {
     return;
   }
   const now = new Date().toISOString();
+  const category = demoSnapshot.occurrences.find((item) => item.id === id)?.category;
   let waterCompleted = demoSnapshot.waterCompleted;
   demoSnapshot = {
     ...demoSnapshot,
@@ -708,6 +713,13 @@ export async function completeOccurrence(id: string): Promise<void> {
     }),
     waterCompleted,
   };
+  if (category) {
+    await emitDemoBackendEvent("pet-intent-resolved", {
+      occurrenceId: id,
+      category,
+      action: "complete",
+    });
+  }
 }
 
 export async function snoozeOccurrence(id: string, minutes = 10): Promise<void> {
@@ -716,6 +728,7 @@ export async function snoozeOccurrence(id: string, minutes = 10): Promise<void> 
     return;
   }
   const now = new Date();
+  const category = demoSnapshot.occurrences.find((item) => item.id === id)?.category;
   demoSnapshot = {
     ...demoSnapshot,
     occurrences: demoSnapshot.occurrences.map((item) =>
@@ -732,6 +745,13 @@ export async function snoozeOccurrence(id: string, minutes = 10): Promise<void> 
         : item,
     ),
   };
+  if (category) {
+    await emitDemoBackendEvent("pet-intent-resolved", {
+      occurrenceId: id,
+      category,
+      action: "snooze",
+    });
+  }
 }
 
 export async function skipOccurrence(id: string): Promise<void> {
@@ -740,6 +760,7 @@ export async function skipOccurrence(id: string): Promise<void> {
     return;
   }
   const now = new Date().toISOString();
+  const category = demoSnapshot.occurrences.find((item) => item.id === id)?.category;
   demoSnapshot = {
     ...demoSnapshot,
     occurrences: demoSnapshot.occurrences.map((item) =>
@@ -754,6 +775,13 @@ export async function skipOccurrence(id: string): Promise<void> {
         : item,
     ),
   };
+  if (category) {
+    await emitDemoBackendEvent("pet-intent-resolved", {
+      occurrenceId: id,
+      category,
+      action: "skip",
+    });
+  }
 }
 
 export async function recordWater(): Promise<void> {
@@ -799,7 +827,7 @@ export async function getCompanionExpressionSnapshot(): Promise<CompanionExpress
     return invoke<CompanionExpressionSnapshot>("get_companion_expression_snapshot");
   }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     revision: 0,
     tier: "n0",
     intent: "quiet_presence",
@@ -813,6 +841,9 @@ export async function getCompanionExpressionSnapshot(): Promise<CompanionExpress
     taskSource: null,
     groupedCount: 1,
     focusDeferredCount: 0,
+    sceneAppearance: demoFocusState.session?.phase === "focus"
+      ? { kind: "work", stage: "fresh" }
+      : { kind: "none" },
     accessibleState:
       demoFocusState.session?.phase === "focus"
         ? "focused_quietly"
@@ -991,6 +1022,47 @@ export async function stopBasicSupport(): Promise<boolean> {
   return stopped;
 }
 
+export async function getSceneRestState(): Promise<SceneRestSession | null> {
+  return isTauri
+    ? invoke<SceneRestSession | null>("get_scene_rest_state")
+    : structuredClone(demoSceneRest);
+}
+
+export async function startSceneRest(
+  durationMinutes: 5 | 10 | 20,
+): Promise<SceneRestSession> {
+  if (isTauri) {
+    return invoke<SceneRestSession>("start_scene_rest", { durationMinutes });
+  }
+  const startedAt = new Date();
+  demoSceneRest = {
+    id: crypto.randomUUID(),
+    durationMinutes,
+    startedAt: startedAt.toISOString(),
+    endsAt: new Date(startedAt.getTime() + durationMinutes * 60_000).toISOString(),
+  };
+  await emitDemoBackendEvent("scene-rest-updated", demoSceneRest);
+  return structuredClone(demoSceneRest);
+}
+
+export async function stopSceneRest(): Promise<boolean> {
+  if (isTauri) return invoke<boolean>("stop_scene_rest");
+  const stopped = demoSceneRest !== null;
+  demoSceneRest = null;
+  await emitDemoBackendEvent("scene-rest-updated", null);
+  return stopped;
+}
+
+let demoInteractionRevision = 0;
+let demoInteractionId: string | null = null;
+
+export async function finishPetInteraction(leaseId: string, leaseRevision: number): Promise<boolean> {
+  if (isTauri) return invoke<boolean>("finish_pet_interaction", { leaseId, leaseRevision });
+  if (demoInteractionId !== leaseId || demoInteractionRevision !== leaseRevision) return false;
+  demoInteractionId = null;
+  return true;
+}
+
 export async function startPetInteraction(
   kind: PetInteractionKind,
 ): Promise<PetCareSnapshot> {
@@ -1003,9 +1075,13 @@ export async function startPetInteraction(
     [kind]: demoCare[kind] + 1,
     lastInteractionAt: new Date().toISOString(),
   };
+  demoInteractionId = crypto.randomUUID();
+  demoInteractionRevision += 1;
   await emitDemoBackendEvent("pet-interaction-started", {
-    id: crypto.randomUUID(),
+    id: demoInteractionId,
     kind,
+    leaseRevision: demoInteractionRevision,
+    expiresAtUnixMs: Date.now() + 30_000,
   });
   return demoCare;
 }
@@ -1017,6 +1093,7 @@ export async function getSettings(): Promise<AppSettings> {
 }
 
 export async function updateSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
+  if (Object.hasOwn(patch, "petProfile")) throw new Error("请通过我的宠物页面修改宠物配置。");
   if (isTauri) return invoke<AppSettings>("update_settings", { patch });
   demoSettings = { ...demoSettings, ...patch };
   return structuredClone(demoSettings);

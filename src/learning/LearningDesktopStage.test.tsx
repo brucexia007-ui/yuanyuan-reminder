@@ -21,11 +21,13 @@ vi.mock("../pet/SpriteAnimator", () => ({
   SpriteAnimator: ({
     animation,
     mirrored = false,
+    forceStill = false,
     onFrameChange,
     onComplete,
   }: {
     animation: string;
     mirrored?: boolean;
+    forceStill?: boolean;
     onFrameChange?: (animation: string, frameIndex: number) => void;
     onComplete?: (animation: string) => void;
   }) => (
@@ -33,6 +35,7 @@ vi.mock("../pet/SpriteAnimator", () => ({
       data-testid="sprite"
       data-animation={animation}
       data-mirrored={String(mirrored)}
+      data-force-still={String(forceStill)}
     >
       {[4, 5, 6].map((frameIndex) => (
         <button
@@ -57,6 +60,7 @@ import type {
   LearningSessionSnapshot,
 } from "../types";
 import { LearningDesktopStage } from "./LearningDesktopStage";
+import { acceptPetSnapshot, builtinPet, getPetSnapshot } from "../pet/petProfile";
 
 const session: LearningSessionSnapshot = {
   schemaVersion: 1,
@@ -150,6 +154,7 @@ function sprite(): HTMLElement {
 
 describe("desktop learning pet feedback", () => {
   beforeEach(() => {
+    acceptPetSnapshot({ ...getPetSnapshot(), revision: getPetSnapshot().revision + 1, effectivePackId: builtinPet.packId, selectedPackId: builtinPet.packId, nickname: "圆圆", capabilities: builtinPet.capabilities, manifest: builtinPet.manifest, staticOnly: false });
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-12T08:00:00Z"));
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -185,6 +190,27 @@ describe("desktop learning pet feedback", () => {
     vi.clearAllMocks();
   });
 
+  it("supports revealing and rating a generic recall card with keyboard focus", async () => {
+    backend.getCurrentLearningQuestion.mockResolvedValue({
+      ...question, kind: "recall_fallback", headword: "首先确认什么？", phonetic: null,
+      partOfSpeech: ["generic"], options: [],
+    });
+    backend.getCurrentLearningCard.mockResolvedValue({
+      schemaVersion: 1, cardId: "card-1", headword: "首先确认什么？", phonetic: null,
+      partOfSpeech: ["generic"], meaningsZh: ["确认可观察的结果。"], wordFamily: [],
+      stage: "learning", sourceIds: [],
+    });
+    await act(async () => root.render(<LearningDesktopStage session={session}
+      settings={{ animationMode: "off", animationSpeed: 1 }} onSessionChange={vi.fn()} onClose={vi.fn()} />));
+    await flushPromises();
+    expect(document.activeElement?.textContent).toBe("先回忆，再查看答案");
+    expect(container.textContent).not.toContain("选项不足");
+    expect(container.querySelector(".desktop-learning-word-row")?.textContent).not.toContain("generic");
+    await act(async () => (document.activeElement as HTMLButtonElement).click());
+    expect(container.textContent).toContain("确认可观察的结果。");
+    expect(document.activeElement?.textContent).toBe("忘了");
+  });
+
   it("moves DOM focus to the first answer after the question finishes writing", async () => {
     await act(async () =>
       root.render(
@@ -200,6 +226,19 @@ describe("desktop learning pet feedback", () => {
     await finishQuestionWriting();
 
     expect(document.activeElement).toBe(choice("correct"));
+  });
+
+  it.each([true, false])("settles in-flight answer feedback when switching to a pack with learning=%s", async (learning) => {
+    backend.answerLearningQuestion.mockResolvedValue(answerResult(true));
+    await act(async () => root.render(<LearningDesktopStage session={session} settings={{ animationMode: "always", animationSpeed: 1 }} onSessionChange={vi.fn()} onClose={vi.fn()} />));
+    await flushPromises(); await finishQuestionWriting();
+    await act(async () => choice("correct").click()); await flushPromises();
+    expect(sprite().dataset.animation).toBe("learning-press-correct");
+    await act(async () => acceptPetSnapshot({ ...getPetSnapshot(), revision: getPetSnapshot().revision + 1, selectedPackId: "next-pet", effectivePackId: "next-pet", capabilities: { learning, scene: false } }));
+    expect(container.querySelector('[role="status"]')?.textContent).toBe("回答正确，真棒");
+    await advanceTimers(1000);
+    expect(container.querySelector(".desktop-learning-complete")).not.toBeNull();
+    expect(backend.answerLearningQuestion).toHaveBeenCalledTimes(1);
   });
 
   it("presses the green button only at the contact frame for a correct answer", async () => {
@@ -311,6 +350,32 @@ describe("desktop learning pet feedback", () => {
     expect(onSessionChange).toHaveBeenCalledWith(next);
   });
 
+  it.each([
+    ["a higher priority presentation is active", "当前有优先展示的提醒或活动，请处理完后再试"],
+    ["a learning session is already active or resumable", "上一轮还未结束，请先继续或结束上一轮"],
+    ["learning startup cleanup failed; a higher priority presentation is active", "学习启动后的状态清理未完成，请重新打开学习页核对上一轮后再试"],
+  ])("keeps the completed board usable when the next round is denied: %s", async (failure, message) => {
+    const completed = { ...session, status: "completed" as const, completedCount: 1, endedAtUnixMs: 31_000 };
+    const next = { ...session, sessionId: "session-2", sessionKind: "mistakes" as const };
+    backend.startManualLearningSession.mockRejectedValueOnce(new Error(`validation error: ${failure}`)).mockResolvedValue(next);
+    const onSessionChange = vi.fn();
+    await act(async () => root.render(
+      <LearningDesktopStage session={completed} settings={{ animationMode: "always", animationSpeed: 1 }} onSessionChange={onSessionChange} onClose={vi.fn()} />,
+    ));
+    await flushPromises();
+    const correction = () => [...container.querySelectorAll<HTMLButtonElement>("button")].find((item) => item.textContent?.includes("订正本轮错题"))!;
+    await act(async () => correction().click());
+    await flushPromises();
+    expect(container.textContent).toContain(message);
+    expect(container.textContent).not.toContain("validation error");
+    expect(onSessionChange).not.toHaveBeenCalled();
+    expect(correction().disabled).toBe(false);
+    await act(async () => correction().click());
+    await flushPromises();
+    expect(onSessionChange).toHaveBeenCalledWith(next);
+    expect(backend.answerLearningQuestion).not.toHaveBeenCalled();
+  });
+
   it("releases the completed presentation only when the completion board closes", async () => {
     const completed = {
       ...session,
@@ -386,7 +451,7 @@ describe("desktop learning pet feedback", () => {
       .toContain("我看懂了，下一题");
   });
 
-  it("tilts and blinks once after 15 seconds without an answer", async () => {
+  it("rests still for a minute, makes one brief curious gesture, then rests again", async () => {
     await act(async () =>
       root.render(
         <LearningDesktopStage
@@ -401,13 +466,16 @@ describe("desktop learning pet feedback", () => {
     await finishQuestionWriting();
 
     expect(sprite().dataset.animation).toBe("learning-study-sit");
-    await advanceTimers(14_999);
+    expect(sprite().dataset.forceStill).toBe("true");
+    await advanceTimers(59_999);
     expect(sprite().dataset.animation).toBe("learning-study-sit");
     await advanceTimers(1);
     expect(sprite().dataset.animation).toBe("learning-study-curious");
+    expect(sprite().dataset.forceStill).toBe("false");
 
     await act(async () => testButton("complete-animation").click());
     expect(sprite().dataset.animation).toBe("learning-study-sit");
+    expect(sprite().dataset.forceStill).toBe("true");
     await advanceTimers(30_000);
     expect(sprite().dataset.animation).toBe("learning-study-sit");
   });
@@ -431,7 +499,7 @@ describe("desktop learning pet feedback", () => {
     );
     await flushPromises();
     await finishQuestionWriting();
-    await advanceTimers(14_950);
+    await advanceTimers(59_950);
 
     act(() => choice("correct").click());
     await advanceTimers(100);
@@ -458,7 +526,7 @@ describe("desktop learning pet feedback", () => {
     );
     await flushPromises();
     await finishQuestionWriting();
-    await advanceTimers(15_000);
+    await advanceTimers(60_000);
     expect(sprite().dataset.animation).toBe("learning-study-curious");
 
     await act(async () => choice("wrong").click());
@@ -505,7 +573,7 @@ describe("desktop learning pet feedback", () => {
     expect(container.querySelector(".desktop-learning-word-row h2")?.textContent)
       .toBe("stone");
     await finishQuestionWriting();
-    await advanceTimers(15_000);
+    await advanceTimers(60_000);
     expect(sprite().dataset.animation).toBe("learning-study-curious");
   });
 

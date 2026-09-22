@@ -385,6 +385,9 @@ pub struct LearningImportPreview {
     pub disabled_count: u32,
     pub reset_count: u32,
     pub rights_basis: Option<String>,
+    pub rights_statement: Option<String>,
+    pub redistributable: Option<bool>,
+    pub source_details: Vec<String>,
     pub selected_path_returned: bool,
 }
 
@@ -407,6 +410,9 @@ impl LearningImportPreview {
             disabled_count: 0,
             reset_count: 0,
             rights_basis: None,
+            rights_statement: None,
+            redistributable: None,
+            source_details: Vec::new(),
             selected_path_returned: false,
         }
     }

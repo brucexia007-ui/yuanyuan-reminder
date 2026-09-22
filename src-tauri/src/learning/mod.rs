@@ -3,6 +3,8 @@ mod invitation;
 mod legacy_migration;
 mod models;
 mod pack;
+#[cfg(test)]
+mod unified_tests;
 mod quiz;
 mod repository;
 mod scheduler_adapter;
@@ -45,6 +47,28 @@ pub(crate) use repository::portability::{
 const IMPORT_PREVIEW_TTL_MILLIS: i64 = 10 * 60 * 1_000;
 const MAX_PENDING_IMPORT_PREVIEWS: usize = 8;
 const LEARNING_INVITATION_TTL_MILLIS: i64 = 20_000;
+
+pub(crate) fn record_invitation_suppression(
+    runtime: &parking_lot::Mutex<LearningRuntime>,
+    context: &LearningInvitationContext,
+    invitation_id: &str,
+) -> AppResult<bool> {
+    // Rust 2021 keeps an if-let scrutinee's temporary guard alive in its body.
+    // Use one explicit guard so a suppressed invitation cannot relock itself
+    // and stop the scheduler (or every subsequent learning command).
+    let mut runtime = runtime.lock();
+    if let LearningInvitationDecision::Suppressed(reason) = runtime.evaluate_invitation(context) {
+        runtime.record_invitation_event(
+            invitation_id,
+            context.trigger_source,
+            "suppressed",
+            Some(reason),
+            context.now_unix_ms,
+        )?;
+        return Ok(true);
+    }
+    Ok(false)
+}
 
 struct PendingImportPreview {
     expires_at_unix_ms: i64,
@@ -297,6 +321,9 @@ impl LearningRuntime {
             disabled_count: 0,
             reset_count: 0,
             rights_basis: None,
+            rights_statement: None,
+            redistributable: None,
+            source_details: Vec::new(),
             selected_path_returned: false,
         };
         self.pending_imports.insert(
@@ -448,6 +475,12 @@ impl LearningRuntime {
             disabled_count,
             reset_count,
             rights_basis: Some(parsed.rights_basis.clone()),
+            rights_statement: Some(parsed.rights_statement.clone()),
+            redistributable: Some(parsed.redistributable),
+            source_details: parsed.sources.iter().map(|source| {
+                [Some(source.label.clone()), source.url.clone(), source.license.clone()]
+                    .into_iter().flatten().collect::<Vec<_>>().join(" · ")
+            }).collect(),
             selected_path_returned: false,
         };
         self.pending_imports.insert(
@@ -508,6 +541,9 @@ impl LearningRuntime {
             disabled_count: 0,
             reset_count: 0,
             rights_basis: None,
+            rights_statement: None,
+            redistributable: None,
+            source_details: Vec::new(),
             selected_path_returned: false,
         };
         self.pending_imports.insert(
@@ -1037,6 +1073,143 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
+
+    #[test]
+    fn suppressed_invitation_returns_and_releases_learning_for_the_next_tick() {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let directory = tempdir().unwrap();
+            let path = directory.path().join("learning.sqlite3");
+            let runtime = parking_lot::Mutex::new(LearningRuntime::initialize(&path));
+            let context = runtime
+                .lock()
+                .invitation_context(
+                    LearningTriggerSource::FocusFinished,
+                    LearningInvitationEnvironment {
+                        focus_or_break_active: false,
+                        quiet_time: false,
+                        basic_support_active: false,
+                        session_interactive: true,
+                        system_suitability:
+                            invitation::SystemNotificationSuitability::AcceptsNotifications,
+                        pending_local_reminder: false,
+                        task_attention_pending: false,
+                        global_budget_available: true,
+                        content_and_database_healthy: false,
+                        timing_valid: true,
+                    },
+                    1_800_000_000_000,
+                    "2027-01-15",
+                )
+                .unwrap();
+            let invitation_id = uuid::Uuid::new_v4().to_string();
+            assert!(record_invitation_suppression(&runtime, &context, &invitation_id).unwrap());
+            assert!(
+                runtime.try_lock().is_some(),
+                "learning lock leaked after suppression"
+            );
+            assert!(runtime.lock().home(context.now_unix_ms + 15_000).is_ok());
+            let connection = rusqlite::Connection::open_with_flags(
+                &path,
+                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+            )
+            .unwrap();
+            let event: (String, String) = connection.query_row(
+                "SELECT stage, reason_code FROM learning_invitation_events WHERE invitation_id = ?1",
+                [&invitation_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            ).unwrap();
+            assert_eq!(event, ("suppressed".into(), "manual_only".into()));
+            sender.send(()).unwrap();
+        });
+        receiver
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("focus-finished suppression blocked the scheduler and learning reads");
+    }
+
+    fn invitation_test_context(
+        runtime: &parking_lot::Mutex<LearningRuntime>,
+    ) -> LearningInvitationContext {
+        runtime
+            .lock()
+            .invitation_context(
+                LearningTriggerSource::FocusFinished,
+                LearningInvitationEnvironment {
+                    focus_or_break_active: false,
+                    quiet_time: false,
+                    basic_support_active: false,
+                    session_interactive: true,
+                    system_suitability:
+                        invitation::SystemNotificationSuitability::AcceptsNotifications,
+                    pending_local_reminder: false,
+                    task_attention_pending: false,
+                    global_budget_available: true,
+                    content_and_database_healthy: true,
+                    timing_valid: true,
+                },
+                1_800_000_000_000,
+                "2027-01-15",
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn invitation_suppression_rechecks_the_latest_context_without_leaking_a_lock() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("learning.sqlite3");
+        let runtime = parking_lot::Mutex::new(LearningRuntime::initialize(&path));
+        let mut context = invitation_test_context(&runtime);
+        context.learning_mode = models::LearningMode::AutomaticOptIn;
+        context.due_review_count = 3;
+        context.source_enabled = true;
+        let eligible_id = uuid::Uuid::new_v4().to_string();
+        let suppressed_id = uuid::Uuid::new_v4().to_string();
+        assert!(!record_invitation_suppression(&runtime, &context, &eligible_id).unwrap());
+        assert!(runtime.try_lock().is_some());
+        context.pending_local_reminder = true;
+        assert!(record_invitation_suppression(&runtime, &context, &suppressed_id).unwrap());
+        assert!(runtime.try_lock().is_some());
+        let connection = rusqlite::Connection::open_with_flags(
+            &path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )
+        .unwrap();
+        let events: Vec<(String, String)> = connection.prepare(
+            "SELECT invitation_id, reason_code FROM learning_invitation_events ORDER BY occurred_at_unix_ms"
+        ).unwrap().query_map([], |row| Ok((row.get(0)?, row.get(1)?))).unwrap()
+            .collect::<Result<_, _>>().unwrap();
+        assert_eq!(events, vec![(suppressed_id, "reminder_pending".into())]);
+    }
+
+    #[test]
+    fn failed_invitation_suppression_write_releases_learning_and_allows_retry() {
+        let directory = tempdir().unwrap();
+        let path = directory.path().join("learning.sqlite3");
+        let runtime = parking_lot::Mutex::new(LearningRuntime::initialize(&path));
+        let context = invitation_test_context(&runtime);
+        let connection = rusqlite::Connection::open(&path).unwrap();
+        connection.execute_batch(
+            "CREATE TRIGGER fail_suppression BEFORE INSERT ON learning_invitation_events
+             WHEN NEW.stage = 'suppressed' BEGIN SELECT RAISE(FAIL, 'injected suppression failure'); END;"
+        ).unwrap();
+        let invitation_id = uuid::Uuid::new_v4().to_string();
+        let error = record_invitation_suppression(&runtime, &context, &invitation_id).unwrap_err();
+        assert!(error.to_string().contains("injected suppression failure"));
+        assert!(runtime.try_lock().is_some());
+        assert!(runtime.lock().home(context.now_unix_ms + 15_000).is_ok());
+        connection
+            .execute_batch("DROP TRIGGER fail_suppression")
+            .unwrap();
+        assert!(record_invitation_suppression(&runtime, &context, &invitation_id).unwrap());
+        let count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM learning_invitation_events",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
 
     #[test]
     fn configured_runtime_defers_database_creation_until_first_learning_use() {

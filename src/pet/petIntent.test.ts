@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { petDisplayName } from "../brand";
 import type { PetIntent } from "../types";
 import {
   formatRemaining,
@@ -144,7 +143,7 @@ describe("nonverbal text routing", () => {
           message: "untrusted message",
         }),
       ),
-    ).toBe(`记录完成；${petDisplayName}高兴地跳了一下`);
+    ).toBe("记录完成；圆圆高兴地跳了一下");
     expect(
       motionOnlyAccessibleLabel(
         intent({
@@ -153,7 +152,7 @@ describe("nonverbal text routing", () => {
           occurrenceId: null,
         }),
       ),
-    ).toBe(`${petDisplayName}正在吃猫粮`);
+    ).toBe("圆圆正在吃猫粮");
     expect(
       motionOnlyAccessibleLabel(
         intent({ kind: "play", occurrenceId: null }),

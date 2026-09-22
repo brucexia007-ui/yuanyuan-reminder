@@ -21,11 +21,11 @@ describe("product brand copy", () => {
     expect(document.querySelector("article")?.getAttribute("aria-label")).toBe("用户的圆圆");
   });
 
-  it("locks 饺饺's requested identity in the brand source", () => {
-    expect(petDisplayName).toBe("饺饺");
-    expect(petSex).toBe("female");
-    expect(petBreed).toBe("英短金点");
-    expect(petPersonality).toBe("乖巧高冷");
-    expect(petIdentityDescription).toBe("饺饺：英短金点母猫，性格乖巧高冷");
+  it("keeps the unified application's built-in Yuanyuan identity", () => {
+    expect(petDisplayName).toBe("圆圆");
+    expect(petSex).toBe("unknown");
+    expect(petBreed).toBe("英国短毛猫");
+    expect(petPersonality).toBe("温和陪伴");
+    expect(petIdentityDescription).toBe("圆圆：英国短毛猫猫咪，性格温和陪伴");
   });
 });

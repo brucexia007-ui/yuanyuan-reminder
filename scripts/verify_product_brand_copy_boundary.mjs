@@ -1,7 +1,15 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
+import { verifyUnifiedPetIdentity } from "./verify_unified_pet_identity.mjs";
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
+
+const authority = JSON.parse(await readFile(path.join(projectRoot, "product-version.json"), "utf8"));
+if (authority.brandConfig === undefined) {
+  await verifyUnifiedPetIdentity(projectRoot);
+  process.stdout.write("Unified pet naming and application identity boundary verified.\n");
+  process.exit(0);
+}
 
 async function sourceFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });

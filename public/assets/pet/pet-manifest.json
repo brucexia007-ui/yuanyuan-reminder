@@ -1,12 +1,9 @@
 {
-  "id": "jiaojiao-reminder",
-  "displayName": "饺饺",
-  "description": "饺饺是一只英短金点母猫，性格乖巧高冷；陪你喝水、专注、休息和玩耍",
-  "sex": "female",
-  "breed": "英短金点",
-  "personality": "乖巧高冷",
+  "id": "yuanyuan-reminder",
+  "displayName": "圆圆",
+  "description": "一只陪你喝水、专注、休息和玩耍的桌面小猫",
   "spriteVersionNumber": 2,
-  "assetLicense": "JIAOJIAO_ASSETS_LICENSE.md",
+  "assetLicense": "ASSETS_LICENSE.md",
   "cellWidth": 192,
   "cellHeight": 208,
   "columns": 8,
@@ -17,6 +14,8 @@
   "lifeRows": 21,
   "learningSpritesheet": "/assets/pet/learning-atlas.webp",
   "learningRows": 4,
+  "sceneSpritesheet": "/assets/pet/scene-atlas.webp",
+  "sceneRows": 18,
   "animations": {
     "idle": {
       "row": 0,
@@ -26,21 +25,18 @@
         2,
         3,
         4,
-        5,
-        6,
-        7
+        5
       ],
       "durations": [
         450,
-        180,
+        120,
         120,
         180,
         180,
-        180,
-        180,
-        450
+        550
       ],
-      "loopStart": 0
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "running-right": {
       "row": 1,
@@ -64,7 +60,8 @@
         110,
         180
       ],
-      "loopStart": 0
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "running-left": {
       "row": 2,
@@ -88,7 +85,8 @@
         110,
         180
       ],
-      "loopStart": 0
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "waving": {
       "row": 3,
@@ -96,23 +94,16 @@
         0,
         1,
         2,
-        3,
-        4,
-        5,
-        6,
-        7
+        3
       ],
       "durations": [
-        150,
-        150,
-        150,
-        150,
-        150,
+        160,
         150,
         150,
         260
       ],
-      "loopStart": 0
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "jumping": {
       "row": 4,
@@ -121,22 +112,17 @@
         1,
         2,
         3,
-        4,
-        5,
-        6,
-        7
+        4
       ],
       "durations": [
-        120,
-        120,
-        120,
-        120,
-        120,
-        120,
-        120,
+        140,
+        130,
+        130,
+        140,
         260
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "activity-jumping": {
       "row": 4,
@@ -146,21 +132,22 @@
         2,
         3,
         4,
-        5,
-        6,
-        7
+        3,
+        2,
+        1
       ],
       "durations": [
         150,
         115,
         105,
         110,
+        150,
         110,
-        115,
-        140,
-        180
+        105,
+        125
       ],
-      "loopStart": 0
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "failed": {
       "row": 5,
@@ -184,7 +171,8 @@
         180,
         320
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "waiting": {
       "row": 6,
@@ -194,9 +182,7 @@
         2,
         3,
         4,
-        5,
-        6,
-        7
+        5
       ],
       "durations": [
         190,
@@ -204,11 +190,10 @@
         180,
         180,
         190,
-        180,
-        180,
         320
       ],
-      "loopStart": 0
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "running": {
       "row": 7,
@@ -218,9 +203,7 @@
         2,
         3,
         4,
-        5,
-        6,
-        7
+        5
       ],
       "durations": [
         150,
@@ -228,11 +211,10 @@
         150,
         150,
         150,
-        150,
-        150,
         240
       ],
-      "loopStart": 0
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "review": {
       "row": 8,
@@ -242,9 +224,7 @@
         2,
         3,
         4,
-        5,
-        6,
-        7
+        5
       ],
       "durations": [
         180,
@@ -252,11 +232,10 @@
         180,
         180,
         180,
-        180,
-        180,
         300
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "sleep-enter": {
       "sheet": "sleep",
@@ -281,7 +260,8 @@
         120,
         180
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "sleeping": {
       "sheet": "sleep",
@@ -306,7 +286,8 @@
         280,
         360
       ],
-      "loopStart": 0
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "wake-up": {
       "sheet": "sleep",
@@ -331,7 +312,8 @@
         100,
         180
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "grooming": {
       "sheet": "life",
@@ -364,7 +346,8 @@
         320,
         440
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "grooming-chest": {
       "sheet": "life",
@@ -393,7 +376,8 @@
         340,
         480
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "grooming-flank": {
       "sheet": "life",
@@ -422,7 +406,8 @@
         360,
         500
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "stretching": {
       "sheet": "life",
@@ -447,7 +432,8 @@
         180,
         320
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "yawning": {
       "sheet": "life",
@@ -472,7 +458,8 @@
         200,
         360
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "meowing": {
       "sheet": "life",
@@ -497,7 +484,8 @@
         200,
         360
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "belly-up": {
       "sheet": "life",
@@ -522,7 +510,8 @@
         280,
         450
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "belly-down": {
       "sheet": "life",
@@ -547,7 +536,8 @@
         200,
         320
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 7
     },
     "focus-calm": {
       "sheet": "life",
@@ -568,7 +558,8 @@
         260,
         700
       ],
-      "loopStart": 0
+      "loopStart": 0,
+      "staticFrame": 4
     },
     "eating-food": {
       "sheet": "life",
@@ -593,7 +584,8 @@
         520,
         320
       ],
-      "loopStart": 1
+      "loopStart": 1,
+      "staticFrame": 0
     },
     "drinking-water": {
       "sheet": "life",
@@ -618,20 +610,21 @@
         300,
         340
       ],
-      "loopStart": 1
+      "loopStart": 1,
+      "staticFrame": 0
     },
     "treat-follow": {
       "sheet": "life",
       "row": 10,
       "frames": [
-        7,
-        6,
-        5,
-        4,
-        3,
-        2,
+        0,
         1,
-        0
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
       ],
       "durations": [
         400,
@@ -643,7 +636,8 @@
         400,
         400
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "wand-play": {
       "sheet": "life",
@@ -668,7 +662,8 @@
         90,
         100
       ],
-      "loopStart": 0
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "pet-nuzzle": {
       "sheet": "life",
@@ -693,7 +688,8 @@
         100,
         120
       ],
-      "loopStart": 0
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "ball-bat": {
       "sheet": "life",
@@ -718,7 +714,8 @@
         180,
         260
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "wand-reach": {
       "sheet": "life",
@@ -743,7 +740,8 @@
         160,
         160
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "wand-swipe": {
       "sheet": "life",
@@ -768,7 +766,8 @@
         120,
         120
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "wand-return": {
       "sheet": "life",
@@ -793,7 +792,8 @@
         145,
         145
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "ball-pickup": {
       "sheet": "life",
@@ -818,7 +818,8 @@
         200,
         280
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "ball-carry": {
       "sheet": "life",
@@ -843,7 +844,8 @@
         230,
         220
       ],
-      "loopStart": 0
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "ball-drop": {
       "sheet": "life",
@@ -868,7 +870,8 @@
         220,
         420
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "alert-glass-paws": {
       "sheet": "life",
@@ -893,7 +896,8 @@
         145,
         210
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "learning-study-sit": {
       "sheet": "learning",
@@ -916,7 +920,8 @@
         680,
         760
       ],
-      "loopStart": 0
+      "loopStart": 0,
+      "staticFrame": 0
     },
     "learning-study-curious": {
       "sheet": "learning",
@@ -941,7 +946,8 @@
         170,
         220
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "learning-press-correct": {
       "sheet": "learning",
@@ -966,7 +972,8 @@
         125,
         180
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
     },
     "learning-press-wrong": {
       "sheet": "learning",
@@ -991,7 +998,476 @@
         125,
         180
       ],
-      "loopStart": null
+      "loopStart": null,
+      "staticFrame": 0
+    },
+    "spa-enter": {
+      "sheet": "scene",
+      "row": 0,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loopStart": null,
+      "staticFrame": 7
+    },
+    "spa-loop": {
+      "sheet": "scene",
+      "row": 1,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        320,
+        320,
+        320,
+        320,
+        320,
+        320,
+        320,
+        320
+      ],
+      "loopStart": 0,
+      "staticFrame": 3
+    },
+    "spa-exit": {
+      "sheet": "scene",
+      "row": 2,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loopStart": null,
+      "staticFrame": 7
+    },
+    "meal-alert": {
+      "sheet": "scene",
+      "row": 3,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loopStart": null,
+      "staticFrame": 7
+    },
+    "meal-wait": {
+      "sheet": "scene",
+      "row": 4,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        280,
+        280,
+        280,
+        280,
+        280,
+        280,
+        280,
+        280
+      ],
+      "loopStart": 0,
+      "staticFrame": 2
+    },
+    "hydration-alert": {
+      "sheet": "scene",
+      "row": 5,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loopStart": null,
+      "staticFrame": 7
+    },
+    "hydration-wait": {
+      "sheet": "scene",
+      "row": 6,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        280,
+        280,
+        280,
+        280,
+        280,
+        280,
+        280,
+        280
+      ],
+      "loopStart": 0,
+      "staticFrame": 2
+    },
+    "work-focus-loop": {
+      "sheet": "scene",
+      "row": 7,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        300,
+        300,
+        300,
+        300,
+        300,
+        300,
+        300,
+        300
+      ],
+      "loopStart": 0,
+      "staticFrame": 2
+    },
+    "work-fatigue-enter": {
+      "sheet": "scene",
+      "row": 8,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loopStart": null,
+      "staticFrame": 7
+    },
+    "work-fatigue-loop": {
+      "sheet": "scene",
+      "row": 9,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360,
+        360
+      ],
+      "loopStart": 0,
+      "staticFrame": 3
+    },
+    "work-recover": {
+      "sheet": "scene",
+      "row": 10,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loopStart": null,
+      "staticFrame": 7
+    },
+    "warmup-alert": {
+      "sheet": "scene",
+      "row": 11,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loopStart": null,
+      "staticFrame": 7
+    },
+    "warmup-loop": {
+      "sheet": "scene",
+      "row": 12,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        250,
+        250,
+        250,
+        250,
+        250,
+        250,
+        250,
+        250
+      ],
+      "loopStart": 0,
+      "staticFrame": 3
+    },
+    "study-focus-loop": {
+      "sheet": "scene",
+      "row": 13,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        320,
+        320,
+        320,
+        320,
+        320,
+        320,
+        320,
+        320
+      ],
+      "loopStart": 0,
+      "staticFrame": 2
+    },
+    "study-curious": {
+      "sheet": "scene",
+      "row": 14,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loopStart": null,
+      "staticFrame": 7
+    },
+    "night-enter": {
+      "sheet": "scene",
+      "row": 15,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loopStart": null,
+      "staticFrame": 7
+    },
+    "night-loop": {
+      "sheet": "scene",
+      "row": 16,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        380,
+        380,
+        380,
+        380,
+        380,
+        380,
+        380,
+        380
+      ],
+      "loopStart": 0,
+      "staticFrame": 3
+    },
+    "night-exit": {
+      "sheet": "scene",
+      "row": 17,
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durations": [
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150,
+        150
+      ],
+      "loopStart": null,
+      "staticFrame": 7
     }
   }
 }

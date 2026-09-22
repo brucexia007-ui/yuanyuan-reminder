@@ -35,7 +35,7 @@ $sleepMenuName = -join @(
     [char]0x53EB, [char]0x9192, [char]0x5706, [char]0x5706
 )
 $learningQuickStartMenuName = -join @(
-    [char]0x663E, [char]0x793A, [char]0x8BFE, [char]0x7A0B,
+    [char]0x5173, [char]0x95ED,
     [char]0x5FEB, [char]0x6377, [char]0x6309, [char]0x952E
 )
 $sleepStatusName = -join @(

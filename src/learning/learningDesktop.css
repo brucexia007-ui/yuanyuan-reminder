@@ -35,6 +35,15 @@
   animation: desktop-learning-board-arrive var(--learning-enter-duration) cubic-bezier(.18, .78, .2, 1) both;
 }
 
+/* Reserve room for the answer inside the board and keep the companion below it. */
+.desktop-learning-board:not(.desktop-learning-complete) {
+  height: 292px;
+  min-height: 0;
+  padding-top: 9px;
+  padding-bottom: 13px;
+  overflow: hidden;
+}
+
 .desktop-learning-stage[data-stage-motion="entering"] .desktop-learning-console,
 .desktop-learning-stage[data-stage-motion="entering"] > .desktop-learning-pet.is-complete {
   animation: desktop-learning-console-arrive var(--learning-enter-duration) cubic-bezier(.18, .78, .2, 1) both;
@@ -135,7 +144,7 @@
   overflow-wrap: anywhere;
   color: #fffaf0;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(28px, 6vw, 38px);
+  font-size: clamp(26px, 6vw, 32px);
   line-height: 1;
   text-align: center;
   text-shadow: 0 1px 0 rgb(0 0 0 / 24%);
@@ -150,7 +159,7 @@
 .desktop-learning-option {
   display: grid;
   min-width: 0;
-  min-height: 50px;
+  min-height: 46px;
   grid-template-columns: 23px 1fr;
   align-items: center;
   gap: 7px;
@@ -222,6 +231,18 @@
   border-radius: 10px;
   font-size: 12px;
   animation: desktop-learning-feedback-arrive 220ms cubic-bezier(.2, .8, .2, 1) both;
+}
+
+/* Once answered, keep the chosen/correct options and give the explanation
+   their former second row. No hidden answer or scroll-to-continue step. */
+.desktop-learning-stage[data-feedback-phase]:not([data-feedback-phase="awaiting"]) .desktop-learning-option.is-muted {
+  display: none;
+}
+
+.desktop-learning-feedback > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
 }
 
 .desktop-learning-feedback.is-correct {
@@ -318,8 +339,8 @@
   bottom: 12px;
   left: 53px;
   display: grid;
-  height: 160px;
-  grid-template-columns: 1fr 154px 1fr;
+  height: 110px;
+  grid-template-columns: 1fr 104px 1fr;
   align-items: end;
   pointer-events: none;
 }
@@ -329,6 +350,11 @@
   z-index: 3;
   width: 154px;
   height: 167px;
+}
+
+.desktop-learning-console .desktop-learning-pet {
+  width: 104px;
+  height: 113px;
 }
 
 .desktop-learning-exit-confirm {

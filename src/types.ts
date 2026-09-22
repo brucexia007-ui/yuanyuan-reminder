@@ -1,4 +1,4 @@
-export type ReminderCategory = "water" | "work" | "personal";
+export type ReminderCategory = "water" | "meal" | "work" | "personal";
 
 export interface RuntimeCapabilities {
   schemaVersion: 1;
@@ -230,6 +230,9 @@ export interface LearningImportPreview {
   disabledCount?: number;
   resetCount?: number;
   rightsBasis?: string | null;
+  rightsStatement?: string | null;
+  redistributable?: boolean | null;
+  sourceDetails?: string[];
   selectedPathReturned: false;
 }
 
@@ -372,7 +375,9 @@ export interface Occurrence {
 }
 
 export interface AppSettings {
+  petProfile: import("./pet/petProfile").PetProfile;
   animationMode: "always" | "system" | "off";
+  sceneWardrobeMode: "off" | "reminders_only" | "full";
   companionIntensity: "quiet" | "everyday" | "close";
   companionLabelMode: "motion_only" | "adaptive" | "always";
   animationSpeed: number;
@@ -442,6 +447,25 @@ export interface BasicSupportSession {
   endsAt: string;
 }
 
+export interface SceneRestSession {
+  id: string;
+  durationMinutes: 5 | 10 | 20;
+  startedAt: string;
+  endsAt: string;
+}
+
+export type WorkSceneStage = "fresh" | "transition" | "fatigued";
+export type SceneAppearance =
+  | { kind: "none" }
+  | { kind: "spa" | "meal" | "hydration" | "warmup" | "study" | "night" }
+  | { kind: "work"; stage: WorkSceneStage };
+
+export interface OccurrenceResolution {
+  occurrenceId: string;
+  category: ReminderCategory;
+  action: "complete" | "snooze" | "skip";
+}
+
 export type CompanionExpressionTier = "n0" | "n1" | "n2" | "n3" | "n4";
 export type CompanionExpressionIntent =
   | "quiet_presence"
@@ -482,7 +506,7 @@ export type CompanionProp =
   | "learning_card";
 
 export interface CompanionExpressionSnapshot {
-  schemaVersion: 1;
+  schemaVersion: 2;
   revision: number;
   tier: CompanionExpressionTier;
   intent: CompanionExpressionIntent;
@@ -511,6 +535,7 @@ export interface CompanionExpressionSnapshot {
   taskSource: "codex" | "claude_code" | null;
   groupedCount: number;
   focusDeferredCount: number;
+  sceneAppearance: SceneAppearance;
   accessibleState:
     | "quiet_presence"
     | "focused_quietly"
@@ -523,6 +548,7 @@ export interface CompanionExpressionSnapshot {
     | "approaching"
     | "staying_close"
     | "water_reminder_due"
+    | "meal_reminder_due"
     | "work_reminder_due"
     | "task_needs_user"
     | "activity_reminder_due"
@@ -536,7 +562,11 @@ export interface CompanionExpressionSnapshot {
     | "information_available"
     | "formal_decision_required"
     | "learning_invitation"
-    | "learning_session";
+    | "learning_session"
+    | "resting_care"
+    | "working"
+    | "working_transition"
+    | "working_fatigued";
 }
 
 export type PetActivity =
@@ -608,6 +638,7 @@ export type PetIntentKind =
   | "idle";
 
 export type PanelRoute =
+  | "mypet"
   | "today"
   | "taskwatch"
   | "focus"
@@ -688,6 +719,8 @@ export interface PetCareSnapshot {
 export interface PetInteractionStarted {
   id: string;
   kind: PetInteractionKind;
+  leaseRevision: number;
+  expiresAtUnixMs: number;
 }
 
 export interface CreateReminderInput {

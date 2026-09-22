@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "status": "pending",
   "product": {
-    "name": "饺饺提醒",
-    "identifier": "com.brucexia.jiaojiao.reminder",
+    "name": "圆圆提醒",
+    "identifier": "com.yuanyuan.reminder",
     "version": null
   },
   "candidate": {

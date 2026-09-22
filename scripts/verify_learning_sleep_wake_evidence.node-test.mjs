@@ -16,8 +16,8 @@ const ITEM = "1".repeat(64);
 const SESSION = "session-1";
 const MENU = [
   "打开今日任务", "记录一次喝水", "新建任务", "暂停提醒 30 分钟",
-  brandPetText("立即睡觉/叫醒圆圆"), "", "总在最前", "鼠标穿透", "显示课程快捷按键", "设置", brandPetText("隐藏圆圆"),
-  brandPetText("退出圆圆提醒工具"),
+  "立即睡觉/叫醒圆圆", "", "总在最前", "鼠标穿透", "关闭快捷按键", "设置", "隐藏圆圆",
+  "退出圆圆提醒工具",
 ];
 const LIMITATIONS = [
   "The application and fixture are an isolated learning runtime-QA build, not a signed production candidate.",

@@ -1,3 +1,4 @@
+import { petText, usePetProfile } from "../pet/petProfile";
 import {
   useCallback,
   useEffect,
@@ -16,7 +17,6 @@ import type {
   LearningSessionSnapshot,
   LearningSessionSummary,
 } from "../types";
-import { petText } from "../brand";
 import { SpriteAnimator } from "../pet/SpriteAnimator";
 import type { AnimationName } from "../pet/manifest";
 import {
@@ -44,7 +44,7 @@ const BOARD_EXIT_MS = 280;
 const QUESTION_WRITE_MS = 260;
 const QUESTION_ERASE_MS = 140;
 const BUTTON_REBOUND_MS = 170;
-const CURIOUS_DELAY_MS = 15_000;
+const CURIOUS_DELAY_MS = 60_000;
 const FEEDBACK_BUBBLE_MS = 1_200;
 const CORRECT_AUTO_ADVANCE_MS = 200;
 
@@ -90,6 +90,18 @@ function scaledMotionDuration(duration: number, speed: number): number {
   return Math.round(duration / Math.max(0.4, Math.min(2, speed)));
 }
 
+function studyIdleAnimation(
+  sceneWardrobeMode: AppSettings["sceneWardrobeMode"] | undefined,
+): AnimationName {
+  return sceneWardrobeMode === "full" ? "study-focus-loop" : "learning-study-sit";
+}
+
+function studyCuriousAnimation(
+  sceneWardrobeMode: AppSettings["sceneWardrobeMode"] | undefined,
+): AnimationName {
+  return sceneWardrobeMode === "full" ? "study-curious" : "learning-study-curious";
+}
+
 export function LearningDesktopStage({
   session,
   settings,
@@ -97,12 +109,15 @@ export function LearningDesktopStage({
   onClose,
 }: {
   session: LearningSessionSnapshot;
-  settings: Pick<AppSettings, "animationMode" | "animationSpeed">;
+  settings: Pick<AppSettings, "animationMode" | "animationSpeed"> &
+    Partial<Pick<AppSettings, "sceneWardrobeMode">>;
   onSessionChange: (session: LearningSessionSnapshot) => void;
   onClose: () => void;
 }) {
   const [currentSession, setCurrentSession] =
     useState<LearningSessionSnapshot>(session);
+  const petProfile = usePetProfile();
+  const previousPet = useRef(petProfile.effectivePackId);
   const [question, setQuestion] = useState<LearningQuestionDto | null>(null);
   const [fallbackCard, setFallbackCard] = useState<LearningCardDto | null>(null);
   const [answer, setAnswer] = useState<LearningAnswerResult | null>(null);
@@ -113,7 +128,7 @@ export function LearningDesktopStage({
     session.status === "completed" ? "complete" : "question",
   );
   const [petAnimation, setPetAnimation] =
-    useState<AnimationName>("learning-study-sit");
+    useState<AnimationName>(() => studyIdleAnimation(settings.sceneWardrobeMode));
   const [feedbackPhase, setFeedbackPhase] =
     useState<FeedbackPhase>("awaiting");
   const [pressTarget, setPressTarget] = useState<AnswerTarget | null>(null);
@@ -139,6 +154,7 @@ export function LearningDesktopStage({
     motionEnabled ? "writing" : "steady",
   );
   const firstOptionRef = useRef<HTMLButtonElement>(null);
+  const firstRatingRef = useRef<HTMLButtonElement>(null);
   const nextButtonRef = useRef<HTMLButtonElement>(null);
   const questionStartedAtRef = useRef(Date.now());
   const curiousTimerRef = useRef<number | null>(null);
@@ -146,7 +162,7 @@ export function LearningDesktopStage({
   const answerInFlightRef = useRef(false);
   const contactHandledRef = useRef(false);
   const motionEnabledRef = useRef(motionEnabled);
-  motionEnabledRef.current = motionEnabled;
+  motionEnabledRef.current = motionEnabled && petProfile.capabilities.learning && !petProfile.staticOnly;
 
   const clearCuriousTimer = useCallback(() => {
     if (curiousTimerRef.current === null) return;
@@ -196,8 +212,15 @@ export function LearningDesktopStage({
     setBubbleTarget(target);
     setFeedbackAnnouncement(feedbackAnnouncementFor(target));
     setFeedbackPhase("ready");
-    setPetAnimation("learning-study-sit");
+    setPetAnimation(studyIdleAnimation(settings.sceneWardrobeMode));
   }, []);
+
+  useEffect(() => {
+    const changed = previousPet.current !== petProfile.effectivePackId;
+    previousPet.current = petProfile.effectivePackId;
+    if (changed) { clearCuriousTimer(); setPetAnimation(studyIdleAnimation(settings.sceneWardrobeMode)); }
+    if (pressTarget && feedbackPhase === "pressing" && (changed || !petProfile.capabilities.learning || petProfile.staticOnly || !motionEnabled)) settleFeedbackImmediately(pressTarget);
+  }, [petProfile.effectivePackId, petProfile.capabilities.learning, petProfile.staticOnly, pressTarget, feedbackPhase, motionEnabled, clearCuriousTimer, settleFeedbackImmediately, settings.sceneWardrobeMode]);
 
   const prepareQuestion = useCallback(async (sessionId: string) => {
     clearAutoAdvanceTimer();
@@ -221,7 +244,7 @@ export function LearningDesktopStage({
       setFeedbackAnnouncement("");
       setCuriousPlayed(false);
       contactHandledRef.current = false;
-      setPetAnimation("learning-study-sit");
+      setPetAnimation(studyIdleAnimation(settings.sceneWardrobeMode));
       setScreen("question");
       setQuestionMotion(motionEnabledRef.current ? "writing" : "steady");
       questionStartedAtRef.current = Date.now();
@@ -297,7 +320,7 @@ export function LearningDesktopStage({
         screen === "question" &&
         feedbackPhase === "awaiting"
       ) {
-        setPetAnimation("learning-study-sit");
+        setPetAnimation(studyIdleAnimation(settings.sceneWardrobeMode));
       }
       return;
     }
@@ -306,7 +329,7 @@ export function LearningDesktopStage({
       curiousTimerRef.current = null;
       if (answerInFlightRef.current) return;
       setCuriousPlayed(true);
-      setPetAnimation("learning-study-curious");
+      setPetAnimation(studyCuriousAnimation(settings.sceneWardrobeMode));
     }, CURIOUS_DELAY_MS);
 
     return clearCuriousTimer;
@@ -363,6 +386,10 @@ export function LearningDesktopStage({
     }
   }, [answer, feedbackPhase]);
 
+  useEffect(() => {
+    if (flipped) firstRatingRef.current?.focus();
+  }, [flipped]);
+
   const finishAndClose = useCallback(async () => {
     if (busy) return;
     const feedbackTargetToRestore =
@@ -373,7 +400,7 @@ export function LearningDesktopStage({
     setFeedbackAnnouncement("");
     setPressedTarget(null);
     setConfirmedTarget(null);
-    setPetAnimation("learning-study-sit");
+    setPetAnimation(studyIdleAnimation(settings.sceneWardrobeMode));
     setExitConfirmationOpen(false);
     setBusy(true);
     setStageMotion("closing");
@@ -466,7 +493,7 @@ export function LearningDesktopStage({
       }
       answerInFlightRef.current = true;
       clearCuriousTimer();
-      setPetAnimation("learning-study-sit");
+      setPetAnimation(studyIdleAnimation(settings.sceneWardrobeMode));
       setBusy(true);
       setError(null);
       try {
@@ -536,13 +563,13 @@ export function LearningDesktopStage({
 
   const onPetAnimationComplete = useCallback(
     (animation: AnimationName) => {
-      if (animation === "learning-study-curious") {
+      if (["learning-study-curious", "study-curious"].includes(animation)) {
         if (
           feedbackPhase === "awaiting" &&
           !answer &&
           !answerInFlightRef.current
         ) {
-          setPetAnimation("learning-study-sit");
+          setPetAnimation(studyIdleAnimation(settings.sceneWardrobeMode));
         }
         return;
       }
@@ -554,7 +581,7 @@ export function LearningDesktopStage({
         feedbackPhase === "pressing"
       ) {
         setFeedbackPhase("ready");
-        setPetAnimation("learning-study-sit");
+        setPetAnimation(studyIdleAnimation(settings.sceneWardrobeMode));
       }
     },
     [answer, feedbackPhase, pressTarget],
@@ -568,7 +595,7 @@ export function LearningDesktopStage({
       setFeedbackAnnouncement("");
       setPressedTarget(null);
       setConfirmedTarget(null);
-      setPetAnimation("learning-study-sit");
+      setPetAnimation(studyIdleAnimation(settings.sceneWardrobeMode));
       setBusy(true);
       if (motionEnabled) {
         setQuestionMotion("erasing");
@@ -848,7 +875,7 @@ export function LearningDesktopStage({
       data-feedback-phase={feedbackPhase}
       data-feedback-contact={confirmedTarget ?? "none"}
       style={stageStyle}
-      aria-label={petText("圆圆桌面英语复习")}
+      aria-label={petText("{pet}桌面英语复习")}
       aria-busy={busy}
       onPointerDown={stopStagePointer}
       onPointerMove={stopStagePointer}
@@ -883,12 +910,12 @@ export function LearningDesktopStage({
           >
             <div className="desktop-learning-word-row">
               <span>{stageLabel(question.stage)}</span>
-              <h2 lang="en">{question.headword}</h2>
-              <small>{question.phonetic ?? question.partOfSpeech.join(" · ")}</small>
+              <h2 lang={question.partOfSpeech.includes("generic") ? undefined : "en"}>{question.headword}</h2>
+              <small>{question.phonetic ?? question.partOfSpeech.filter((part) => part !== "generic").join(" · ")}</small>
             </div>
 
             {question.kind === "multiple_choice" ? (
-              <div className="desktop-learning-options" aria-label="请选择中文释义">
+              <div className="desktop-learning-options" aria-label="请选择答案">
                 {question.options.map((option, index) => {
                   const selected = answer?.selectedOptionId === option.optionId;
                   const correct = answer?.correctOptionId === option.optionId;
@@ -919,14 +946,14 @@ export function LearningDesktopStage({
             ) : fallbackCard ? (
               <div className="desktop-learning-fallback">
                 {!flipped ? (
-                  <button type="button" disabled={busy} onClick={() => setFlipped(true)}>
-                    选项不足，看看含义
+                  <button ref={firstOptionRef} type="button" disabled={busy} onClick={() => setFlipped(true)}>
+                    先回忆，再查看答案
                   </button>
                 ) : (
                   <>
                     <p>{fallbackCard.meaningsZh.join("；")}</p>
                     <div role="group" aria-label="这次想得怎么样">
-                      <button type="button" onClick={() => void rateFallback("again")}>忘了</button>
+                      <button ref={firstRatingRef} type="button" onClick={() => void rateFallback("again")}>忘了</button>
                       <button type="button" onClick={() => void rateFallback("hard")}>模糊</button>
                       <button type="button" onClick={() => void rateFallback("good")}>记得</button>
                     </div>
@@ -941,7 +968,7 @@ export function LearningDesktopStage({
               >
                 <span>
                   <strong>{answer.correct ? "回答正确" : "这次需要再看"}</strong>
-                  {!answer.correct && ` · 正确释义：${answer.correctMeaningZh}`}
+                  {!answer.correct && ` · 正确答案：${answer.correctMeaningZh}`}
                 </span>
                 {answer.correct ? (
                   <small className="desktop-learning-auto-next">
@@ -949,7 +976,7 @@ export function LearningDesktopStage({
                       ? answer.session.status === "completed"
                         ? "即将显示本次结果…"
                         : "即将自动进入下一题…"
-                      : petText("圆圆正在按按钮…")}
+                      : petText("{pet}正在按按钮…")}
                   </small>
                 ) : (
                   <button
@@ -963,14 +990,14 @@ export function LearningDesktopStage({
                       ? answer.session.status === "completed"
                         ? "查看结果"
                         : "我看懂了，下一题"
-                      : petText("圆圆正在按按钮…")}
+                      : petText("{pet}正在按按钮…")}
                   </button>
                 )}
               </div>
             )}
           </div>
         ) : (
-          <div className="desktop-learning-loading" role="status">{petText("圆圆正在写题目…")}</div>
+          <div className="desktop-learning-loading" role="status">{petText("{pet}正在写题目…")}</div>
         )}
       </article>
 
@@ -997,7 +1024,7 @@ export function LearningDesktopStage({
         {feedbackAnnouncement}
       </p>
 
-      <div className="desktop-learning-console" aria-label={petText("圆圆用按钮反馈答题结果")}>
+      <div className="desktop-learning-console" aria-label={petText("{pet}用按钮反馈答题结果")}>
         <span
           className={[
             "desktop-learning-result-button",
@@ -1016,8 +1043,17 @@ export function LearningDesktopStage({
         </span>
         <div className="desktop-learning-pet" aria-hidden="true">
           <SpriteAnimator
+            key={`${petProfile.effectivePackId}:${petProfile.staticOnly}`}
             animation={petAnimation}
             settings={settings}
+            forceStill={petAnimation === "study-focus-loop" || petAnimation === "learning-study-sit"}
+            fallbackAnimation={
+              petAnimation === "study-curious"
+                ? "learning-study-curious"
+                : petAnimation === "study-focus-loop"
+                  ? "learning-study-sit"
+                  : undefined
+            }
             onFrameChange={onPetFrame}
             onComplete={onPetAnimationComplete}
           />
@@ -1061,6 +1097,15 @@ function formatRoundDuration(seconds: number): string {
 
 function learningErrorMessage(reason: unknown): string {
   const message = reason instanceof Error ? reason.message : String(reason);
+  if (message.includes("learning startup cleanup failed")) {
+    return "学习启动后的状态清理未完成，请重新打开学习页核对上一轮后再试";
+  }
+  if (message.includes("a higher priority presentation is active")) {
+    return "当前有优先展示的提醒或活动，请处理完后再试";
+  }
+  if (message.includes("a learning session is already active or resumable")) {
+    return "上一轮还未结束，请先继续或结束上一轮";
+  }
   if (message.includes("no unresolved learning mistakes are currently available")) {
     return "本轮错题已经订正，后续会按计划复查";
   }

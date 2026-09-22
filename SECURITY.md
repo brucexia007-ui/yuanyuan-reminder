@@ -18,4 +18,4 @@
 
 ## 安全边界
 
-饺饺提醒是本地桌面工具，不需要账号或云服务。它会使用本地 SQLite、Windows 通知、系统托盘、可选开机启动和用户主动开始的锁屏休息。程序不会绕过 Windows 密码、PIN 或 Windows Hello。
+圆圆提醒是本地桌面工具，不需要账号或云服务。它会使用本地 SQLite、Windows 通知、系统托盘、可选开机启动和用户主动开始的锁屏休息。程序不会绕过 Windows 密码、PIN 或 Windows Hello。

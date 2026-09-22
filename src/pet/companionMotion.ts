@@ -1,14 +1,22 @@
-import type { CompanionExpressionSnapshot } from "../types";
+import type { AppSettings, CompanionExpressionSnapshot, SceneAppearance } from "../types";
 import type { AnimationName } from "./manifest";
+import { animationForSceneAppearance, settledSceneAnimation } from "./sceneWardrobe";
 
 type MotionSnapshot = Pick<
   CompanionExpressionSnapshot,
   "pose" | "motion" | "accessibleState"
->;
+> & { sceneAppearance?: SceneAppearance };
 
 export function animationForCompanionExpression(
   snapshot: MotionSnapshot,
+  wardrobeMode: AppSettings["sceneWardrobeMode"] = "full",
 ): AnimationName {
+  const scene = animationForSceneAppearance(
+    snapshot.sceneAppearance ?? { kind: "none" },
+    wardrobeMode,
+    snapshot.motion === "reduced",
+  );
+  if (scene) return scene;
   switch (snapshot.pose) {
     case "focus_calm":
       return "focus-calm";
@@ -47,8 +55,15 @@ export function animationForCompanionExpression(
 export function settledAnimationAfterCompanionCue(
   finished: AnimationName,
   snapshot: MotionSnapshot | null,
+  wardrobeMode: AppSettings["sceneWardrobeMode"] = "full",
 ): AnimationName | null {
   if (!snapshot) return null;
+  const scene = settledSceneAnimation(
+    finished,
+    snapshot.sceneAppearance ?? { kind: "none" },
+    wardrobeMode,
+  );
+  if (scene) return scene;
   if (
     finished === "failed" &&
     snapshot.pose === "stay_close" &&

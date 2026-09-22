@@ -26,24 +26,9 @@ test("checked-in product brand schema requires the complete pet identity", async
   assert.equal(schema.properties.pet.additionalProperties, false);
 });
 
-test("饺饺's requested female identity stays synchronized into runtime assets", async () => {
-  const [brand, manifest, assetLicense] = await Promise.all([
-    readJson("product-brand.json"),
-    readJson("public/assets/pet/pet-manifest.json"),
-    readFile(path.join(projectRoot, "JIAOJIAO_ASSETS_LICENSE.md"), "utf8"),
-  ]);
-  assert.deepEqual(brand.pet, {
-    displayName: "饺饺",
-    sex: "female",
-    breed: "英短金点",
-    personality: "乖巧高冷",
-  });
-  assert.equal(manifest.displayName, brand.pet.displayName);
-  assert.equal(manifest.sex, brand.pet.sex);
-  assert.equal(manifest.breed, brand.pet.breed);
-  assert.equal(manifest.personality, brand.pet.personality);
-  assert.match(manifest.description, /饺饺.*英短金点母猫.*乖巧高冷/u);
-  assert.match(assetLicense, /宠物名为“饺饺”，是一只母猫/u);
+test("unified application keeps Round identity and data while pet names vary", async () => {
+  const { verifyUnifiedPetIdentity } = await import('./verify_unified_pet_identity.mjs');
+  await verifyUnifiedPetIdentity(projectRoot);
 });
 
 test("current Windows real-machine probes derive formal paths and labels from product brand", async () => {
@@ -141,86 +126,21 @@ test("current Windows real-machine probes derive formal paths and labels from pr
   assert.doesNotMatch(learningScaleScript, /"yuanyuan-learning\.sqlite3/u);
 });
 
-test("runtime QA fixtures use the branded reminder and learning database filenames", async () => {
-  const runtimeQa = await readFile(
-    path.join(projectRoot, "src-tauri/src/runtime_qa.rs"),
-    "utf8",
-  );
-  assert.match(runtimeQa, /crate::brand::main_database_file\(\)/u);
-  assert.match(runtimeQa, /crate::brand::learning_database_file\(\)/u);
-  assert.doesNotMatch(runtimeQa, /yuanyuan-reminder\.sqlite3/u);
-  assert.doesNotMatch(runtimeQa, /yuanyuan-learning\.sqlite3/u);
+test("runtime QA fixtures retain the unified database filenames", async () => {
+  const brand = await readJson('product-brand.json');
+  for (const file of ['src-tauri/src/runtime_qa.rs', 'src-tauri/src/installed_candidate_qa.rs']) {
+    const source = await readFile(path.join(projectRoot, file), 'utf8');
+    assert.ok(source.includes(brand.storage.mainDatabaseFile));
+    assert.ok(!source.includes('crate::brand::'));
+  }
 });
 
-test("public product documents describe the current 饺饺 1.5.10 identity and data boundary", async () => {
-  const [readme, readmeEnglish, privacy, security, changelog, learningStatus] = await Promise.all([
-    readFile(path.join(projectRoot, "README.md"), "utf8"),
-    readFile(path.join(projectRoot, "README.en.md"), "utf8"),
-    readFile(path.join(projectRoot, "PRIVACY.md"), "utf8"),
-    readFile(path.join(projectRoot, "SECURITY.md"), "utf8"),
-    readFile(path.join(projectRoot, "CHANGELOG.md"), "utf8"),
-    readFile(path.join(projectRoot, "docs/learning/IMPLEMENTATION_STATUS.md"), "utf8"),
-  ]);
-  for (const [relativePath, document] of [
-    ["README.md", readme],
-    ["README.en.md", readmeEnglish],
-    ["PRIVACY.md", privacy],
-    ["SECURITY.md", security],
-  ]) {
-    assert.doesNotMatch(document, /圆圆/u, relativePath);
-  }
-  assert.match(readme, /<h1 align="center">饺饺提醒<\/h1>/u);
-  assert.match(readme, /Version 1\.5\.10/u);
-  assert.match(readme, /饺饺提醒_\*_x64-setup\.exe/u);
-  assert.match(readme, /饺饺提醒_\*_windows-x64-portable\.exe/u);
-  assert.match(readme, /%LOCALAPPDATA%\\com\.brucexia\.jiaojiao\.reminder\\/u);
-  assert.match(readme, /\(JIAOJIAO_ASSETS_LICENSE\.md\)/u);
-  assert.match(readme, /public\/assets\/pet\/fallback\.png/u);
-  assert.doesNotMatch(readme, /docs\/images\//u);
-  assert.match(readmeEnglish, /^# 饺饺提醒 \(Jiaojiao Reminder\)$/mu);
-  assert.match(readmeEnglish, /public\/assets\/pet\/fallback\.png/u);
-  assert.doesNotMatch(readmeEnglish, /docs\/images\//u);
-  assert.match(privacy, /适用版本：饺饺提醒 1\.5\.10/u);
-  assert.match(privacy, /通用学习包内容/u);
-  assert.match(privacy, /答题进度/u);
-  assert.match(security, /饺饺提醒是本地桌面工具/u);
-  assert.match(changelog, /^## 1\.5\.10 -/mu);
-  assert.match(changelog, /英短金点母猫“饺饺”/u);
-  assert.match(changelog, /乖巧高冷/u);
-  assert.match(learningStatus, /基线：饺饺提醒统一产品 v1\.5\.7/u);
-  assert.match(learningStatus, /`jiaojiao-learning\.sqlite3`/u);
-  assert.match(learningStatus, /`jiaojiao-reminder\.sqlite3`/u);
-  assert.doesNotMatch(learningStatus, /圆圆提醒|`yuanyuan-learning\.sqlite3`/u);
-});
-
-test("current application, MSIX, and Store publication surfaces use the product brand mirrors", async () => {
-  const [submissionTemplateText, previewManifest, storeManifest, storeRunbook, indexHtml, capabilityText] = await Promise.all([
-    readFile(path.join(projectRoot, "docs/release/MSIX_STORE_SUBMISSION_INPUTS_V1.template.json"), "utf8"),
-    readFile(path.join(projectRoot, "src-tauri/msix/AppxManifest.preview.xml"), "utf8"),
-    readFile(path.join(projectRoot, "src-tauri/msix/AppxManifest.store.xml"), "utf8"),
-    readFile(path.join(projectRoot, "docs/release/MSIX_STORE_ONBOARDING_RUNBOOK.md"), "utf8"),
-    readFile(path.join(projectRoot, "index.html"), "utf8"),
-    readFile(path.join(projectRoot, "src-tauri/capabilities/default.json"), "utf8"),
-  ]);
-  const submissionTemplate = JSON.parse(submissionTemplateText);
-  assert.equal(submissionTemplate.product.name, "饺饺提醒");
-  assert.match(submissionTemplate.listing.description, /^饺饺提醒/u);
-  assert.match(submissionTemplate.listing.screenshots[0].caption, /桌面上的饺饺/u);
-  assert.match(submissionTemplate.declarations.restrictedCapabilities[0].justification, /^饺饺提醒 is/u);
-  assert.doesNotMatch(submissionTemplateText, /圆圆/u);
-  for (const manifest of [previewManifest, storeManifest]) {
-    assert.match(manifest, /DisplayName="饺饺提醒"/u);
-    assert.match(manifest, /Description="饺饺陪你喝水、安排工作和准时休息"/u);
-    assert.doesNotMatch(manifest, /圆圆/u);
-  }
-  assert.match(previewManifest, /<DisplayName>饺饺提醒（MSIX 预览）<\/DisplayName>/u);
-  assert.match(storeManifest, /<DisplayName>饺饺提醒<\/DisplayName>/u);
-  assert.match(storeRunbook, /--reserved-product-name "饺饺提醒"/u);
-  assert.match(storeRunbook, /删除饺饺全部本地数据/u);
-  assert.match(storeRunbook, /LOCALAPPDATA\/com\.brucexia\.jiaojiao\.reminder/u);
-  assert.match(indexHtml, /<title>饺饺提醒<\/title>/u);
-  assert.doesNotMatch(indexHtml, /圆圆/u);
-  const capability = JSON.parse(capabilityText);
-  assert.equal(capability.description, "饺饺提醒应用窗口的最小权限");
-  assert.doesNotMatch(capabilityText, /圆圆/u);
+test("unified naming checks accept original licensed assets without rewriting them", async () => {
+  const { execFileSync } = await import('node:child_process');
+  const files = ['product-version.json', 'product-brand.json', 'public/assets/pet/pet-manifest.json', 'ASSETS_LICENSE.md'];
+  const before = await Promise.all(files.map(file => readFile(path.join(projectRoot, file))));
+  execFileSync(process.execPath, ['scripts/sync_product_brand.mjs', '--write'], { cwd: projectRoot });
+  execFileSync(process.execPath, ['scripts/verify_product_brand_copy_boundary.mjs'], { cwd: projectRoot });
+  const after = await Promise.all(files.map(file => readFile(path.join(projectRoot, file))));
+  assert.deepEqual(after, before);
 });

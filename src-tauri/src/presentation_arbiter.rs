@@ -4,14 +4,18 @@ use serde::{Deserialize, Serialize};
 // this foreground pet lease enum but must stay above every pet presentation.
 #[allow(dead_code)]
 pub const LOCKED_AUTH_PRIORITY: u8 = 120;
-pub const STRONG_REMINDER_PRIORITY: u8 = 100;
-pub const FOCUS_PRIORITY: u8 = 90;
-pub const WATER_REMINDER_PRIORITY: u8 = 80;
-pub const MOVEMENT_REMINDER_PRIORITY: u8 = 70;
-pub const NORMAL_REMINDER_PRIORITY: u8 = 70;
-pub const MANUAL_LEARNING_PRIORITY: u8 = 60;
-pub const TASK_WATCH_PRIORITY: u8 = 50;
-pub const LEARNING_INVITATION_PRIORITY: u8 = 30;
+pub const WATER_REMINDER_PRIORITY: u8 = 104;
+pub const MEAL_REMINDER_PRIORITY: u8 = 103;
+pub const STRONG_REMINDER_PRIORITY: u8 = 102;
+pub const NORMAL_REMINDER_PRIORITY: u8 = 102;
+pub const TASK_WATCH_ATTENTION_PRIORITY: u8 = 101;
+pub const USER_INTERACTION_PRIORITY: u8 = 95;
+pub const MOVEMENT_REMINDER_PRIORITY: u8 = 90;
+pub const FOCUS_PRIORITY: u8 = 80;
+pub const MANUAL_LEARNING_PRIORITY: u8 = 80;
+pub const TASK_WATCH_PRIORITY: u8 = 70;
+pub const LEARNING_INVITATION_PRIORITY: u8 = 60;
+pub const SCENE_REST_PRIORITY: u8 = 40;
 pub const AMBIENT_PET_PRIORITY: u8 = 10;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -19,12 +23,16 @@ pub const AMBIENT_PET_PRIORITY: u8 = 10;
 pub enum PresentationOwner {
     StrongReminder,
     WaterReminder,
+    MealReminder,
+    UserInteraction,
     MovementReminder,
     NormalReminder,
     Focus,
     LearningSession,
     LearningInvitation,
     TaskWatch,
+    TaskWatchAttention,
+    SceneRest,
     AmbientPet,
 }
 
@@ -34,17 +42,21 @@ impl PresentationOwner {
             Self::StrongReminder => STRONG_REMINDER_PRIORITY,
             Self::Focus => FOCUS_PRIORITY,
             Self::WaterReminder => WATER_REMINDER_PRIORITY,
+            Self::MealReminder => MEAL_REMINDER_PRIORITY,
+            Self::UserInteraction => USER_INTERACTION_PRIORITY,
             Self::MovementReminder => MOVEMENT_REMINDER_PRIORITY,
             Self::NormalReminder => NORMAL_REMINDER_PRIORITY,
             Self::LearningSession => MANUAL_LEARNING_PRIORITY,
             Self::TaskWatch => TASK_WATCH_PRIORITY,
+            Self::TaskWatchAttention => TASK_WATCH_ATTENTION_PRIORITY,
             Self::LearningInvitation => LEARNING_INVITATION_PRIORITY,
+            Self::SceneRest => SCENE_REST_PRIORITY,
             Self::AmbientPet => AMBIENT_PET_PRIORITY,
         }
     }
 
     pub const fn preemptible(self) -> bool {
-        !matches!(self, Self::StrongReminder)
+        true
     }
 
     pub const fn is_reminder(self) -> bool {
@@ -52,6 +64,7 @@ impl PresentationOwner {
             self,
             Self::StrongReminder
                 | Self::WaterReminder
+                | Self::MealReminder
                 | Self::MovementReminder
                 | Self::NormalReminder
         )
@@ -150,6 +163,8 @@ pub struct PresentationArbiter {
     active: Option<PresentationLease>,
     active_learning_session_id: Option<String>,
     resumable_learning_session_id: Option<String>,
+    #[cfg(feature = "learning")]
+    completed_learning_session_id: Option<String>,
     restore_target: Option<PetRestoreTarget>,
     sleeping: bool,
     sleep_source: Option<PetActivitySource>,
@@ -245,6 +260,23 @@ impl PresentationArbiter {
         true
     }
 
+    pub fn release_matching_owner(
+        &mut self,
+        owner: PresentationOwner,
+        lease_id: &str,
+        lease_revision: u64,
+        now_unix_ms: i64,
+    ) -> bool {
+        if !self
+            .active
+            .as_ref()
+            .is_some_and(|lease| lease.owner == owner)
+        {
+            return false;
+        }
+        self.release(lease_id, lease_revision, now_unix_ms)
+    }
+
     pub fn release_owner(&mut self, owner: PresentationOwner, now_unix_ms: i64) -> bool {
         if let Some(active) = self.active.as_ref().filter(|lease| lease.owner == owner) {
             let lease_id = active.lease_id.clone();
@@ -264,9 +296,53 @@ impl PresentationArbiter {
     }
 
     #[cfg(feature = "learning")]
+    pub fn acquire_learning_session(
+        &mut self,
+        session_id: &str,
+        now_unix_ms: i64,
+    ) -> AcquireResult {
+        self.expire(now_unix_ms);
+        let completed = self.completed_learning_session_id.clone();
+        if let Some(previous) = completed.as_deref().filter(|id| *id != session_id) {
+            if let Some(active) = self.active.as_ref().filter(|lease| {
+                lease.owner != PresentationOwner::LearningSession
+                    && (!lease.preemptible
+                        || lease.priority >= PresentationOwner::LearningSession.priority())
+            }) {
+                // A failed next-round attempt must not replace the old result's
+                // restore identity with an unpresented session's identity.
+                return AcquireResult::Denied(active.clone());
+            }
+            // The committed result can hand its presentation to the next round.
+            // An unfinished question or a higher-priority overlay still owns its lease.
+            if self.active_learning_session_id.as_deref() == Some(previous) {
+                self.finish_learning_session(previous, now_unix_ms);
+            }
+        }
+        let result = self.acquire(
+            PresentationOwner::LearningSession,
+            now_unix_ms,
+            None,
+            Some(session_id),
+        );
+        if result.granted_lease().is_some() {
+            if let Some(previous) = completed.as_deref().filter(|id| *id != session_id) {
+                self.completed_learning_session_id = None;
+                if self.resumable_learning_session_id.as_deref() == Some(previous) {
+                    self.resumable_learning_session_id = None;
+                }
+            }
+        }
+        result
+    }
+
+    #[cfg(feature = "learning")]
     pub fn finish_learning(&mut self, now_unix_ms: i64) -> bool {
         let previous_revision = self.revision;
         let mut changed = self.release_owner(PresentationOwner::LearningSession, now_unix_ms);
+        if self.completed_learning_session_id.take().is_some() {
+            changed = true;
+        }
         if self.resumable_learning_session_id.take().is_some() {
             changed = true;
         }
@@ -284,10 +360,55 @@ impl PresentationArbiter {
     pub fn finish_learning_session(&mut self, session_id: &str, now_unix_ms: i64) -> bool {
         if self.active_learning_session_id.as_deref() != Some(session_id)
             && self.resumable_learning_session_id.as_deref() != Some(session_id)
+            && self.completed_learning_session_id.as_deref() != Some(session_id)
         {
             return false;
         }
         self.finish_learning(now_unix_ms)
+    }
+
+    #[cfg(feature = "learning")]
+    pub fn completed_learning_session_id(&self) -> Option<&str> {
+        self.completed_learning_session_id.as_deref()
+    }
+
+    /// Called only after the final answer/rating has committed. A late replay
+    /// cannot recreate a result whose session has been dismissed or replaced.
+    #[cfg(feature = "learning")]
+    pub fn mark_learning_completed(&mut self, session_id: &str) -> bool {
+        if self.sleeping
+            || (self.active_learning_session_id.as_deref() != Some(session_id)
+                && self.resumable_learning_session_id.as_deref() != Some(session_id))
+            || self.completed_learning_session_id.as_deref() == Some(session_id)
+        {
+            return false;
+        }
+        self.completed_learning_session_id = Some(session_id.to_owned());
+        self.revision = self.revision.saturating_add(1);
+        true
+    }
+
+    /// Reconcile once after a complete backend transition, before publishing.
+    /// Active questions still require an explicit resume; only their finished
+    /// result may return automatically, under the normal learning priority.
+    #[cfg(feature = "learning")]
+    pub fn reconcile_completed_learning(&mut self, now_unix_ms: i64) {
+        let Some(session_id) = self.completed_learning_session_id.clone() else {
+            return;
+        };
+        if self.sleeping
+            || self.active.as_ref().is_some_and(|lease| {
+                lease.priority >= PresentationOwner::LearningSession.priority()
+            })
+        {
+            return;
+        }
+        self.acquire(
+            PresentationOwner::LearningSession,
+            now_unix_ms,
+            None,
+            Some(&session_id),
+        );
     }
 
     pub fn set_sleeping(&mut self, sleeping: bool, source: PetActivitySource) -> bool {
@@ -343,12 +464,16 @@ impl PresentationArbiter {
             Some(PresentationOwner::LearningSession) => {
                 (PetActivity::Learning, PetActivitySource::Learning)
             }
-            Some(PresentationOwner::TaskWatch) => {
+            Some(PresentationOwner::TaskWatch | PresentationOwner::TaskWatchAttention) => {
                 (PetActivity::Reminding, PetActivitySource::Schedule)
             }
             Some(PresentationOwner::LearningInvitation) => {
                 (PetActivity::Idle, PetActivitySource::Learning)
             }
+            Some(PresentationOwner::UserInteraction) => {
+                (PetActivity::Idle, PetActivitySource::Manual)
+            }
+            Some(PresentationOwner::SceneRest) => (PetActivity::Idle, PetActivitySource::Manual),
             Some(PresentationOwner::AmbientPet) => (PetActivity::Idle, PetActivitySource::Schedule),
             Some(_) => (PetActivity::Idle, PetActivitySource::Schedule),
             None if self.sleeping => (
@@ -429,15 +554,218 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
 
-    const ALL_OWNERS: [PresentationOwner; 9] = [
+    #[cfg(feature = "learning")]
+    #[test]
+    fn next_round_replaces_only_a_committed_result_and_ignores_stale_cleanup() {
+        let mut arbiter = PresentationArbiter::default();
+        arbiter.acquire_learning_session("first", 1);
+        assert!(arbiter
+            .acquire_learning_session("next", 2)
+            .granted_lease()
+            .is_none());
+        assert!(arbiter.mark_learning_completed("first"));
+        let old = arbiter.active_lease().unwrap().clone();
+        assert!(arbiter
+            .acquire_learning_session("next", 3)
+            .granted_lease()
+            .is_some());
+        assert_ne!(arbiter.active_lease().unwrap().lease_id, old.lease_id);
+        assert_eq!(arbiter.completed_learning_session_id(), None);
+        assert_eq!(arbiter.snapshot().resumable_learning_session_id, None);
+        assert!(!arbiter.finish_learning_session("first", 4));
+        assert!(!arbiter.mark_learning_completed("first"));
+        assert!(!arbiter.release(&old.lease_id, old.revision, 4));
+        arbiter.reconcile_completed_learning(5);
+        assert_eq!(arbiter.active_learning_session_id.as_deref(), Some("next"));
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn next_round_does_not_bypass_an_overlay_or_lose_the_previous_result_when_denied() {
+        for overlay in [
+            PresentationOwner::WaterReminder,
+            PresentationOwner::Focus,
+            PresentationOwner::UserInteraction,
+            PresentationOwner::StrongReminder,
+        ] {
+            let mut arbiter = PresentationArbiter::default();
+            arbiter.acquire_learning_session("first", 1);
+            arbiter.mark_learning_completed("first");
+            // Focus has equal priority, so it starts while a reminder has
+            // already displaced the completed result.
+            arbiter.acquire(PresentationOwner::WaterReminder, 2, None, None);
+            arbiter.release_owner(PresentationOwner::WaterReminder, 2);
+            assert!(arbiter
+                .acquire(overlay, 2, None, None)
+                .granted_lease()
+                .is_some());
+            assert!(arbiter
+                .acquire_learning_session("next", 3)
+                .granted_lease()
+                .is_none());
+            assert_eq!(arbiter.active_lease().unwrap().owner, overlay);
+            assert_eq!(arbiter.completed_learning_session_id(), Some("first"));
+            assert!(!arbiter.finish_learning_session("next", 4));
+            arbiter.release_owner(overlay, 5);
+            arbiter.reconcile_completed_learning(5);
+            assert_eq!(arbiter.active_learning_session_id.as_deref(), Some("first"));
+            assert!(arbiter
+                .acquire_learning_session("next", 6)
+                .granted_lease()
+                .is_some());
+            arbiter.finish_learning_session("next", 7);
+            arbiter.reconcile_completed_learning(7);
+            assert_eq!(arbiter.snapshot().activity, PetActivity::Idle);
+        }
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn next_round_clears_a_displaced_result_without_restoring_it_over_the_new_session() {
+        let mut arbiter = PresentationArbiter::default();
+        arbiter.acquire_learning_session("first", 1);
+        arbiter.mark_learning_completed("first");
+        arbiter.acquire(PresentationOwner::WaterReminder, 2, None, None);
+        arbiter.release_owner(PresentationOwner::WaterReminder, 3);
+        assert!(arbiter
+            .acquire_learning_session("next", 4)
+            .granted_lease()
+            .is_some());
+        assert!(!arbiter.finish_learning_session("first", 5));
+        arbiter.finish_learning_session("next", 6);
+        arbiter.reconcile_completed_learning(7);
+        assert_eq!(arbiter.snapshot().activity, PetActivity::Idle);
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn completed_result_restores_after_each_higher_priority_overlay() {
+        for overlay in [
+            PresentationOwner::WaterReminder,
+            PresentationOwner::MealReminder,
+            PresentationOwner::StrongReminder,
+            PresentationOwner::NormalReminder,
+            PresentationOwner::MovementReminder,
+            PresentationOwner::TaskWatchAttention,
+            PresentationOwner::UserInteraction,
+        ] {
+            let mut arbiter = PresentationArbiter::default();
+            arbiter.acquire(PresentationOwner::LearningSession, 1, None, Some("done"));
+            assert!(arbiter.mark_learning_completed("done"));
+            arbiter.acquire(overlay, 2, None, None);
+            arbiter.reconcile_completed_learning(3);
+            assert_eq!(arbiter.active_lease().unwrap().owner, overlay);
+            assert_eq!(
+                arbiter.snapshot().resumable_learning_session_id.as_deref(),
+                Some("done")
+            );
+            arbiter.release_owner(overlay, 4);
+            arbiter.reconcile_completed_learning(4);
+            assert_eq!(
+                arbiter.snapshot().activity,
+                PetActivity::Learning,
+                "{overlay:?}"
+            );
+            let revision = arbiter.revision();
+            arbiter.reconcile_completed_learning(5);
+            assert_eq!(arbiter.revision(), revision);
+            assert!(arbiter.finish_learning_session("done", 6));
+            assert!(!arbiter.mark_learning_completed("done"));
+            arbiter.reconcile_completed_learning(7);
+            assert_eq!(arbiter.snapshot().activity, PetActivity::Idle);
+        }
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn completion_racing_a_reminder_is_retained_but_an_active_question_is_not_resumed() {
+        for completed in [false, true] {
+            let mut arbiter = PresentationArbiter::default();
+            arbiter.acquire(PresentationOwner::LearningSession, 1, None, Some("session"));
+            arbiter.acquire(PresentationOwner::WaterReminder, 2, None, None);
+            if completed {
+                assert!(arbiter.mark_learning_completed("session"));
+            }
+            arbiter.release_owner(PresentationOwner::WaterReminder, 3);
+            arbiter.reconcile_completed_learning(3);
+            assert_eq!(
+                arbiter.snapshot().activity,
+                if completed {
+                    PetActivity::Learning
+                } else {
+                    PetActivity::Interrupted
+                }
+            );
+        }
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn completed_result_waits_for_reminder_queue_and_focus_then_precedes_a_running_task() {
+        let mut arbiter = PresentationArbiter::default();
+        arbiter.acquire(PresentationOwner::LearningSession, 1, None, Some("done"));
+        arbiter.mark_learning_completed("done");
+        arbiter.acquire(PresentationOwner::WaterReminder, 2, None, None);
+        arbiter.release_owner(PresentationOwner::WaterReminder, 3);
+        arbiter.acquire(PresentationOwner::MealReminder, 3, None, None);
+        arbiter.reconcile_completed_learning(3);
+        assert_eq!(
+            arbiter.active_lease().unwrap().owner,
+            PresentationOwner::MealReminder
+        );
+        arbiter.release_owner(PresentationOwner::MealReminder, 4);
+        arbiter.acquire(PresentationOwner::Focus, 4, None, None);
+        arbiter.reconcile_completed_learning(4);
+        assert_eq!(arbiter.snapshot().activity, PetActivity::Focusing);
+        arbiter.release_owner(PresentationOwner::Focus, 5);
+        arbiter.acquire(PresentationOwner::TaskWatch, 5, None, None);
+        arbiter.reconcile_completed_learning(5);
+        assert_eq!(arbiter.snapshot().activity, PetActivity::Learning);
+        assert!(!arbiter.finish_learning_session("stale", 6));
+        assert_eq!(arbiter.snapshot().activity, PetActivity::Learning);
+    }
+
+    #[cfg(feature = "learning")]
+    #[test]
+    fn closing_a_result_before_sleep_or_under_an_overlay_prevents_ghost_learning() {
+        for sleeping in [false, true] {
+            let mut arbiter = PresentationArbiter::default();
+            arbiter.acquire(PresentationOwner::LearningSession, 1, None, Some("done"));
+            arbiter.mark_learning_completed("done");
+            arbiter.acquire(PresentationOwner::WaterReminder, 2, None, None);
+            arbiter.finish_learning_session("done", 3);
+            arbiter.set_sleeping(sleeping, PetActivitySource::Manual);
+            arbiter.release_owner(PresentationOwner::WaterReminder, 4);
+            arbiter.reconcile_completed_learning(4);
+            assert_eq!(
+                arbiter.snapshot().activity,
+                if sleeping {
+                    PetActivity::Sleeping
+                } else {
+                    PetActivity::Idle
+                }
+            );
+            arbiter.set_sleeping(false, PetActivitySource::Manual);
+            assert!(!arbiter.mark_learning_completed("done"));
+            arbiter.reconcile_completed_learning(5);
+            assert_eq!(arbiter.snapshot().activity, PetActivity::Idle);
+            assert_eq!(arbiter.snapshot().resumable_learning_session_id, None);
+        }
+    }
+
+    const ALL_OWNERS: [PresentationOwner; 13] = [
         PresentationOwner::StrongReminder,
         PresentationOwner::Focus,
         PresentationOwner::WaterReminder,
+        PresentationOwner::MealReminder,
+        PresentationOwner::UserInteraction,
         PresentationOwner::MovementReminder,
         PresentationOwner::NormalReminder,
         PresentationOwner::LearningSession,
         PresentationOwner::TaskWatch,
+        PresentationOwner::TaskWatchAttention,
         PresentationOwner::LearningInvitation,
+        PresentationOwner::SceneRest,
         PresentationOwner::AmbientPet,
     ];
 
@@ -447,19 +775,22 @@ mod tests {
 
     const fn frozen_priority(owner: PresentationOwner) -> u8 {
         match owner {
-            PresentationOwner::StrongReminder => 100,
-            PresentationOwner::Focus => 90,
-            PresentationOwner::WaterReminder => 80,
-            PresentationOwner::MovementReminder | PresentationOwner::NormalReminder => 70,
-            PresentationOwner::LearningSession => 60,
-            PresentationOwner::TaskWatch => 50,
-            PresentationOwner::LearningInvitation => 30,
+            PresentationOwner::WaterReminder => 104,
+            PresentationOwner::MealReminder => 103,
+            PresentationOwner::StrongReminder | PresentationOwner::NormalReminder => 102,
+            PresentationOwner::TaskWatchAttention => 101,
+            PresentationOwner::UserInteraction => 95,
+            PresentationOwner::MovementReminder => 90,
+            PresentationOwner::Focus | PresentationOwner::LearningSession => 80,
+            PresentationOwner::TaskWatch => 70,
+            PresentationOwner::LearningInvitation => 60,
+            PresentationOwner::SceneRest => 40,
             PresentationOwner::AmbientPet => 10,
         }
     }
 
-    const fn frozen_preemptible(owner: PresentationOwner) -> bool {
-        !matches!(owner, PresentationOwner::StrongReminder)
+    const fn frozen_preemptible(_owner: PresentationOwner) -> bool {
+        true
     }
 
     #[test]
@@ -546,7 +877,7 @@ mod tests {
                 assert!(arbiter.snapshot().lease_id.is_some());
             }
         }
-        assert_eq!(pair_count, 72);
+        assert_eq!(pair_count, 156);
     }
 
     #[test]
@@ -623,7 +954,7 @@ mod tests {
     }
 
     #[test]
-    fn strong_reminder_is_nonpreemptible_and_manual_learning_beats_invitation() {
+    fn highest_reminder_beats_focus_and_manual_learning_beats_invitation() {
         let mut arbiter = PresentationArbiter::default();
         arbiter.acquire(PresentationOwner::StrongReminder, 1_000, None, None);
         let denied = arbiter.acquire(PresentationOwner::Focus, 1_001, None, None);
@@ -650,6 +981,121 @@ mod tests {
             manual.displaced_owner(),
             Some(PresentationOwner::LearningInvitation)
         );
+    }
+
+    #[test]
+    fn short_interaction_preempts_work_but_not_user_attention() {
+        for work_owner in [PresentationOwner::TaskWatch, PresentationOwner::Focus] {
+            let mut arbiter = PresentationArbiter::default();
+            arbiter.acquire(work_owner, 1_000, None, None);
+            let interaction = arbiter.acquire(
+                PresentationOwner::UserInteraction,
+                1_001,
+                Some(15_001),
+                None,
+            );
+            assert_eq!(interaction.displaced_owner(), Some(work_owner));
+            assert_eq!(
+                arbiter.active_lease().map(|lease| lease.owner),
+                Some(PresentationOwner::UserInteraction)
+            );
+        }
+
+        for attention_owner in [
+            PresentationOwner::TaskWatchAttention,
+            PresentationOwner::NormalReminder,
+            PresentationOwner::MealReminder,
+            PresentationOwner::WaterReminder,
+        ] {
+            let mut arbiter = PresentationArbiter::default();
+            arbiter.acquire(attention_owner, 1_000, None, None);
+            assert!(matches!(
+                arbiter.acquire(
+                    PresentationOwner::UserInteraction,
+                    1_001,
+                    Some(15_001),
+                    None,
+                ),
+                AcquireResult::Denied(_)
+            ));
+            assert_eq!(
+                arbiter.active_lease().map(|lease| lease.owner),
+                Some(attention_owner)
+            );
+        }
+    }
+
+    #[test]
+    fn finishing_interaction_requires_matching_owner_id_and_revision() {
+        let mut arbiter = PresentationArbiter::default();
+        let focus = arbiter
+            .acquire(PresentationOwner::Focus, 1_000, None, None)
+            .granted_lease()
+            .unwrap()
+            .clone();
+        assert!(!arbiter.release_matching_owner(
+            PresentationOwner::UserInteraction,
+            &focus.lease_id,
+            focus.revision,
+            1_001
+        ));
+        let first = arbiter
+            .acquire(
+                PresentationOwner::UserInteraction,
+                1_002,
+                Some(31_002),
+                None,
+            )
+            .granted_lease()
+            .unwrap()
+            .clone();
+        assert!(!arbiter.release_matching_owner(
+            PresentationOwner::UserInteraction,
+            &first.lease_id,
+            first.revision + 1,
+            1_003
+        ));
+        assert!(arbiter.release_matching_owner(
+            PresentationOwner::UserInteraction,
+            &first.lease_id,
+            first.revision,
+            1_004
+        ));
+        let second = arbiter
+            .acquire(
+                PresentationOwner::UserInteraction,
+                1_005,
+                Some(31_005),
+                None,
+            )
+            .granted_lease()
+            .unwrap()
+            .clone();
+        assert!(!arbiter.release_matching_owner(
+            PresentationOwner::UserInteraction,
+            &first.lease_id,
+            first.revision,
+            1_006
+        ));
+        assert_eq!(arbiter.active_lease(), Some(&second));
+        let reminder = arbiter
+            .acquire(PresentationOwner::WaterReminder, 1_007, None, None)
+            .granted_lease()
+            .unwrap()
+            .clone();
+        assert!(!arbiter.release_matching_owner(
+            PresentationOwner::UserInteraction,
+            &second.lease_id,
+            second.revision,
+            1_008
+        ));
+        assert!(!arbiter.release_matching_owner(
+            PresentationOwner::UserInteraction,
+            &reminder.lease_id,
+            reminder.revision,
+            1_009
+        ));
+        assert_eq!(arbiter.active_lease(), Some(&reminder));
     }
 
     #[test]
@@ -830,7 +1276,7 @@ mod tests {
         let arbiter = arbiter.lock().unwrap();
         assert_eq!(
             arbiter.active_lease().map(|lease| lease.owner),
-            Some(PresentationOwner::StrongReminder)
+            Some(PresentationOwner::WaterReminder)
         );
         assert!(arbiter.snapshot().lease_id.is_some());
     }

@@ -1,11 +1,13 @@
 import { validateCommunityStableAuthority } from "./community_release_contract.mjs";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 export class CommunityStableAcceptanceError extends Error {}
 
 const SHA256 = /^[A-F0-9]{64}$/u;
 const COMMIT = /^[0-9a-f]{40}$/u;
 const ALLOWED_PROMOTION_CHANGES = [
-  "docs/release/COMMUNITY_STABLE_ACCEPTANCE_V1.json",
+  "docs/release/COMMUNITY_STABLE_ACCEPTANCE_V2.json",
   "product-version.json",
 ];
 const AUTOMATED_OPERATOR = /(?:^|[^a-z])(?:ai|bot)(?:[^a-z]|$)|automation|chatgpt|claude|codex|openai/iu;
@@ -55,16 +57,23 @@ function validateEndurance(check) {
       "controlledExit",
       "applicationErrorCount",
       "formalUserFilesWritten",
+      "rawReportPassed",
+      "rawFailureCodes",
     ],
     "checks.endurance24h",
   );
-  if (check.status !== "passed") fail("24-hour endurance evidence is pending");
+  if (check.status !== "passed_with_waivers") fail("24-hour endurance waiver evidence is pending");
   sha256(check.reportSha256, "checks.endurance24h.reportSha256");
   sha256(check.sourceBindingSha256, "checks.endurance24h.sourceBindingSha256");
   safeIntegerAtLeast(check.observedSeconds, 86_400, "24-hour observed duration");
   safeIntegerAtLeast(check.activeCoverageSeconds, 72_000, "24-hour active coverage");
-  passed(check.suspendResumeObserved, "sleep/resume observation");
-  passed(check.lockUnlockObserved, "lock/unlock observation");
+  if (check.suspendResumeObserved !== false || check.lockUnlockObserved !== false ||
+      check.rawReportPassed !== false ||
+      JSON.stringify(check.rawFailureCodes) !== JSON.stringify([
+        "power_suspend_resume_pair_missing", "session_lock_unlock_pair_missing",
+      ])) {
+    fail("raw endurance report must fail for exactly the two authorized system events");
+  }
   passed(check.controlledExit, "endurance controlled exit");
   if (check.applicationErrorCount !== 0 || check.formalUserFilesWritten !== 0) {
     fail("endurance evidence must have zero application errors and zero formal-user writes");
@@ -122,24 +131,44 @@ function validateLegacyData(check) {
     [
       "status",
       "sourceVersion",
-      "normalizedSourceSha256",
-      "reportSha256",
-      "sourceUnchanged",
-      "allRowsPreserved",
-      "backupRestorePassed",
-      "failureRollbackPassed",
+      "realHistoricalDataVerified",
+      "officialBinarySha256",
+      "syntheticMigrationReportSha256",
+      "v1527UpgradeRollbackReportSha256",
+      "syntheticRowsPreserved",
+      "syntheticBackupRestorePassed",
+      "syntheticFailureRollbackPassed",
+      "v1527UpgradeRollbackPassed",
     ],
     "checks.legacyDataCompatibility",
   );
-  if (check.status !== "passed" || check.sourceVersion !== "1.3.2") {
-    fail("authentic v1.3.2 data compatibility evidence is pending");
+  if (check.status !== "waived_with_substitutes" || check.sourceVersion !== "1.3.2" ||
+      check.realHistoricalDataVerified !== false) {
+    fail("real 1.3.2 historical data must remain explicitly unverified");
   }
-  sha256(check.normalizedSourceSha256, "legacy source database digest");
-  sha256(check.reportSha256, "legacy migration report digest");
-  passed(check.sourceUnchanged, "legacy source preservation");
-  passed(check.allRowsPreserved, "legacy row preservation");
-  passed(check.backupRestorePassed, "legacy backup and restore");
-  passed(check.failureRollbackPassed, "legacy migration rollback");
+  sha256(check.officialBinarySha256, "official v1.3.2 binary digest");
+  sha256(check.syntheticMigrationReportSha256, "synthetic migration report digest");
+  sha256(check.v1527UpgradeRollbackReportSha256, "1.5.27 upgrade rollback report digest");
+  passed(check.syntheticRowsPreserved, "synthetic 1.3.2 row preservation");
+  passed(check.syntheticBackupRestorePassed, "synthetic 1.3.2 backup and restore");
+  passed(check.syntheticFailureRollbackPassed, "synthetic 1.3.2 migration rollback");
+  passed(check.v1527UpgradeRollbackPassed, "real 1.5.27 installer upgrade and rollback");
+}
+
+function validateWaivers(waivers, testedCommit) {
+  exactKeys(waivers, ["authorizationRecordSha256", "candidateCommit", "ids", "evidenceSha256"], "acceptance.waivers");
+  sha256(waivers.authorizationRecordSha256, "waiver authorization record digest");
+  const decisionBytes = readFileSync(new URL("../docs/release/COMMUNITY_STABLE_V2_WAIVER_DECISION.md", import.meta.url));
+  const actualDecisionSha256 = createHash("sha256").update(decisionBytes).digest("hex").toUpperCase();
+  if (waivers.authorizationRecordSha256 !== actualDecisionSha256) {
+    fail("waiver authorization record hash does not match the frozen user decision");
+  }
+  if (waivers.candidateCommit !== testedCommit ||
+      JSON.stringify(waivers.ids) !== JSON.stringify([
+        "power_suspend_resume_pair_missing", "session_lock_unlock_pair_missing", "real_1_3_2_user_history_unavailable",
+      ])) fail("waivers exceed the authorized scope or candidate commit");
+  exactKeys(waivers.evidenceSha256, ["endurance", "synthetic132", "upgrade1527"], "waiver evidence");
+  for (const [key, value] of Object.entries(waivers.evidenceSha256)) sha256(value, `waiver evidence ${key}`);
 }
 
 function validateLearningRuntime(check) {
@@ -178,10 +207,10 @@ export function validateCommunityStableAcceptance(
   validateCommunityStableAuthority(authority, expectedProduct);
   exactKeys(
     acceptance,
-    ["schemaVersion", "status", "product", "candidate", "checks", "review"],
+    ["schemaVersion", "status", "product", "candidate", "checks", "waivers", "review"],
     "acceptance",
   );
-  if (acceptance.schemaVersion !== 1 || acceptance.status !== "accepted") {
+  if (acceptance.schemaVersion !== 2 || acceptance.status !== "accepted") {
     fail("community stable acceptance has not been completed");
   }
   exactKeys(acceptance.product, ["name", "identifier", "version"], "acceptance.product");
@@ -220,6 +249,12 @@ export function validateCommunityStableAcceptance(
     acceptance.candidate.installerSha256,
   );
   validateLegacyData(acceptance.checks.legacyDataCompatibility);
+  validateWaivers(acceptance.waivers, acceptance.candidate.testedCommit);
+  if (acceptance.waivers.evidenceSha256.endurance !== acceptance.checks.endurance24h.reportSha256 ||
+      acceptance.waivers.evidenceSha256.synthetic132 !== acceptance.checks.legacyDataCompatibility.syntheticMigrationReportSha256 ||
+      acceptance.waivers.evidenceSha256.upgrade1527 !== acceptance.checks.legacyDataCompatibility.v1527UpgradeRollbackReportSha256) {
+    fail("waiver evidence hashes do not match the acceptance checks");
+  }
   validateLearningRuntime(acceptance.checks.learningRuntime);
   if (
     acceptance.checks.learningRuntime.sourceBindingSha256 !==
@@ -230,7 +265,7 @@ export function validateCommunityStableAcceptance(
 
   exactKeys(
     acceptance.review,
-    ["operator", "completedAt", "unresolvedFindings"],
+    ["operator", "completedAt", "permissionSha256", "unresolvedFindings"],
     "acceptance.review",
   );
   if (
@@ -250,6 +285,7 @@ export function validateCommunityStableAcceptance(
   ) {
     fail("community stable acceptance review is incomplete or has unresolved findings");
   }
+  sha256(acceptance.review.permissionSha256, "rightsholder distribution permission digest");
   return acceptance;
 }
 

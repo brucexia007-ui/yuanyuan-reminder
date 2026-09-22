@@ -17,6 +17,9 @@ import {
 
 const hash = (letter) => letter.repeat(64);
 const testedCommit = "a".repeat(40);
+const authorizationRecordSha256 = createHash("sha256").update(
+  readFileSync(new URL("../docs/release/COMMUNITY_STABLE_V2_WAIVER_DECISION.md", import.meta.url)),
+).digest("hex").toUpperCase();
 
 function fixture() {
   const installerBytes = Buffer.from("jiaojiao-installer");
@@ -27,16 +30,17 @@ function fixture() {
     testedCommit,
     installerBytes,
     endurance: {
-      ready: true,
+      ready: false,
+      smokePassed: true,
       bindings: {
         applicationSha256: hash("1"),
         fixtureSha256: hash("2"),
         scriptSha256: hash("3"),
       },
       request: { acceptanceGateRequested: true },
-      acceptanceGate: { passed: true },
+      acceptanceGate: { passed: false, failures: ["power_suspend_resume_pair_missing", "session_lock_unlock_pair_missing"] },
       clock: { wallClockObservedSeconds: 86405, activeSampleCoverageSeconds: 72000 },
-      transitions: { powerSuspendResumeObserved: true, sessionLockUnlockObserved: true },
+      transitions: { powerSuspendResumeObserved: false, sessionLockUnlockObserved: false },
       process: { controlledExit: true },
       isolation: { applicationErrorCount: 0 },
       storage: { formalUserFilesWritten: 0 },
@@ -83,7 +87,7 @@ function fixture() {
       },
     },
     installedStatusSha256: hash("B"),
-    v132Status: { ready: true, source: { commit: testedCommit } },
+    v132Status: { ready: true, source: { commit: testedCommit, v132PortableSha256: "D142095E41EA4A1D6BB89D7A20D8F44CBA3519C085E4EC5E674E4FB25CFF89AD" } },
     v132StatusSha256: hash("C"),
     v132Capture: { status: "passed", fixtureLogicalSha256: hash("D"), sourceStableDuringCapture: true },
     v132Migration: {
@@ -95,6 +99,17 @@ function fixture() {
         { id: "failed_restore_rollback", passed: true },
       ],
     },
+    v132MigrationSha256: hash("F"),
+    v1527Report: {
+      schemaVersion: 1, status: "passed", candidateCommit: testedCommit,
+      candidateInstallerSha256: installerSha256,
+      baselineInstallerSha256: "424E2D607E08CA274672DFF343D12393DE3CF9C4FBC7BA3789FC7A8ACFFF4C7E",
+      baselineFileCount: 218, databaseMigration7to8Passed: true,
+      oldRowsAndSettingsPreserved: true, petPackRecoveryPassed: true,
+      rollbackBothDatabasesIntegrityPassed: true, rollbackVisibleStatePassed: true,
+    },
+    v1527ReportSha256: hash("8"),
+    waiverAuthorizationSha256: authorizationRecordSha256,
     learningEnvelope: {
       status: "passed",
       sourceCommit: testedCommit,
@@ -122,15 +137,16 @@ test("assembles four verified reports and one exact installer into a pending hum
   assert.equal(draft.checks.endurance24h.reportSha256, hash("A"));
   assert.equal(draft.checks.endurance24h.sourceBindingSha256, hash("9"));
   assert.equal(draft.checks.installedCandidateE2e.reportSha256, hash("B"));
-  assert.equal(draft.checks.legacyDataCompatibility.reportSha256, hash("C"));
+  assert.equal(draft.checks.legacyDataCompatibility.syntheticMigrationReportSha256, hash("F"));
   assert.equal(draft.checks.learningRuntime.reportSha256, hash("E"));
   assert.equal(draft.checks.learningRuntime.sourceBindingSha256, hash("9"));
-  assert.equal(draft.checks.legacyDataCompatibility.normalizedSourceSha256, hash("D"));
+  assert.equal(draft.checks.legacyDataCompatibility.officialBinarySha256, "D142095E41EA4A1D6BB89D7A20D8F44CBA3519C085E4EC5E674E4FB25CFF89AD");
   assert.equal(draft.checks.learningRuntime.importedCards, 20000);
   const accepted = structuredClone(draft);
   accepted.status = "accepted";
   accepted.review.operator = "Brucexia";
   accepted.review.completedAt = "2026-08-29T06:00:00.000Z";
+  accepted.review.permissionSha256 = hash("4");
   assert.equal(
     validateCommunityStableAcceptance(accepted, {
       authority: {
@@ -172,6 +188,14 @@ test("rejects cross-commit, cross-installer, and incomplete evidence", () => {
   const learningBinding = fixture();
   learningBinding.learningEnvelope.sourceBindingSha256 = hash("8");
   assert.throws(() => buildCommunityStableAcceptanceDraft(learningBinding), /different source binding/u);
+
+  const extraFailure = fixture();
+  extraFailure.endurance.acceptanceGate.failures.push("database_growth_limit_exceeded");
+  assert.throws(() => buildCommunityStableAcceptanceDraft(extraFailure), /two authorized event waivers/u);
+
+  const oldInstaller = fixture();
+  oldInstaller.v1527Report.baselineInstallerSha256 = hash("0");
+  assert.throws(() => buildCommunityStableAcceptanceDraft(oldInstaller), /1\.5\.27 installer/u);
 });
 
 test("formal 24-hour acceptance is pinned to the integrated learning build", () => {
@@ -199,6 +223,7 @@ test("formal 24-hour acceptance is pinned to the integrated learning build", () 
     assembler,
     /verify_community_stable_learning_runtime_evidence\.mjs[\s\S]*?--binding[\s\S]*?enduranceBindingPath/u,
   );
+  assert.match(assembler, /verify_community_stable_v1527_evidence\.mjs/u);
   assert.doesNotMatch(assembler, /--allow-dirty/u);
   const controlledBuilder = readFileSync(
     new URL("./build_community_stable_runtime_baseline_candidate.ps1", import.meta.url),

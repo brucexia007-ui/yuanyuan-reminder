@@ -30,7 +30,7 @@ const MENU_ITEMS = [
   "",
   "总在最前",
   "鼠标穿透",
-  "显示课程快捷按键",
+  "关闭快捷按键",
   "设置",
   brandPetText("隐藏圆圆"),
   brandPetText("退出圆圆提醒工具"),

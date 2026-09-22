@@ -4,7 +4,6 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { petDisplayName } from "../brand";
 import type { CompanionExpressionSnapshot } from "../types";
 import { CompanionPropStage } from "./CompanionPropStage";
 
@@ -12,7 +11,7 @@ function snapshot(
   overrides: Partial<CompanionExpressionSnapshot> = {},
 ): CompanionExpressionSnapshot {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     revision: 1,
     tier: "n2",
     intent: "watch",
@@ -27,6 +26,7 @@ function snapshot(
     groupedCount: 1,
     focusDeferredCount: 0,
     accessibleState: "task_running",
+    sceneAppearance: { kind: "work", stage: "fresh" },
     ...overrides,
   };
 }
@@ -52,7 +52,7 @@ describe("CompanionPropStage label modes", () => {
       accessibleState: "task_failed",
     });
     expect(markup).toContain("Codex");
-    expect(markup).toContain(`${petDisplayName}发现任务没有成功，正在你身边陪着`);
+    expect(markup).toContain("圆圆发现任务没有成功，正在你身边陪着");
     expect(markup).not.toContain("没成功");
     expect(markup).not.toContain(">任务<");
   });

@@ -85,6 +85,22 @@ fn run(arguments: &[String]) -> Result<String, String> {
             yuanyuan_reminder_lib::installed_candidate_qa::add_mutation(&root)
                 .map_err(|error| error.to_string())?,
         ),
+        "inspect-pet" => serde_json::to_value(
+            yuanyuan_reminder_lib::installed_candidate_qa::inspect_pet(&root)
+                .map_err(|error| error.to_string())?,
+        ),
+        "seed-upgrade-v12" => serde_json::to_value(
+            yuanyuan_reminder_lib::installed_candidate_qa::seed_upgrade_v12(&root)
+                .map_err(|error| error.to_string())?,
+        ),
+        "inspect-upgrade-v12" => serde_json::to_value(
+            yuanyuan_reminder_lib::installed_candidate_qa::inspect_upgrade_v12(&root)
+                .map_err(|error| error.to_string())?,
+        ),
+        "inspect-upgrade-v13" => serde_json::to_value(
+            yuanyuan_reminder_lib::installed_candidate_qa::inspect_upgrade_v13(&root)
+                .map_err(|error| error.to_string())?,
+        ),
         "inspect" => {
             let ids = parse_ids(&value(arguments, "--reminder-ids")?)?;
             serde_json::to_value(
@@ -101,7 +117,7 @@ fn run(arguments: &[String]) -> Result<String, String> {
         }
         _ => {
             return Err(
-                "mode must be seed, add-overdue-notify, add-missed, mutate, inspect, or inspect-automatic-backup".into(),
+                "mode must be seed, add-overdue-notify, add-missed, mutate, inspect, inspect-pet, seed-upgrade-v12, inspect-upgrade-v12, inspect-upgrade-v13, or inspect-automatic-backup".into(),
             );
         }
     }
@@ -123,6 +139,21 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pet_inspection_never_creates_or_opens_an_unattested_normal_root() {
+        let root = std::env::temp_dir().join(format!("my-pet-qa-denied-{}", uuid::Uuid::new_v4()));
+        assert!(!root.exists());
+        let error = run(&[
+            "inspect-pet".into(),
+            "--data-root".into(),
+            root.to_string_lossy().to_string(),
+            "--attest-windows-sandbox".into(),
+        ])
+        .unwrap_err();
+        assert!(error.contains("Sandbox") || error.contains("root"));
+        assert!(!root.exists());
+    }
 
     #[test]
     fn rejects_missing_attestation_and_malformed_ids_before_touching_data() {

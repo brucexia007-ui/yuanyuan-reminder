@@ -3,8 +3,8 @@
   "channel": "github_releases",
   "audience": "open_source_community",
   "product": {
-    "name": "饺饺提醒",
-    "identifier": "com.brucexia.jiaojiao.reminder"
+    "name": "圆圆提醒",
+    "identifier": "com.yuanyuan.reminder"
   },
   "artifactPolicy": {
     "installerFormat": "nsis-exe",

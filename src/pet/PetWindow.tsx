@@ -1,3 +1,4 @@
+import { petText, usePetProfile } from "./petProfile";
 import { invoke } from "@tauri-apps/api/core";
 import {
   LogicalSize,
@@ -17,13 +18,14 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { petDisplayName, petIdentityDescription, petText } from "../brand";
 import {
   completeOccurrence,
+  finishPetInteraction,
   getBasicSupportState,
   getCompanionExpressionSnapshot,
   getFocusState,
   getPetActivitySnapshot,
+  getRuntimeCapabilities,
   getSettings,
   listToday,
   onBackendEvent,
@@ -42,17 +44,26 @@ import type {
   PetIntent,
   LearningInvitationDto,
   LearningSessionSnapshot,
+  OccurrenceResolution,
   PetActivitySnapshot,
   TodaySnapshot,
 } from "../types";
 import { learningBuildEnabled } from "../learning/featureGate";
 import { SpriteAnimator } from "./SpriteAnimator";
 import { CompanionPropStage } from "./CompanionPropStage";
+import { companionPresentation } from "./companionPresentation";
 import {
   animationForCompanionExpression,
   settledAnimationAfterCompanionCue,
 } from "./companionMotion";
 import type { AnimationName, LifeAnimationName } from "./manifest";
+import {
+  completionAnimationForCategory,
+  exitAnimationForScene,
+  fallbackAnimationForScene,
+  recoveryAnimationForScene,
+  sceneWardrobeEnabled,
+} from "./sceneWardrobe";
 import {
   formatRemaining,
   basicSupportSuppressesIntent,
@@ -78,6 +89,7 @@ import {
   alertPetHeight,
   alertPetWidth,
   alertStagePosition,
+  warmupStageLayout,
 } from "./alertStage";
 import {
   LEARNING_STAGE_HEIGHT,
@@ -92,11 +104,11 @@ import {
   followOffsetTowardPointer,
   gentleHeadOffsetTowardPointer,
   shouldAdvancePettingFrame,
-  shouldAdvanceWandFrame,
   shouldMirrorTowardPointer,
   shouldMirrorTowardPointerWithHysteresis,
   transitionToolInteraction,
   treatFrameFromPointerHeight,
+  wandDirectionFrame,
 } from "./interactionMotion";
 import {
   COMPACT_PET_WINDOW_GUTTER,
@@ -117,6 +129,8 @@ const LazyLearningDesktopStage = learningBuildEnabled
 
 const defaultSettings: AppSettings = {
   animationMode: "always",
+  sceneWardrobeMode: "full",
+  petProfile: { schemaVersion: 1, selectedPackId: "builtin:yuanyuan", nicknames: {} },
   companionIntensity: "everyday",
   companionLabelMode: "adaptive",
   animationSpeed: 1,
@@ -145,10 +159,15 @@ interface DragState {
   pointerId: number;
   startScreenX: number;
   startScreenY: number;
-  windowX: number;
-  windowY: number;
-  scaleFactor: number;
+  lastScreenX: number;
+  lastScreenY: number;
+  geometry: { position: PhysicalPosition; scaleFactor: number } | null;
+  target: HTMLDivElement;
+  generation: number;
+  cancelled: boolean;
   moved: boolean;
+  positionApplied: boolean;
+  positionFailed: boolean;
 }
 
 interface WindowSnapshot {
@@ -171,6 +190,8 @@ export function isManualSleepRequest(
 
 interface ActiveToolInteraction {
   id: string;
+  leaseRevision: number;
+  expiresAtUnixMs: number;
   kind: "treat" | "wand" | "pet" | "ball";
   x: number;
   y: number;
@@ -190,6 +211,13 @@ interface ActiveToolInteraction {
   flightDuration: number;
   ballVisible: boolean;
 }
+
+const wandPhaseAnimations = [
+  "wand-reach",
+  "wand-swipe",
+  "wand-return",
+  "wand-swipe",
+] as const satisfies readonly AnimationName[];
 
 const lifeAnimations: Array<{
   name: Exclude<LifeAnimationName, "belly-down">;
@@ -246,12 +274,14 @@ function pendingIntentFromSnapshot(snapshot: TodaySnapshot): PetIntent | null {
     ["pending", "overdue"].includes(item.status),
   );
   const pending =
+    active.find((item) => item.category === "water") ??
+    active.find((item) => item.category === "meal") ??
     active.find(
       (item) =>
         item.category !== "water" &&
+        item.category !== "meal" &&
         item.reminderId !== "system-activity-reminder",
     ) ??
-    active.find((item) => item.category === "water") ??
     active.find((item) => item.reminderId === "system-activity-reminder");
   if (!pending) return null;
   const activity = pending.reminderId === "system-activity-reminder";
@@ -263,7 +293,13 @@ function pendingIntentFromSnapshot(snapshot: TodaySnapshot): PetIntent | null {
     priority: 0,
     animation: activity ? "activity-jumping" : "alert-glass-paws",
     route: "today",
-    title: activity ? "起来活动一下" : "还有事项等你处理",
+    title: activity
+      ? "起来活动一下"
+      : pending.category === "water"
+        ? "喝水提醒"
+        : pending.category === "meal"
+          ? "吃饭提醒"
+          : "还有事项等你处理",
     message: activity
       ? "你已经连续使用电脑一段时间，可以起来活动一下。"
       : pending.reminderTitle,
@@ -293,20 +329,21 @@ type AlertAction = "complete" | "snooze" | "skip";
 function alertActionAccessibleLabel(action: AlertAction): string {
   switch (action) {
     case "complete":
-      return `记录完成；${petDisplayName}高兴地跳了一下`;
+      return petText("记录完成；{pet}会继续陪伴");
     case "snooze":
-      return `提醒已延后；${petDisplayName}安静等候`;
+      return petText("提醒已延后；{pet}安静等候");
     case "skip":
-      return `提醒已跳过；${petDisplayName}把任务牌收起`;
+      return petText("提醒已跳过；{pet}会继续陪伴");
   }
 }
 
 function animationForPetIntent(
   intent: PetIntent,
   companion: CompanionExpressionSnapshot | null,
+  wardrobeMode: AppSettings["sceneWardrobeMode"] = "full",
 ): AnimationName {
   return isCoreDirectedOccurrence(intent) && companion
-    ? animationForCompanionExpression(companion)
+    ? animationForCompanionExpression(companion, wardrobeMode)
     : intent.animation;
 }
 
@@ -323,13 +360,13 @@ function ballPhaseMessage(phase: BallGamePhase | null): string {
     case "flying":
       return "球飞出去啦";
     case "chasing":
-      return `${petDisplayName}正在追球`;
+      return petText("{pet}正在追球");
     case "batting":
       return "先扒拉两下";
     case "pickup":
-      return `${petDisplayName}叼起球了`;
+      return petText("{pet}叼起球了");
     case "returning":
-      return `${petDisplayName}正慢慢走回来`;
+      return petText("{pet}正慢慢走回来");
     case "dropping":
       return "把球放回脚边";
     default:
@@ -340,18 +377,21 @@ function ballPhaseMessage(phase: BallGamePhase | null): string {
 export function petSleepAccessibleStatus(
   snapshot: PetActivitySnapshot | null | undefined,
 ): string | null {
-  if (snapshot?.activity === "sleeping") return `${petDisplayName}正在睡觉`;
+  if (snapshot?.activity === "sleeping") return petText("{pet}正在睡觉");
   if (
     snapshot?.activity === "interrupted" &&
     snapshot.resumableLearningSessionId &&
     snapshot.restoreTarget === "learning"
   ) {
-    return `${petDisplayName}已醒，上一轮学习可以继续`;
+    return petText("{pet}已醒，上一轮学习可以继续");
   }
   return null;
 }
 
 export function PetWindow() {
+  const petProfile = usePetProfile();
+  const petResourceIdentity = `${petProfile.selectedPackId}:${petProfile.effectivePackId}:${petProfile.staticOnly}`;
+  const previousPet = useRef(petResourceIdentity);
   const windowApi = useMemo(
     () => (tauriAvailable() ? getCurrentWindow() : null),
     [],
@@ -360,6 +400,10 @@ export function PetWindow() {
   const [animation, setAnimation] = useState<AnimationName>("idle");
   const [lookFrame, setLookFrame] = useState<number | null>(null);
   const [activeIntent, setActiveIntent] = useState<PetIntent | null>(null);
+  const supportedWarmup = petProfile.effectivePackId === "builtin:yuanyuan" &&
+    !petProfile.staticOnly && petProfile.capabilities.scene &&
+    activeIntent?.kind === "activity" &&
+    (animation === "warmup-alert" || animation === "warmup-loop");
   const [alertActionPending, setAlertActionPending] = useState(false);
   const [alertActionAccessibleStatus, setAlertActionAccessibleStatus] =
     useState<string | null>(null);
@@ -374,11 +418,27 @@ export function PetWindow() {
   const [desktopLearningSession, setDesktopLearningSession] =
     useState<LearningSessionSnapshot | null>(null);
   const [learningStartPending, setLearningStartPending] = useState(false);
+  // The shared UI bundle also runs with Rust's learning feature disabled.
+  // Do not expose learning UI or call optional commands until Rust confirms it.
+  const [learningAvailable, setLearningAvailable] = useState(false);
   const [sleepPresentationActive, setSleepPresentationActive] = useState(false);
   const [toolInteraction, setToolInteraction] =
     useState<ActiveToolInteraction | null>(null);
   const [clock, setClock] = useState(Date.now());
   const drag = useRef<DragState | null>(null);
+  const dragGeneration = useRef(0);
+  // Geometry, native move acknowledgements and persistence share one queue.
+  // A later drag must read its origin after the previous drag has settled.
+  const dragWrites = useRef<Promise<void>>(Promise.resolve());
+  const cancelDragging = useCallback(() => {
+    dragGeneration.current += 1;
+    const active = drag.current;
+    drag.current = null;
+    if (active?.target.hasPointerCapture(active.pointerId)) {
+      active.target.releasePointerCapture(active.pointerId);
+    }
+  }, []);
+  useEffect(() => cancelDragging, [cancelDragging, petResourceIdentity]);
   const stateBeforeTransient = useRef<AnimationName>("idle");
   const currentAnimation = useRef<AnimationName>("idle");
   const cursorFollowEnabled = useRef(true);
@@ -391,11 +451,25 @@ export function PetWindow() {
   const queuedAfterWake = useRef<PetIntent | null>(null);
   const deferredIntent = useRef<PetIntent | null>(null);
   const toolInteractionRef = useRef<ActiveToolInteraction | null>(null);
+  const lastInteractionRevision = useRef(0);
   const settingsRef = useRef(defaultSettings);
   const companionExpressionRef = useRef<CompanionExpressionSnapshot | null>(null);
   const petActivityRef = useRef<PetActivitySnapshot | null>(null);
   const expandedWindowSnapshot = useRef<WindowSnapshot | null>(null);
   const expandedStageRevision = useRef(0);
+  const previousExpandedStageKey = useRef<string | null>(null);
+  const sceneExitPending = useRef(false);
+  const completionTimer = useRef<number | null>(null);
+  const completionGeneration = useRef(0);
+  const presentedOccurrences = useRef(new Set<string>());
+
+  const cancelCompletion = useCallback(() => {
+    completionGeneration.current += 1;
+    if (completionTimer.current !== null) {
+      window.clearTimeout(completionTimer.current);
+      completionTimer.current = null;
+    }
+  }, []);
 
   const clearBellyHold = useCallback(() => {
     if (bellyHoldTimer.current !== null) {
@@ -437,6 +511,12 @@ export function PetWindow() {
   }, [settings]);
 
   const updateActiveIntent = useCallback((intent: PetIntent | null) => {
+    if (intent?.occurrenceId) {
+      presentedOccurrences.current.add(intent.occurrenceId);
+      if (presentedOccurrences.current.size > 32) {
+        presentedOccurrences.current.delete(presentedOccurrences.current.values().next().value!);
+      }
+    }
     activeIntentRef.current = intent;
     setActiveIntent(intent);
   }, []);
@@ -449,23 +529,72 @@ export function PetWindow() {
       ) {
         return;
       }
+      const previousAppearance = companionExpressionRef.current?.sceneAppearance ?? { kind: "none" as const };
+      const exitAnimation = exitAnimationForScene(
+        previousAppearance,
+        snapshot.sceneAppearance,
+        settingsRef.current.sceneWardrobeMode,
+      );
+      const recoveryAnimation = recoveryAnimationForScene(
+        previousAppearance,
+        snapshot.sceneAppearance,
+        settingsRef.current.sceneWardrobeMode,
+      );
       companionExpressionRef.current = snapshot;
       setCompanionExpression(snapshot);
+      const completionCanCoverScene = snapshot.tier !== "n3" &&
+        ["work", "none", "spa"].includes(snapshot.sceneAppearance.kind);
+      if (!completionCanCoverScene) {
+        cancelCompletion();
+      } else if (completionTimer.current !== null) {
+        return;
+      }
       const activity = petActivityRef.current?.activity;
-      if (activity === "sleeping") return;
+      if (activity === "sleeping") {
+        if (
+          snapshot.sceneAppearance.kind === "night" &&
+          sceneWardrobeEnabled(
+            snapshot.sceneAppearance,
+            settingsRef.current.sceneWardrobeMode,
+          )
+        ) {
+          setSleepPresentationActive(true);
+          setAnimation(
+            animationForCompanionExpression(
+              snapshot,
+              settingsRef.current.sceneWardrobeMode,
+            ),
+          );
+        }
+        return;
+      }
       if (
         !toolInteractionRef.current &&
         (activity !== "reminding" || !activeIntentRef.current)
       ) {
         setLookFrame(null);
-        setAnimation(animationForCompanionExpression(snapshot));
+        if (recoveryAnimation && settingsRef.current.animationMode !== "off") {
+          sceneExitPending.current = false;
+          setAnimation(recoveryAnimation);
+        } else if (exitAnimation && settingsRef.current.animationMode !== "off") {
+          sceneExitPending.current = true;
+          setAnimation(exitAnimation);
+        } else {
+          sceneExitPending.current = false;
+          setAnimation(
+            animationForCompanionExpression(
+              snapshot,
+              settingsRef.current.sceneWardrobeMode,
+            ),
+          );
+        }
       }
     },
-    [],
+    [cancelCompletion],
   );
 
   const applyExpandedWindowStage = useCallback(
-    async (stage: ExpandedWindowStage | null) => {
+    async (stage: ExpandedWindowStage | null, focusOnEntry: boolean) => {
       const revision = ++expandedStageRevision.current;
       if (!windowApi) return;
 
@@ -496,15 +625,24 @@ export function PetWindow() {
             ? visibleMonitorWorkArea(workArea, browserWorkArea)
             : browserWorkArea;
         }
+        // A size setting can change while the expanded stage is open. Restore
+        // the current compact size, not the physical size captured on entry.
+        const compactWidth = settingsRef.current.petWidth + COMPACT_PET_WINDOW_GUTTER;
+        const compactHeight = Math.round(settingsRef.current.petWidth * 208 / 192) + COMPACT_PET_WINDOW_GUTTER;
+        const compactSize = {
+          width: Math.round(compactWidth * scaleFactor),
+          height: Math.round(compactHeight * scaleFactor),
+        };
         const restoredPosition = restoredPetPosition(
           snapshot.position,
-          snapshot.size,
+          compactSize,
           workArea,
         );
 
         await windowApi.setSize(
-          new PhysicalSize(snapshot.size.width, snapshot.size.height),
+          new PhysicalSize(compactSize.width, compactSize.height),
         );
+        if (revision !== expandedStageRevision.current) return;
         await windowApi.setPosition(
           new PhysicalPosition(restoredPosition.x, restoredPosition.y),
         );
@@ -565,6 +703,9 @@ export function PetWindow() {
       const petHeight = Math.round(
         (settingsRef.current.petWidth * 208) / 192,
       );
+      const alertSize = supportedWarmup
+        ? warmupStageLayout(settingsRef.current.petWidth)
+        : { width: ALERT_STAGE_WIDTH, height: ALERT_STAGE_HEIGHT };
       const target =
         stage === "alert"
           ? alertStagePosition(
@@ -572,6 +713,7 @@ export function PetWindow() {
               snapshot.size,
               scaleFactor,
               workArea,
+              alertSize,
             )
           : stage === "learning"
             ? learningStagePosition(
@@ -590,43 +732,70 @@ export function PetWindow() {
               );
       const width =
         stage === "alert"
-          ? ALERT_STAGE_WIDTH
+          ? alertSize.width
           : stage === "learning"
             ? LEARNING_STAGE_WIDTH
             : interactionWindowWidth(activeTool!.stageWidth);
       const height =
         stage === "alert"
-          ? ALERT_STAGE_HEIGHT
+          ? alertSize.height
           : stage === "learning"
             ? LEARNING_STAGE_HEIGHT
             : petHeight + COMPACT_PET_WINDOW_GUTTER;
 
       await windowApi.setIgnoreCursorEvents(false).catch(() => undefined);
+      if (revision !== expandedStageRevision.current) return;
       await windowApi.setSize(new LogicalSize(width, height));
+      if (revision !== expandedStageRevision.current) return;
       // Windows can re-anchor a transparent high-DPI window while it grows.
       // Size first so the calculated physical position is the final operation.
       await windowApi.setPosition(new PhysicalPosition(target.x, target.y));
-      if (stage === "learning") {
+      if (revision === expandedStageRevision.current && stage === "learning" && focusOnEntry) {
         await windowApi.setFocus().catch(() => undefined);
       }
     },
-    [windowApi],
+    [windowApi, supportedWarmup],
   );
 
   const endToolInteraction = useCallback(() => {
+    const previous = toolInteractionRef.current;
     const next = transitionToolInteraction(toolInteractionRef.current, {
       type: "end",
     });
     toolInteractionRef.current = next;
     setToolInteraction(next);
+    if (previous) {
+      void finishPetInteraction(previous.id, previous.leaseRevision).catch(() => {
+        // Rust's bounded lease still expires if this window loses its IPC connection.
+      });
+    }
     setLookFrame(null);
   }, []);
 
   const restoreFunctionalAnimation = useCallback(() => {
+    if (toolInteractionRef.current || completionTimer.current !== null) return;
+    // A ready tool may leave a cursor-follow frame behind. It must not mask
+    // the resumed scene when Rust's expression revision has not changed.
+    setLookFrame(null);
     const activity = petActivityRef.current?.activity;
     if (activity === "sleeping") {
       setSleepPresentationActive(true);
-      if (!["sleep-enter", "sleeping"].includes(currentAnimation.current)) {
+      const companion = companionExpressionRef.current;
+      const nightEnabled = companion?.sceneAppearance.kind === "night" &&
+        sceneWardrobeEnabled(
+          companion.sceneAppearance,
+          settingsRef.current.sceneWardrobeMode,
+        );
+      if (nightEnabled && companion) {
+        if (!["night-enter", "night-loop"].includes(currentAnimation.current)) {
+          setAnimation(
+            animationForCompanionExpression(
+              companion,
+              settingsRef.current.sceneWardrobeMode,
+            ),
+          );
+        }
+      } else if (!["sleep-enter", "sleeping"].includes(currentAnimation.current)) {
         setAnimation("sleep-enter");
       }
       return;
@@ -635,18 +804,36 @@ export function PetWindow() {
     const currentIntent = activeIntentRef.current;
     if (activity === "reminding" && currentIntent) {
       setAnimation(
-        animationForPetIntent(currentIntent, companionExpressionRef.current),
+        animationForPetIntent(
+          currentIntent,
+          companionExpressionRef.current,
+          settingsRef.current.sceneWardrobeMode,
+        ),
       );
       return;
     }
     const companion = companionExpressionRef.current;
     if (companion && activity !== "focusing") {
-      setAnimation(animationForCompanionExpression(companion));
+      setAnimation(
+        animationForCompanionExpression(
+          companion,
+          settingsRef.current.sceneWardrobeMode,
+        ),
+      );
       return;
     }
     const session = focusStateRef.current.session;
     if (activity === "focusing" && session) {
-      setAnimation(session.phase === "focus" ? "focus-calm" : "waiting");
+      setAnimation(
+        companion
+          ? animationForCompanionExpression(
+              companion,
+              settingsRef.current.sceneWardrobeMode,
+            )
+          : session.phase === "focus"
+            ? "focus-calm"
+            : "waiting",
+      );
       return;
     }
     setSleepPresentationActive(false);
@@ -664,6 +851,15 @@ export function PetWindow() {
       const previous = petActivityRef.current;
       petActivityRef.current = snapshot;
       setPetActivity(snapshot);
+      if (["reminding", "sleeping", "learning"].includes(snapshot.activity)) cancelCompletion();
+      const currentTool = toolInteractionRef.current;
+      if (
+        currentTool &&
+        snapshot.revision >= currentTool.leaseRevision &&
+        snapshot.leaseId !== currentTool.id
+      ) {
+        endToolInteraction();
+      }
       sleepRequested.current =
         snapshot.activity === "sleeping" || snapshot.restoreTarget === "sleeping";
 
@@ -676,14 +872,37 @@ export function PetWindow() {
         }
       }
       if (snapshot.activity !== "learning") {
-        setDesktopLearningSession(null);
+        // Completed results are presentation-only: a reminder can cover them
+        // without pausing an already finished database session. Keep only the
+        // result that the backend explicitly names as its restoration target.
+        setDesktopLearningSession((current) =>
+          current?.status === "completed" &&
+          snapshot.activity !== "sleeping" &&
+          snapshot.resumableLearningSessionId === current.sessionId
+            ? current
+            : null,
+        );
       }
       if (snapshot.activity === "sleeping") {
         endToolInteraction();
         clearBellyHold();
         setLookFrame(null);
         setSleepPresentationActive(true);
-        if (!["sleep-enter", "sleeping"].includes(currentAnimation.current)) {
+        const companion = companionExpressionRef.current;
+        if (
+          companion?.sceneAppearance.kind === "night" &&
+          sceneWardrobeEnabled(
+            companion.sceneAppearance,
+            settingsRef.current.sceneWardrobeMode,
+          )
+        ) {
+          setAnimation(
+            animationForCompanionExpression(
+              companion,
+              settingsRef.current.sceneWardrobeMode,
+            ),
+          );
+        } else if (!["sleep-enter", "sleeping"].includes(currentAnimation.current)) {
           setAnimation("sleep-enter");
         }
         return;
@@ -692,9 +911,16 @@ export function PetWindow() {
       setSleepPresentationActive(false);
       if (
         previous?.activity === "sleeping" &&
-        ["sleep-enter", "sleeping"].includes(currentAnimation.current)
+        ["sleep-enter", "sleeping", "night-enter", "night-loop"].includes(
+          currentAnimation.current,
+        )
       ) {
-        setAnimation("wake-up");
+        setAnimation(
+          settingsRef.current.sceneWardrobeMode === "full" &&
+            ["night-enter", "night-loop"].includes(currentAnimation.current)
+            ? "night-exit"
+            : "wake-up",
+        );
         return;
       }
       if (snapshot.activity === "reminding" && !activeIntentRef.current) {
@@ -704,7 +930,11 @@ export function PetWindow() {
           updateActiveIntent(deferred);
           setLookFrame(null);
           setAnimation(
-            animationForPetIntent(deferred, companionExpressionRef.current),
+            animationForPetIntent(
+              deferred,
+              companionExpressionRef.current,
+              settingsRef.current.sceneWardrobeMode,
+            ),
           );
           return;
         }
@@ -713,6 +943,7 @@ export function PetWindow() {
     },
     [
       clearBellyHold,
+      cancelCompletion,
       endToolInteraction,
       restoreFunctionalAnimation,
       updateActiveIntent,
@@ -752,11 +983,12 @@ export function PetWindow() {
       if (
         !isCoreDirectedOccurrence(intent) &&
         activity &&
-        activity !== "idle"
+        !["idle", "focusing"].includes(activity)
       ) {
         deferredIntent.current = intent;
         return;
       }
+      cancelCompletion();
       endToolInteraction();
       clearBellyHold();
       setLookFrame(null);
@@ -764,11 +996,12 @@ export function PetWindow() {
       const directedAnimation = animationForPetIntent(
         intent,
         companionExpressionRef.current,
+        settingsRef.current.sceneWardrobeMode,
       );
       setSleepPresentationActive(false);
       setAnimation(directedAnimation);
     },
-    [clearBellyHold, endToolInteraction, updateActiveIntent],
+    [cancelCompletion, clearBellyHold, endToolInteraction, updateActiveIntent],
   );
 
   const reconcileReminderState = useCallback(async () => {
@@ -816,19 +1049,50 @@ export function PetWindow() {
     cursorFollowEnabled.current = settings.cursorFollow;
   }, [settings.cursorFollow]);
 
+  useEffect(() => {
+    if (!learningBuildEnabled) return;
+    let disposed = false;
+    void getRuntimeCapabilities().then((capabilities) => {
+      if (!disposed) setLearningAvailable(capabilities.learning.available);
+    }).catch(() => {
+      if (!disposed) setLearningAvailable(false);
+    });
+    return () => { disposed = true; };
+  }, []);
+
   const activateDesktopLearning = useCallback(
     (session: LearningSessionSnapshot) => {
+      cancelCompletion();
       clearBellyHold();
       endToolInteraction();
       setLearningInvitation(null);
       setDesktopLearningSession(session);
     },
-    [clearBellyHold, endToolInteraction],
+    [cancelCompletion, clearBellyHold, endToolInteraction],
   );
 
   useEffect(() => {
-    if (!learningBuildEnabled) return;
-    let active = true;
+    if (previousPet.current === petResourceIdentity) return;
+    previousPet.current = petResourceIdentity;
+    let cancelled = false;
+    endToolInteraction(); clearBellyHold(); setLookFrame(null);
+    sceneExitPending.current = false;
+    cancelCompletion();
+    if (activeIntentRef.current?.kind === "care") updateActiveIntent(null);
+    void Promise.all([getCompanionExpressionSnapshot(), getPetActivitySnapshot()]).then(([companion, activity]) => {
+      if (cancelled) return;
+      applyCompanionExpression(companion);
+      applyPetActivitySnapshot(activity);
+      restoreFunctionalAnimation();
+    }).catch(() => { if (!cancelled) restoreFunctionalAnimation(); });
+    return () => { cancelled = true; };
+  }, [petResourceIdentity, cancelCompletion, endToolInteraction, clearBellyHold, applyCompanionExpression, applyPetActivitySnapshot, restoreFunctionalAnimation, updateActiveIntent]);
+
+  useEffect(() => cancelCompletion, [cancelCompletion]);
+
+  useEffect(() => {
+    if (!learningAvailable) return;
+    let disposed = false;
     const cleanups: Array<() => void> = [];
     void import("../learning/backend").then(
       async ({ getLearningHome, getPendingLearningInvitation }) => {
@@ -836,7 +1100,7 @@ export function PetWindow() {
           getPendingLearningInvitation().catch(() => null),
           getLearningHome().catch(() => null),
         ]);
-        if (!active) return;
+        if (disposed) return;
         setLearningInvitation(invitation);
         if (home?.activeSession?.status === "active") {
           activateDesktopLearning(home.activeSession);
@@ -847,13 +1111,13 @@ export function PetWindow() {
       onBackendEvent<LearningInvitationDto>(
         "learning-invitation-presented",
         (invitation) => {
-          if (active) setLearningInvitation(invitation);
+          if (!disposed) setLearningInvitation(invitation);
         },
       ),
       onBackendEvent<{ invitationId: string }>(
         "learning-invitation-withdrawn",
         ({ invitationId }) => {
-          if (!active) return;
+          if (disposed) return;
           setLearningInvitation((current) =>
             current?.invitationId === invitationId ? null : current,
           );
@@ -862,24 +1126,21 @@ export function PetWindow() {
       onBackendEvent<LearningSessionSnapshot>(
         "learning-session-updated",
         (session) => {
-          if (active) activateDesktopLearning(session);
+          if (!disposed) activateDesktopLearning(session);
         },
       ),
       onBackendEvent("learning-session-interrupted", () => {
-        if (active) setDesktopLearningSession(null);
+        if (!disposed) setDesktopLearningSession(null);
       }),
     ]).then((unlisten) => {
-      if (active) cleanups.push(...unlisten);
-      else unlisten.forEach((cleanup) => cleanup());
+      if (disposed) unlisten.forEach((cleanup) => cleanup());
+      else cleanups.push(...unlisten);
     });
-    return () => {
-      active = false;
-      cleanups.forEach((cleanup) => cleanup());
-    };
-  }, [activateDesktopLearning]);
+    return () => { disposed = true; cleanups.forEach((cleanup) => cleanup()); };
+  }, [activateDesktopLearning, learningAvailable]);
 
   const openLearningInvitation = useCallback(async () => {
-    if (!learningBuildEnabled || !learningInvitation) return;
+    if (!learningAvailable || !learningInvitation) return;
     try {
       const { acceptLearningInvitation } = await import("../learning/backend");
       const session = await acceptLearningInvitation(
@@ -889,11 +1150,11 @@ export function PetWindow() {
     } catch {
       setLearningInvitation(null);
     }
-  }, [activateDesktopLearning, learningInvitation]);
+  }, [activateDesktopLearning, learningAvailable, learningInvitation]);
 
   const startDesktopLearning = useCallback(async () => {
     if (
-      !learningBuildEnabled ||
+      !learningAvailable ||
       learningStartPending ||
       desktopLearningSession
     ) {
@@ -928,11 +1189,12 @@ export function PetWindow() {
   }, [
     activateDesktopLearning,
     desktopLearningSession,
+    learningAvailable,
     learningStartPending,
   ]);
 
   const dismissLearningInvitation = useCallback(async () => {
-    if (!learningBuildEnabled || !learningInvitation) return;
+    if (!learningAvailable || !learningInvitation) return;
     const invitationId = learningInvitation.invitationId;
     setLearningInvitation(null);
     try {
@@ -943,10 +1205,10 @@ export function PetWindow() {
     } catch {
       // The invitation expires quickly and the backend remains authoritative.
     }
-  }, [learningInvitation]);
+  }, [learningAvailable, learningInvitation]);
 
   const pauseLearningInvitesToday = useCallback(async () => {
-    if (!learningBuildEnabled || !learningInvitation) return;
+    if (!learningAvailable || !learningInvitation) return;
     setLearningInvitation(null);
     try {
       const { pauseLearningInvitesToday: pauseToday } = await import(
@@ -956,7 +1218,7 @@ export function PetWindow() {
     } catch {
       // A later backend snapshot restores the true invitation state if needed.
     }
-  }, [learningInvitation]);
+  }, [learningAvailable, learningInvitation]);
 
   useEffect(() => {
     void Promise.all([
@@ -989,8 +1251,11 @@ export function PetWindow() {
     const cleanups: Array<() => void> = [];
     void Promise.all([
       onBackendEvent<AppSettings>("settings-updated", (nextSettings) => {
+        const wardrobeChanged =
+          settingsRef.current.sceneWardrobeMode !== nextSettings.sceneWardrobeMode;
         settingsRef.current = nextSettings;
         setSettings(nextSettings);
+        if (wardrobeChanged) restoreFunctionalAnimation();
         if (remindersPaused(nextSettings)) {
           const current = activeIntentRef.current;
           if (current && quietSuppressesIntent(current)) {
@@ -1034,21 +1299,48 @@ export function PetWindow() {
           void reconcileReminderState();
         },
       ),
-      onBackendEvent<{ occurrenceId: string }>(
+      onBackendEvent<OccurrenceResolution>(
         "pet-intent-resolved",
-        ({ occurrenceId }) => {
-          if (activeIntentRef.current?.occurrenceId !== occurrenceId) return;
+        ({ occurrenceId, category, action }) => {
+          // Rust can publish the cleared activity before this typed resolution.
+          // Consume each displayed occurrence once, independently of that ordering.
+          if (!presentedOccurrences.current.delete(occurrenceId)) return;
+          if (activeIntentRef.current && activeIntentRef.current.occurrenceId !== occurrenceId) return;
+          cancelCompletion();
+          const generation = completionGeneration.current;
           queuedAfterWake.current = null;
           const deferred = deferredIntent.current;
           deferredIntent.current = null;
           updateActiveIntent(null);
           setLookFrame(null);
-          restoreFunctionalAnimation();
           void listToday().then((today) => {
-            if (activeIntentRef.current) return;
+            if (
+              generation !== completionGeneration.current || activeIntentRef.current ||
+              toolInteractionRef.current ||
+              ["sleeping", "learning"].includes(petActivityRef.current?.activity ?? "idle")
+            ) return;
             const pending = pendingIntentFromSnapshot(today);
-            if (pending) applyIntent(pending);
-            else if (deferred) applyIntent(deferred);
+            if (pending) {
+              applyIntent(pending);
+              return;
+            }
+            const completion = action === "complete"
+              ? completionAnimationForCategory(category)
+              : null;
+            if (completion) {
+              if (completionTimer.current !== null) {
+                window.clearTimeout(completionTimer.current);
+              }
+              setAnimation(completion);
+              completionTimer.current = window.setTimeout(() => {
+                if (generation !== completionGeneration.current) return;
+                completionTimer.current = null;
+                restoreFunctionalAnimation();
+              }, 2_600);
+            } else if (deferred) applyIntent(deferred);
+            else restoreFunctionalAnimation();
+          }).catch(() => {
+            if (generation === completionGeneration.current) restoreFunctionalAnimation();
           });
         },
       ),
@@ -1099,13 +1391,23 @@ export function PetWindow() {
       }),
       onBackendEvent<PetInteractionStarted>(
         "pet-interaction-started",
-        ({ id, kind }) => {
+        ({ id, kind, leaseRevision, expiresAtUnixMs }) => {
+          const activity = petActivityRef.current;
           if (
-            petActivityRef.current?.activity !== "idle" ||
+            !Number.isSafeInteger(leaseRevision) ||
+            leaseRevision <= lastInteractionRevision.current ||
+            !Number.isFinite(expiresAtUnixMs) || expiresAtUnixMs <= Date.now() ||
+            (tauriAvailable() && activity && activity.revision >= leaseRevision && activity.leaseId !== id) ||
+            !["idle", "focusing"].includes(
+              activity?.activity ?? "idle",
+            ) ||
             !["treat", "wand", "pet", "ball"].includes(kind)
           ) {
             return;
           }
+          lastInteractionRevision.current = leaseRevision;
+          cancelCompletion();
+          endToolInteraction();
           clearBellyHold();
           setLookFrame(null);
           const nextStageWidth =
@@ -1114,6 +1416,8 @@ export function PetWindow() {
               : settings.petWidth;
           const next: ActiveToolInteraction = {
             id,
+            leaseRevision,
+            expiresAtUnixMs,
             kind: kind as ActiveToolInteraction["kind"],
             x:
               kind === "ball"
@@ -1125,7 +1429,7 @@ export function PetWindow() {
                 : kind === "treat"
                   ? 30
                   : 48,
-            frame: kind === "treat" ? 6 : 0,
+            frame: kind === "treat" ? 6 : kind === "wand" ? 1 : 0,
             mirrored: false,
             offsetX: kind === "pet" || kind === "ball" ? 0 : 8,
             engaged: kind !== "pet" && kind !== "wand" && kind !== "ball",
@@ -1170,6 +1474,7 @@ export function PetWindow() {
     applyIntent,
     applyPetActivitySnapshot,
     clearBellyHold,
+    cancelCompletion,
     endToolInteraction,
     restoreFunctionalAnimation,
     reconcileReminderState,
@@ -1185,12 +1490,19 @@ export function PetWindow() {
         : toolInteraction?.id
           ? "tool"
           : null;
-    void applyExpandedWindowStage(stage);
+    const stageKey = stage === "learning" ? `learning:${desktopLearningSession?.sessionId}` : stage;
+    const focusOnEntry = stage === "learning" && previousExpandedStageKey.current !== stageKey;
+    previousExpandedStageKey.current = stageKey;
+    void applyExpandedWindowStage(stage, focusOnEntry);
   }, [
     activeIntent,
     applyExpandedWindowStage,
     desktopLearningSession,
     petActivity?.activity,
+    // Native settings application resets the window geometry even when the
+    // values are unchanged. Reassert the visible stage without remounting its
+    // business UI or taking keyboard focus away from the settings panel.
+    settings,
     toolInteraction?.id,
     toolInteraction?.stageWidth,
   ]);
@@ -1203,13 +1515,36 @@ export function PetWindow() {
       if (current?.id !== interactionId) return;
       endToolInteraction();
       restoreFunctionalAnimation();
-    }, 30_000);
+    }, Math.max(0, toolInteraction.expiresAtUnixMs - Date.now()));
     return () => window.clearTimeout(timer);
   }, [
     endToolInteraction,
     restoreFunctionalAnimation,
     toolInteraction?.id,
+    toolInteraction?.expiresAtUnixMs,
   ]);
+
+  useEffect(() => {
+    if (
+      toolInteraction?.kind !== "wand" ||
+      !toolInteraction.engaged ||
+      petProfile.staticOnly ||
+      settings.animationMode === "off" ||
+      (settings.animationMode === "system" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+    ) return;
+    const timer = window.setInterval(() => {
+      const current = toolInteractionRef.current;
+      if (!current || current.kind !== "wand" || !current.engaged) return;
+      const phase = (current.phase + 1) % wandPhaseAnimations.length;
+      const next = { ...current, phase };
+      toolInteractionRef.current = next;
+      setToolInteraction(next);
+      setAnimation(wandPhaseAnimations[phase]);
+    }, 130);
+    return () => window.clearInterval(timer);
+  }, [toolInteraction?.engaged, toolInteraction?.id, toolInteraction?.kind,
+    petProfile.staticOnly, settings.animationMode]);
 
   useEffect(() => {
     if (
@@ -1383,6 +1718,7 @@ export function PetWindow() {
       animation !== "idle" ||
       activeIntent !== null ||
       petActivity?.activity !== "idle" ||
+      companionExpression?.sceneAppearance.kind !== "none" ||
       settings.animationMode === "off" ||
       !systemAllowsMotion
     ) {
@@ -1396,21 +1732,27 @@ export function PetWindow() {
       setAnimation(chooseLifeAnimation(Math.random()));
     }, delay);
     return () => window.clearTimeout(timer);
-  }, [activeIntent, animation, petActivity?.activity, settings.animationMode]);
+  }, [
+    activeIntent,
+    animation,
+    companionExpression?.sceneAppearance.kind,
+    petActivity?.activity,
+    settings.animationMode,
+  ]);
 
   const finishAnimation = useCallback(
     (finished: AnimationName) => {
-      if (
-        toolInteractionRef.current?.kind === "ball" &&
-        ["ball-bat", "ball-pickup", "ball-carry", "ball-drop"].includes(
-          finished,
-        )
-      ) {
+      if (finished !== currentAnimation.current) return;
+      if (toolInteractionRef.current || completionTimer.current !== null) return;
+      if (["spa-exit", "night-exit"].includes(finished)) {
+        sceneExitPending.current = false;
+        restoreFunctionalAnimation();
         return;
       }
       const settledCompanionAnimation = settledAnimationAfterCompanionCue(
         finished,
         companionExpressionRef.current,
+        settingsRef.current.sceneWardrobeMode,
       );
       if (finished === "sleep-enter") {
         setAnimation("sleeping");
@@ -1419,7 +1761,11 @@ export function PetWindow() {
         queuedAfterWake.current = null;
         if (queued) {
           setAnimation(
-            animationForPetIntent(queued, companionExpressionRef.current),
+            animationForPetIntent(
+              queued,
+              companionExpressionRef.current,
+              settingsRef.current.sceneWardrobeMode,
+            ),
           );
         } else restoreFunctionalAnimation();
       } else if (finished === "grooming") {
@@ -1441,6 +1787,7 @@ export function PetWindow() {
         animationForPetIntent(
           activeIntentRef.current,
           companionExpressionRef.current,
+          settingsRef.current.sceneWardrobeMode,
         ) === finished
       ) {
         if (
@@ -1465,7 +1812,7 @@ export function PetWindow() {
   );
 
   const onPointerDown = async (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || drag.current) return;
     if (isStrongAlertIntent(activeIntentRef.current)) {
       await showTaskPanel(activeIntentRef.current?.route ?? "today");
       return;
@@ -1485,45 +1832,70 @@ export function PetWindow() {
     if (isLifeAnimation(currentAnimation.current)) {
       setAnimation("idle");
     }
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const [position, scaleFactor] = await Promise.all([
-      windowApi.outerPosition(),
-      windowApi.scaleFactor(),
-    ]);
-    drag.current = {
-      pointerId: event.pointerId,
-      startScreenX: event.screenX,
-      startScreenY: event.screenY,
-      windowX: position.x,
-      windowY: position.y,
-      scaleFactor,
+    const target = event.currentTarget;
+    const { pointerId, screenX, screenY } = event;
+    target.setPointerCapture(pointerId);
+    // Capture intent synchronously: a complete gesture may arrive before IPC.
+    const active: DragState = {
+      pointerId,
+      startScreenX: screenX,
+      startScreenY: screenY,
+      lastScreenX: screenX,
+      lastScreenY: screenY,
+      geometry: null,
+      target,
+      generation: dragGeneration.current,
+      cancelled: false,
       moved: false,
+      positionApplied: false,
+      positionFailed: false,
     };
+    drag.current = active;
+    dragWrites.current = dragWrites.current.then(async () => {
+      if (active.cancelled || active.generation !== dragGeneration.current) return;
+      const [position, scaleFactor] = await Promise.all([
+        windowApi.outerPosition(), windowApi.scaleFactor(),
+      ]);
+      active.geometry = { position, scaleFactor };
+    }).catch(() => { active.positionFailed = true; });
+  };
+
+  const queueDragPosition = (active: DragState, screenX: number, screenY: number) => {
+    if (!windowApi) return;
+    const dx = screenX - active.startScreenX;
+    const dy = screenY - active.startScreenY;
+    if (!active.moved && Math.hypot(dx, dy) < 4) return;
+    active.moved = true;
+    if (screenX === active.lastScreenX && screenY === active.lastScreenY) return;
+    active.lastScreenX = screenX;
+    active.lastScreenY = screenY;
+    setLookFrame(null);
+    if (dx >= 4) setAnimation("running-right");
+    else if (dx <= -4) setAnimation("running-left");
+    dragWrites.current = dragWrites.current.then(async () => {
+      if (active.cancelled || active.positionFailed || !active.geometry ||
+        active.generation !== dragGeneration.current) return;
+      const { position, scaleFactor } = active.geometry;
+      await windowApi.setPosition(new PhysicalPosition(
+        Math.round(position.x + dx * scaleFactor),
+        Math.round(position.y + dy * scaleFactor),
+      ));
+      active.positionApplied = true;
+    }).catch(() => { active.positionFailed = true; });
   };
 
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     const active = drag.current;
-    if (!windowApi || !active || active.pointerId !== event.pointerId) {
-      return;
-    }
-    const dx = event.screenX - active.startScreenX;
-    const dy = event.screenY - active.startScreenY;
-    if (!active.moved && Math.hypot(dx, dy) < 4) return;
-    active.moved = true;
-    setLookFrame(null);
-    if (dx >= 4) setAnimation("running-right");
-    else if (dx <= -4) setAnimation("running-left");
-    void windowApi.setPosition(
-      new PhysicalPosition(
-        Math.round(active.windowX + dx * active.scaleFactor),
-        Math.round(active.windowY + dy * active.scaleFactor),
-      ),
-    );
+    if (!active || active.pointerId !== event.pointerId) return;
+    queueDragPosition(active, event.screenX, event.screenY);
   };
 
   const finishPointer = async (event: ReactPointerEvent<HTMLDivElement>) => {
     const active = drag.current;
     if (!active || active.pointerId !== event.pointerId) return;
+    const cancelled = event.type === "pointercancel";
+    if (cancelled) active.cancelled = true;
+    else queueDragPosition(active, event.screenX, event.screenY);
     drag.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -1531,10 +1903,18 @@ export function PetWindow() {
     if (active.moved) {
       restoreFunctionalAnimation();
       if (windowApi) {
-        const position = await windowApi.outerPosition();
-        await invoke("save_pet_position", { x: position.x, y: position.y });
+        dragWrites.current = dragWrites.current.then(async () => {
+          if (active.positionFailed || !active.positionApplied ||
+            active.generation !== dragGeneration.current) return;
+          const position = await windowApi.outerPosition();
+          if (active.generation !== dragGeneration.current) return;
+          await invoke("save_pet_position", { x: position.x, y: position.y });
+        }).catch(() => undefined);
+        await dragWrites.current;
       }
     } else {
+      active.cancelled = true;
+      if (cancelled) return;
       await showTaskPanel(
         activeIntentRef.current?.route ??
           (focusStateRef.current.session ? "focus" : "today"),
@@ -1591,13 +1971,11 @@ export function PetWindow() {
       const advanceFrame =
         current.kind === "pet"
           ? shouldAdvancePettingFrame(distance, elapsedMs)
-          : current.kind === "wand"
-            ? shouldAdvanceWandFrame(distance, elapsedMs)
-            : true;
+          : true;
       const mirrored =
-        current.kind === "pet" ||
-        current.kind === "treat" ||
         current.kind === "wand"
+          ? false
+          : current.kind === "pet" || current.kind === "treat"
           ? shouldMirrorTowardPointerWithHysteresis(
               x,
               bounds.width,
@@ -1618,9 +1996,7 @@ export function PetWindow() {
           current.kind === "treat"
             ? treatFrameFromPointerHeight(y, bounds.height)
             : current.kind === "wand"
-              ? advanceFrame
-                ? advanceInteractionFrame(current.frame, distance)
-                : current.frame
+              ? wandDirectionFrame(x, y, bounds.width, bounds.height, current.frame)
             : advanceFrame
               ? advanceInteractionFrame(current.frame, distance)
               : current.frame,
@@ -1629,7 +2005,7 @@ export function PetWindow() {
         frameX: advanceFrame ? x : current.frameX,
         frameY: advanceFrame ? y : current.frameY,
         lastFrameAt:
-          (current.kind === "pet" || current.kind === "wand") && advanceFrame
+          current.kind === "pet" && advanceFrame
             ? eventTime
             : current.lastFrameAt,
       };
@@ -1685,7 +2061,7 @@ export function PetWindow() {
     toolInteractionRef.current = next;
     setToolInteraction(next);
     setLookFrame(null);
-    setAnimation(engaged ? "wand-play" : "idle");
+    setAnimation(engaged ? "wand-reach" : "idle");
   }, []);
 
   const startBallCharge = useCallback(() => {
@@ -1834,6 +2210,7 @@ export function PetWindow() {
   const strongAlertActive =
     petActivity?.activity === "reminding" && isStrongAlertIntent(activeIntent);
   const desktopLearningActive =
+    learningAvailable &&
     petActivity?.activity === "learning" &&
     Boolean(desktopLearningSession) &&
     !strongAlertActive;
@@ -1859,7 +2236,7 @@ export function PetWindow() {
         message: activeIntent.message,
         route: activeIntent.route,
       }
-      : focusSession && petActivity?.activity === "focusing"
+      : focusSession && petActivity?.activity === "focusing" && !toolInteraction
       ? {
           surface: "timer" as const,
           label: focusSession.phase === "focus" ? "专注" : "休息",
@@ -1882,9 +2259,9 @@ export function PetWindow() {
               toolInteraction.kind === "treat"
                 ? "猫条时间"
                 : toolInteraction.kind === "wand"
-                  ? petText("逗圆圆玩")
+                  ? petText("逗{pet}玩")
                   : toolInteraction.kind === "pet"
-                    ? petText("摸摸圆圆")
+                    ? petText("摸摸{pet}")
                     : "扔球游戏",
             message:
               toolInteraction.kind === "treat"
@@ -1892,18 +2269,19 @@ export function PetWindow() {
                 : toolInteraction.kind === "wand"
                   ? "按住逗猫棒移动"
                   : toolInteraction.kind === "pet"
-                    ? petText("把鼠标放在圆圆头上轻轻移动")
+                    ? petText("把鼠标放在{pet}头上轻轻移动")
                     : ballPhaseMessage(toolInteraction.ballPhase),
             route: "care" as const,
           }
         : null;
   const ballGameActive = toolInteraction?.kind === "ball";
   const petHeight = Math.round((settings.petWidth * 208) / 192);
-  const strongAlertPetWidth = alertPetWidth(settings.petWidth);
-  const strongAlertPetHeight = alertPetHeight(settings.petWidth);
+  const warmupLayout = warmupStageLayout(settings.petWidth);
+  const strongAlertPetWidth = supportedWarmup ? warmupLayout.spriteWidth : alertPetWidth(settings.petWidth);
+  const strongAlertPetHeight = supportedWarmup ? warmupLayout.spriteHeight : alertPetHeight(settings.petWidth);
   const activeStageWidth = strongAlertActive || desktopLearningActive
     ? strongAlertActive
-      ? ALERT_STAGE_WIDTH
+      ? supportedWarmup ? warmupLayout.width : ALERT_STAGE_WIDTH
       : LEARNING_STAGE_WIDTH
     : toolInteraction
       ? interactionStageWidth(toolInteraction.stageWidth)
@@ -1912,7 +2290,7 @@ export function PetWindow() {
     width: activeStageWidth,
     height: strongAlertActive || desktopLearningActive
       ? strongAlertActive
-        ? ALERT_STAGE_HEIGHT
+        ? supportedWarmup ? warmupLayout.height : ALERT_STAGE_HEIGHT
         : LEARNING_STAGE_HEIGHT
       : toolInteraction
         ? petHeight
@@ -1935,14 +2313,29 @@ export function PetWindow() {
     )}px`,
   } as CSSProperties;
   const petMotionReduced =
+    petProfile.staticOnly ||
     settings.animationMode === "off" ||
     (settings.animationMode === "system" &&
       typeof window.matchMedia === "function" &&
       window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const sceneWorkPropsVisible =
+    !desktopLearningActive &&
+    !sleepPresentationActive &&
+    !toolInteraction &&
+    !activeIntent &&
+    ["work-focus-loop", "work-fatigue-enter", "work-fatigue-loop", "work-recover", "focus-calm"].includes(animation) &&
+    settings.sceneWardrobeMode === "full" &&
+    companionExpression?.sceneAppearance.kind === "work" &&
+    !companionExpression.props.includes("computer");
+  const companionAccessibleLabel = toolInteraction
+    ? petText("{pet}正在和你互动")
+    : companionExpression
+    ? companionPresentation(companionExpression, settings.companionLabelMode)
+        .accessibleLabel
+    : petText("{pet}桌面宠物");
 
   return (
-    <main className="pet-window" aria-label={`${petDisplayName}桌面宠物`}>
-      <span className="sr-only">{petIdentityDescription}</span>
+    <main className="pet-window" aria-label={companionAccessibleLabel}>
       <div
         className={`pet-hit-region ${
           toolInteraction?.kind === "pet" ? "petting-active" : ""
@@ -1951,7 +2344,7 @@ export function PetWindow() {
         } ${
           strongAlertActive ? "alert-stage" : ""
          } ${desktopLearningActive ? "learning-stage" : ""
-        } ${activeIntent?.kind === "activity" ? "activity-alert" : ""} ${
+        } ${activeIntent?.kind === "activity" ? "activity-alert" : ""} ${supportedWarmup ? "supported-warmup" : ""} ${
           petMotionReduced ? "pet-motion-reduced" : ""
         }`}
         data-companion-tier={companionExpression?.tier ?? "n0"}
@@ -1963,6 +2356,20 @@ export function PetWindow() {
         onPointerUp={finishPointer}
         onPointerCancel={finishPointer}
       >
+        {companionExpression?.tier === "n0" && (
+          <span
+            key={companionExpression.accessibleState}
+            className="sr-only"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {companionPresentation(
+              companionExpression,
+              settings.companionLabelMode,
+            ).accessibleLabel}
+          </span>
+        )}
         {desktopLearningActive &&
           desktopLearningSession &&
           LazyLearningDesktopStage && (
@@ -1972,9 +2379,7 @@ export function PetWindow() {
                   className="desktop-learning-stage-loading"
                   role="status"
                   onPointerDown={(event) => event.stopPropagation()}
-                >
-                  {petDisplayName}正在拉出小黑板…
-                </div>
+                >{petText("{pet}正在拉出小黑板…")}</div>
               }
             >
               <LazyLearningDesktopStage
@@ -2136,9 +2541,26 @@ export function PetWindow() {
           />
           )}
         <div className="pet-animation-stage" data-animation-stage="true">
+          {sceneWorkPropsVisible && (
+            <span className="scene-work-props" aria-hidden="true">
+              <i className="scene-work-laptop" />
+              <i className="scene-work-coffee" />
+            </span>
+          )}
           {!desktopLearningActive && (
             <SpriteAnimator
+              key={`${petProfile.effectivePackId}:${petProfile.staticOnly}`}
               animation={animation}
+              fallbackAnimation={fallbackAnimationForScene(animation)}
+              forceStill={animation === "focus-calm" && (
+                focusState.session?.phase === "focus" ||
+                companionExpression?.sceneAppearance.kind === "work"
+              )}
+              settleAtStaticFrame={
+                animation === "work-fatigue-enter" &&
+                companionExpression?.sceneAppearance.kind === "work" &&
+                companionExpression.sceneAppearance.stage === "transition"
+              }
               lookFrame={lookFrame}
               frameOverride={
                 toolInteraction?.kind === "ball"
@@ -2177,7 +2599,7 @@ export function PetWindow() {
                 toolInteraction.engaged ? "is-engaged" : ""
               }`}
               type="button"
-              aria-label={`轻轻摸摸${petDisplayName}的头`}
+              aria-label={petText("轻轻摸摸{pet}的头")}
               onPointerEnter={updatePettingFromPointer}
               onPointerMove={updatePettingFromPointer}
               onPointerDown={updatePettingFromPointer}
@@ -2223,7 +2645,7 @@ export function PetWindow() {
               </button>
             )}
         </div>
-        {learningBuildEnabled &&
+        {learningAvailable &&
           settings.learningQuickStartVisible &&
           !desktopLearningActive &&
           !strongAlertActive &&
@@ -2252,7 +2674,7 @@ export function PetWindow() {
         <button
           className={`resize-handle ${strongAlertActive || desktopLearningActive || toolInteraction ? "is-hidden" : ""}`}
           type="button"
-          aria-label={`调整${petDisplayName}大小`}
+          aria-label={petText("调整{pet}大小")}
           onPointerDown={onResizePointerDown}
         />
       </div>

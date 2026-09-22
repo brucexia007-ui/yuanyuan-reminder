@@ -8,10 +8,16 @@ Coding 工具必须从 `https://github.com/brucexia007-ui/yuanyuan-reminder` 自
 
 ## 智能体内部入口（普通用户不要运行）
 
-下面命令只供 Coding 工具和维护者调用：
+### 普通宠物包路线（默认）
+
+在被忽略的工作目录准备有许可的图集后，智能体执行 `npm.cmd run customize:pet -- --source <素材目录> --license <许可文件> --name <宠物名>`。该入口锁定来源与图片哈希、生成独立宠物包，并提供 `--resume <runId>` 恢复校验。它保留圆圆主程序、数据库路径和内置素材，只交付候选包；真实导入、播放和重启验收仍是单独门禁。
+
+### 独立应用旧工具（仅独立工作副本）
+
+以下旧工具为单独应用定制保留，仅在明确要求独立应用、且已配置独立品牌的工作副本中使用；本轮统一主程序不执行其品牌替换，亦不声明独立应用安装交付已验收。普通宠物包任务使用上一节入口。
 
 ```powershell
-npm.cmd --silent run customize:auto -- `
+npm.cmd --silent run customize:standalone -- `
   --photos "C:\path\to\pet-photos" `
   --name "糖糖" `
   --personality "安静但好奇"

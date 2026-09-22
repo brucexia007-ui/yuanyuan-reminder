@@ -19,7 +19,7 @@ const execFileAsync = promisify(execFile);
 
 const HELP = `只需三个输入即可开始宠物定制：
 
-  npm.cmd --silent run customize:auto -- --photos <照片目录或照片> --name <宠物名> --personality <性格>
+  npm.cmd --silent run customize:standalone -- --photos <照片目录或照片> --name <宠物名> --personality <性格>
 
 可重复使用 --photos；目录只读取第一层的 PNG、JPEG 和 WebP，合计 1-16 张。
 仓库内照片必须放在被 Git 忽略的 work/ 目录。--silent 避免 npm 回显照片路径；使用 --dry-run 仅校验输入，不创建任务。`;

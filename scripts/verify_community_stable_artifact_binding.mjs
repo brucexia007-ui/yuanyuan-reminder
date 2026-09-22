@@ -80,7 +80,7 @@ async function readJson(filePath) {
 
 async function main() {
   const [acceptance, authority, brand] = await Promise.all([
-    readJson(path.join(projectRoot, "docs", "release", "COMMUNITY_STABLE_ACCEPTANCE_V1.json")),
+    readJson(path.join(projectRoot, "docs", "release", "COMMUNITY_STABLE_ACCEPTANCE_V2.json")),
     readJson(path.join(projectRoot, "product-version.json")),
     readJson(path.join(projectRoot, "product-brand.json")),
   ]);

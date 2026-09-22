@@ -1,3 +1,4 @@
+import { petText, getPetSnapshot } from "../pet/petProfile";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
@@ -48,7 +49,6 @@ import {
   updateLearningSettings,
 } from "./backend";
 import { onBackendEvent, tauriAvailable } from "../lib/backend";
-import { petText } from "../brand";
 import { SpriteAnimator } from "../pet/SpriteAnimator";
 import type { AnimationName } from "../pet/manifest";
 import "./learning.css";
@@ -228,19 +228,22 @@ export function LearningView() {
   }, [loadHome]);
 
   useEffect(() => {
-    let cleanup: (() => void) | undefined;
+    let disposed = false;
     const cleanups: Array<() => void> = [];
     void Promise.all([
       onBackendEvent("learning-session-interrupted", () => {
-        void loadHome().then(() =>
-          setError("更重要的提醒到了，这张未评分卡没有计入；稍后可继续上一轮。"),
-        );
+        if (disposed) return;
+        void loadHome().then(() => {
+          if (!disposed) setError("更重要的提醒到了，这张未评分卡没有计入；稍后可继续上一轮。");
+        });
       }),
-      onBackendEvent("learning-data-updated", () => void loadHome()),
-      onBackendEvent<LearningImportProgress>("learning-import-progress", setImportProgress),
-    ]).then((unlisten) => cleanups.push(...unlisten));
-    cleanup = () => cleanups.forEach((unlisten) => unlisten());
-    return () => cleanup?.();
+      onBackendEvent("learning-data-updated", () => { if (!disposed) void loadHome(); }),
+      onBackendEvent<LearningImportProgress>("learning-import-progress", (progress) => { if (!disposed) setImportProgress(progress); }),
+    ]).then((unlisten) => {
+      if (disposed) unlisten.forEach((stop) => stop());
+      else cleanups.push(...unlisten);
+    });
+    return () => { disposed = true; cleanups.forEach((stop) => stop()); };
   }, [loadHome]);
 
   useEffect(() => {
@@ -333,6 +336,7 @@ export function LearningView() {
         setScreen("card");
       }
     } catch (reason) {
+      await loadHome();
       setError(`现在还不能开始：${learningErrorMessage(reason)}`);
     } finally {
       setBusy(false);
@@ -692,7 +696,7 @@ export function LearningView() {
         <div className="learning-loading-heading" />
         <div className="learning-loading-tabs" />
         <div className="learning-loading-card" />
-        <span>{petText("圆圆正在整理复习卡，通常只需几秒…")}</span>
+        <span>{petText("{pet}正在整理复习卡，通常只需几秒…")}</span>
       </div>
     );
   }
@@ -951,7 +955,7 @@ function LearningStage({
     ? "本轮错题回看"
     : `${answer ? session.completedCount : session.completedCount + 1} / ${session.plannedCount}`;
   return (
-    <section className="learning-session learning-blackboard-stage" aria-label={petText("圆圆小黑板英语复习")}>
+    <section className="learning-session learning-blackboard-stage" aria-label={petText("{pet}小黑板英语复习")}>
       <div className="learning-session-meta">
         <span>{progress}</span>
         <button type="button" disabled={busy} onClick={onExit}>结束本轮</button>
@@ -959,12 +963,12 @@ function LearningStage({
 
       <article className="learning-blackboard">
         <p className="learning-stage">{stageLabel(question.stage)}</p>
-        <h2 ref={headingRef} tabIndex={-1} lang="en">{question.headword}</h2>
+        <h2 ref={headingRef} tabIndex={-1} lang={question.partOfSpeech.includes("generic") ? undefined : "en"}>{question.headword}</h2>
         {question.phonetic && <p className="learning-phonetic">{question.phonetic}</p>}
-        <p className="learning-pos">{question.partOfSpeech.join(" · ")}</p>
+        <p className="learning-pos">{question.partOfSpeech.filter((part) => part !== "generic").join(" · ")}</p>
 
         {question.kind === "multiple_choice" ? (
-          <div className="learning-options" aria-label="请选择对应的中文释义">
+          <div className="learning-options" aria-label="请选择答案">
             {question.options.map((option, index) => {
               const isSelected = answer?.selectedOptionId === option.optionId;
               const isCorrect = answer?.correctOptionId === option.optionId;
@@ -993,7 +997,7 @@ function LearningStage({
           <div className="learning-recall-fallback">
             {!flipped ? (
               <button className="learning-chalk-action" type="button" disabled={busy} onClick={onFlip}>
-                选项不足，看看含义
+                先回忆，再查看答案
               </button>
             ) : (
               <div className="learning-answer" aria-live="polite">
@@ -1012,12 +1016,12 @@ function LearningStage({
         {answer && (
           <div className={`learning-result ${answer.correct ? "is-correct" : "is-wrong"}`} role="status" aria-live="polite">
             <strong>{answer.correct ? "回答正确" : "这次需要再看"}</strong>
-            {!answer.correct && <span>正确释义：{answer.correctMeaningZh}</span>}
+            {!answer.correct && <span>正确答案：{answer.correctMeaningZh}</span>}
           </div>
         )}
       </article>
 
-      <div className="learning-pet-console" aria-label={petText("圆圆用按钮反馈答题结果")}>
+      <div className="learning-pet-console" aria-label={petText("{pet}用按钮反馈答题结果")}>
         <div className="learning-stage-pet">
           <SpriteAnimator
             animation={petAnimation}
@@ -1085,7 +1089,7 @@ function LearningDashboard({
   onOpenRecords: (filter: LearningRecordFilter) => void;
 }) {
   if (loading && !dashboard) {
-    return <p className="learning-dashboard-loading" role="status">{petText("圆圆正在整理学习看板…")}</p>;
+    return <p className="learning-dashboard-loading" role="status">{petText("{pet}正在整理学习看板…")}</p>;
   }
   if (!dashboard) {
     return <p className="learning-dashboard-loading">暂时没有可展示的学习数据。</p>;
@@ -1277,7 +1281,7 @@ function LearningRecords({
         <button type="submit" disabled={loading}>搜索</button>
       </form>
       {loading && !page ? (
-        <p className="learning-record-empty" role="status">{petText("圆圆正在翻记录…")}</p>
+        <p className="learning-record-empty" role="status">{petText("{pet}正在翻记录…")}</p>
       ) : page && page.items.length > 0 ? (
         <div className="learning-record-list">
           {page.items.map((item) => (
@@ -1396,8 +1400,8 @@ function LearningHome({
       <details className="learning-quick-guide">
         <summary>第一次用？1 分钟了解</summary>
         <ul>
-          <li>{petText("圆圆会先安排到期复习，再用新词补满这一轮；没有每日上限。")}</li>
-          <li>选项不足时：忘了会尽快重现，模糊会缩短间隔，记得会逐步延长间隔。</li>
+          <li>{petText("{pet}会先安排到期复习，再用新词补满这一轮；没有每日上限。")}</li>
+          <li>回忆题：忘了会尽快重现，模糊会缩短间隔，记得会逐步延长间隔。</li>
           <li>词表与进度只保存在本机；“完整 JSON”可用于备份和恢复。</li>
         </ul>
       </details>
@@ -1594,9 +1598,7 @@ function LearningHome({
 
       <details className="learning-settings learning-data-settings">
         <summary>来源、导出与删除</summary>
-        <p className="learning-data-intro">
-          {petText("学习库与提醒主库分开保存。圆圆不会自动上传，也不会把学习记录混入提醒备份。")}
-        </p>
+        <p className="learning-data-intro">学习库与提醒主库分开保存，统一备份可同时保存两者；完整 JSON 用于导出学习内容和进度。所有数据保留在本机。</p>
         {dataSummary && dataSummary.packs.length > 0 ? (
           <div className="learning-source-list">
             {dataSummary.packs.map((pack) => (
@@ -1729,7 +1731,7 @@ function ImportConfirmation({
           </dl>
         )}
         {preview.sampleHeadwords.length > 0 && (
-          <p lang="en" className="learning-import-sample">
+          <p className="learning-import-sample">
             示例：{preview.sampleHeadwords.join(" · ")}
           </p>
         )}
@@ -1737,9 +1739,16 @@ function ImportConfirmation({
           {preview.format === "json"
             ? "原生 JSON 会替换当前学习库中的词表、设置、调度状态和复习记录；提醒主库不受影响。"
             : preview.format === "learning_pack"
-              ? `权利基础：${preview.rightsBasis ?? "未声明"}。未变化卡片保留进度；答案变化或 scheduleEpoch 增长只重置对应卡片；删除卡片先停用。`
+              ? `权利基础：${preview.rightsBasis ?? "未声明"}。未变化卡片保留进度；答案变化或内容包要求重新学习时，只重置对应卡片；删除卡片先停用。`
               : "“进度提示”只决定初始队列，不会冒充原应用的精确调度。"}
         </p>
+        {preview.format === "learning_pack" && (
+          <section aria-label="知识包来源与许可">
+            <p>{preview.rightsStatement}</p>
+            <p>{preview.redistributable ? "内容提供者声明允许分发" : "内容提供者声明不允许公开分发"}</p>
+            <ul>{preview.sourceDetails?.map((source, index) => <li key={index}>{source}</li>)}</ul>
+          </section>
+        )}
         <div className="learning-dialog-actions">
           <button type="button" disabled={busy} onClick={onCancel}>取消</button>
           <button className="primary" type="button" disabled={busy} onClick={() => void onConfirm()}>
@@ -2008,7 +2017,7 @@ function dashboardInsight(
     return `有 ${dashboard.mistakeCount} 个错题等待订正，建议先巩固再学新词。`;
   }
   if (dashboard.pendingRecheckCount > 0) {
-    return `${dashboard.pendingRecheckCount} 个错题已经订正，到期复习时会再次验证。`;
+    return `${dashboard.pendingRecheckCount} 个错题已经订正，${getPetSnapshot().nickname}会在到期复习时再次验证。`;
   }
   if (accuracy !== null) {
     return `近 7 天首答正确率 ${accuracy}%，学习节奏会按到期复习自动安排。`;
@@ -2058,6 +2067,15 @@ function learningErrorMessage(reason: unknown) {
       : reason instanceof Error
         ? reason.message.trim()
         : "";
+  if (message.includes("learning startup cleanup failed")) {
+    return "学习启动后的状态清理未完成，请重新打开学习页核对上一轮后再试";
+  }
+  if (message.includes("a higher priority presentation is active")) {
+    return "当前有优先展示的提醒或活动，请处理完后再试";
+  }
+  if (message.includes("a learning session is already active or resumable")) {
+    return "上一轮还未结束，请先继续或结束上一轮";
+  }
   if (message.includes("no unresolved learning mistakes are currently available")) {
     return "目前没有待订正错题，已订正的词会在到期后复查";
   }

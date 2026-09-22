@@ -10,9 +10,9 @@
     Publisher="CN=PARTNER_CENTER_PUBLISHER_PENDING"
     ProcessorArchitecture="x64" />
   <Properties>
-    <DisplayName>饺饺提醒</DisplayName>
+    <DisplayName>圆圆提醒</DisplayName>
     <PublisherDisplayName>PARTNER_CENTER_PUBLISHER_DISPLAY_NAME_PENDING</PublisherDisplayName>
-    <Description>饺饺陪你喝水、安排工作和准时休息</Description>
+    <Description>圆圆陪你喝水、安排工作和准时休息</Description>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
   <Resources>
@@ -34,8 +34,8 @@
       uap10:RuntimeBehavior="packagedClassicApp"
       uap10:TrustLevel="mediumIL">
       <uap:VisualElements
-        DisplayName="饺饺提醒"
-        Description="饺饺陪你喝水、安排工作和准时休息"
+        DisplayName="圆圆提醒"
+        Description="圆圆陪你喝水、安排工作和准时休息"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png"
         BackgroundColor="transparent" />

@@ -79,27 +79,9 @@ npm.cmd run runtime:baseline -- -DurationSeconds 30 -SampleIntervalSeconds 2 -Wa
 
 本次实际窗口在 188.3 ms 可见，采集 11 个样本，归一化 CPU 平均 0.0733%，正式目录写入 0、AI 子进程 0、Application Error 0，应用受控退出且隔离根已清理。报告可通过结构复核；严格复核会因 `acceptanceGateRequested=false` 拒绝，证明短测不能冒充正式验收。
 
-## 1.5.7 统一产品正式绑定
-
-社区稳定版的正式 24 小时门必须测试学习默认集成的统一产品，不能继续用默认 `learning-off` 核心构建代替。正式流程为：
-
-1. 在干净 `testedCommit` 上执行 `npm.cmd run release:community:runtime-baseline:prepare`；
-2. 受控入口以 `cargo build --locked` 重建 `runtime-qa-learning`，生成不可覆盖的候选绑定清单；
-3. 在不重建或修改绑定文件的前提下执行 `npm.cmd run runtime:baseline:acceptance`，该命令固定传入 `-BuildVariant learning-on`；
-4. 使用 `release:community:runtime-baseline:verify` 同时验证候选绑定与报告；
-5. 社区稳定验收记录除报告 SHA-256 外还必须填写 `sourceBindingSha256`。
-
-正式报告完成后的独立复核命令为：
-
-```powershell
-npm.cmd run release:community:runtime-baseline:verify -- --binding "<候选绑定清单绝对路径>" --report "<learning-on 24 小时报告绝对路径>" --tested-commit "<testedCommit>"
-```
-
-候选绑定清单覆盖干净提交和分支、品牌/版本、Cargo/npm/Tauri 配置、程序、夹具、测量脚本、受控构建/运行/排他脚本及准备/验证器哈希，并要求 24 小时报告在候选绑定生成后才开始。任一源码、配置、二进制或工具漂移都会失败关闭。正式运行包装器、安装候选暂存、两类 Windows Sandbox 和 20,000 卡入口共用同一排他门；若 Cargo 主包对应的产品进程或 Windows Sandbox 已在运行，会在清理、构建或启动第二实例前停止。
-
 ## 尚未关闭的范围
 
-- 尚无干净 `testedCommit` 的 learning-on 真实 24 小时正向报告；
+- 尚无真实 24 小时正向报告；
 - 本执行器验证 AI 关闭的稳定核心，不替代 Bridge、AI 和真实连接器组合的 24/72 小时常驻；
 - 不替代正式默认二进制、签名候选、断网恢复、提醒跨睡眠调度、干净机器、安全软件、多 DPI 或第二 Windows 账户证据；
 - 若正式验收失败，应保留原始失败报告和失败原因，不放宽冻结阈值或手工改写 `ready`。

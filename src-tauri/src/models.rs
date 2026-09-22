@@ -108,6 +108,15 @@ pub struct BasicSupportSession {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SceneRestSession {
+    pub id: String,
+    pub duration_minutes: u32,
+    pub started_at: String,
+    pub ends_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PetCareSnapshot {
     pub total: u32,
     pub food: u32,
@@ -124,6 +133,8 @@ pub struct PetCareSnapshot {
 pub struct PetInteractionStarted {
     pub id: String,
     pub kind: String,
+    pub lease_revision: u64,
+    pub expires_at_unix_ms: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -143,7 +154,9 @@ pub struct CreateReminderInput {
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct AppSettings {
+    pub pet_profile: crate::pet_packs::PetProfile,
     pub animation_mode: String,
+    pub scene_wardrobe_mode: String,
     pub companion_intensity: String,
     pub companion_label_mode: String,
     pub animation_speed: f64,
@@ -173,7 +186,9 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
+            pet_profile: crate::pet_packs::PetProfile::default(),
             animation_mode: "always".into(),
+            scene_wardrobe_mode: "full".into(),
             companion_intensity: "everyday".into(),
             companion_label_mode: "adaptive".into(),
             animation_speed: 1.0,
@@ -292,6 +307,7 @@ mod tests {
         let settings: AppSettings =
             serde_json::from_value(serde_json::json!({ "animationMode": "off" })).unwrap();
         assert_eq!(settings.animation_mode, "off");
+        assert_eq!(settings.scene_wardrobe_mode, "full");
         assert_eq!(settings.companion_intensity, "everyday");
         assert_eq!(settings.companion_label_mode, "adaptive");
         assert!(settings.learning_quick_start_visible);

@@ -32,11 +32,22 @@ export function shouldAdvancePettingFrame(
   return distance >= 6 && elapsedMs >= 90;
 }
 
-export function shouldAdvanceWandFrame(
-  distance: number,
-  elapsedMs: number,
-): boolean {
-  return distance >= 8 && elapsedMs >= 80;
+export function wandDirectionFrame(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  currentFrame = 1,
+): number {
+  const dx = x - width / 2;
+  const dy = y - height * 0.46;
+  if (Math.hypot(dx, dy) < Math.min(width, height) * 0.08) {
+    return currentFrame;
+  }
+  // Each column is a direction, not the next time frame. The three wand
+  // rows supply reach/swipe/return poses for that same direction.
+  const clockwiseFromTop = (Math.atan2(dx, -dy) * 180) / Math.PI;
+  return Math.round((clockwiseFromTop + 360) / 45) % 8;
 }
 
 export function treatFrameFromPointerHeight(y: number, height: number): number {

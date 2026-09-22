@@ -46,6 +46,32 @@ const requiredAnimations = [
   "learning-study-curious",
   "learning-press-correct",
   "learning-press-wrong",
+  "spa-enter",
+  "spa-loop",
+  "spa-exit",
+  "meal-alert",
+  "meal-wait",
+  "hydration-alert",
+  "hydration-wait",
+  "work-focus-loop",
+  "work-fatigue-enter",
+  "work-fatigue-loop",
+  "work-recover",
+  "warmup-alert",
+  "warmup-loop",
+  "study-focus-loop",
+  "study-curious",
+  "night-enter",
+  "night-loop",
+  "night-exit",
+];
+
+const requiredSceneRows = [
+  "spa-enter", "spa-loop", "spa-exit", "meal-alert", "meal-wait",
+  "hydration-alert", "hydration-wait", "work-focus-loop",
+  "work-fatigue-enter", "work-fatigue-loop", "work-recover",
+  "warmup-alert", "warmup-loop", "study-focus-loop", "study-curious",
+  "night-enter", "night-loop", "night-exit",
 ];
 
 const requiredLearningRows = [
@@ -121,26 +147,30 @@ if (manifest.cellWidth !== 192 || manifest.cellHeight !== 208) fail("pet cells m
 if (manifest.columns !== 8 || manifest.rows !== 11) fail("the standard pet atlas must be 8 columns by 11 rows");
 if (manifest.lifeRows !== 21) fail("the life atlas must declare 21 rows");
 if (manifest.learningRows !== 4) fail("the learning atlas must declare 4 rows");
+if (manifest.sceneRows !== 18) fail("the scene atlas must declare 18 rows");
 
 const files = {
   standard: path.basename(manifest.spritesheet ?? ""),
   sleep: path.basename(manifest.sleepSpritesheet ?? ""),
   life: path.basename(manifest.lifeSpritesheet ?? ""),
   learning: path.basename(manifest.learningSpritesheet ?? ""),
+  scene: path.basename(manifest.sceneSpritesheet ?? ""),
 };
 if (
   files.standard !== "spritesheet.webp" ||
   files.sleep !== "sleep-atlas.webp" ||
   files.life !== "life-atlas.webp" ||
-  files.learning !== "learning-atlas.webp"
+  files.learning !== "learning-atlas.webp" ||
+  files.scene !== "scene-atlas.webp"
 ) {
-  fail("manifest must reference the standard, sleep, life, and learning WebP atlases");
+  fail("manifest must reference the standard, sleep, life, learning, and scene WebP atlases");
 }
 
 expectSize(files.standard, 1536, 2288);
 expectSize(files.sleep, 1536, 624);
 expectSize(files.life, 1536, 4368);
 expectSize(files.learning, 1536, 832);
+expectSize(files.scene, 1536, 3744);
 
 const animations = manifest.animations ?? {};
 for (const name of requiredAnimations) {
@@ -156,6 +186,8 @@ for (const name of requiredAnimations) {
           ? 21
           : sheet === "learning"
             ? 4
+            : sheet === "scene"
+              ? 18
             : 0;
   if (rowLimit === 0) fail(`${name} references unknown sheet: ${sheet}`);
   if (!Number.isInteger(animation.row) || animation.row < 0 || animation.row >= rowLimit) fail(`${name} has an invalid row`);
@@ -164,6 +196,14 @@ for (const name of requiredAnimations) {
   if (animation.frames.some((frame) => !Number.isInteger(frame) || frame < 0 || frame >= 8)) fail(`${name} contains a frame outside 0..7`);
   if (animation.durations.some((duration) => !Number.isInteger(duration) || duration < 40 || duration > 5000)) fail(`${name} contains an invalid frame duration`);
   if (animation.loopStart !== null && (!Number.isInteger(animation.loopStart) || animation.loopStart < 0 || animation.loopStart >= animation.frames.length)) fail(`${name} has an invalid loopStart`);
+  if (!Number.isInteger(animation.staticFrame) || animation.staticFrame < 0 || animation.staticFrame >= 8) fail(`${name} must declare a staticFrame in 0..7`);
+}
+
+for (const [row, name] of requiredSceneRows.entries()) {
+  const animation = animations[name];
+  if (animation.sheet !== "scene" || animation.row !== row) {
+    fail(`${name} must use scene row ${row}`);
+  }
 }
 
 for (const [name, row, frames, loopStart] of requiredLearningRows) {
@@ -179,4 +219,4 @@ for (const [name, row, frames, loopStart] of requiredLearningRows) {
 }
 
 console.log(`Pet pack OK: ${manifest.displayName ?? manifest.id ?? "unnamed pet"}`);
-console.log(`Validated ${requiredAnimations.length} animations and 4 WebP atlases.`);
+console.log(`Validated ${requiredAnimations.length} animations and 5 WebP atlases.`);

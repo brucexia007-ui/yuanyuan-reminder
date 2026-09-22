@@ -1,11 +1,21 @@
 import { lstat, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { verifyUnifiedPetIdentity } from "./verify_unified_pet_identity.mjs";
 
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const write = process.argv.includes("--write");
 const expectedArguments = write ? ["--write"] : ["--check"];
 if (JSON.stringify(process.argv.slice(2)) !== JSON.stringify(expectedArguments)) {
   throw new Error("usage: node scripts/sync_product_brand.mjs --check|--write");
+}
+
+// Unified builds keep their identity and original assets. Standalone synchronization
+// below applies only to a separately configured application checkout.
+const authority = JSON.parse(await readFile(path.join(projectRoot, "product-version.json"), "utf8"));
+if (authority.brandConfig === undefined) {
+  await verifyUnifiedPetIdentity(projectRoot);
+  process.stdout.write("Unified application identity verified; no branding or asset files changed.\n");
+  process.exit(0);
 }
 
 async function json(relativePath) {
@@ -165,9 +175,9 @@ const [packagePath, packageJson] = await json("package.json");
 const [packageLockPath, packageLock] = await json("package-lock.json");
 const [tauriPath, tauri] = await json("src-tauri/tauri.conf.json");
 const [petManifestPath, petManifest] = await json("public/assets/pet/pet-manifest.json");
-const [communityPolicyPath, communityPolicy] = await json("docs/release/COMMUNITY_STABLE_RELEASE_POLICY_V1.json");
-const [communityAcceptancePath, communityAcceptance] = await json("docs/release/COMMUNITY_STABLE_ACCEPTANCE_V1.json");
-const [communityAcceptanceTemplatePath, communityAcceptanceTemplate] = await json("docs/release/COMMUNITY_STABLE_ACCEPTANCE_V1.template.json");
+const [communityPolicyPath, communityPolicy] = await json("docs/release/COMMUNITY_STABLE_RELEASE_POLICY_V2.json");
+const [communityAcceptancePath, communityAcceptance] = await json("docs/release/COMMUNITY_STABLE_ACCEPTANCE_V2.json");
+const [communityAcceptanceTemplatePath, communityAcceptanceTemplate] = await json("docs/release/COMMUNITY_STABLE_ACCEPTANCE_V2.template.json");
 const [storeSubmissionTemplatePath, storeSubmissionTemplate] = await json("docs/release/MSIX_STORE_SUBMISSION_INPUTS_V1.template.json");
 const [capabilityPath, capability] = await json("src-tauri/capabilities/default.json");
 const cargoPath = path.join(projectRoot, "src-tauri", "Cargo.toml");

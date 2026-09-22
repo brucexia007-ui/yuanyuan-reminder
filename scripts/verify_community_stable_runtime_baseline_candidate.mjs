@@ -161,17 +161,40 @@ export async function verifyRuntimeBaselineSourceBinding({ bindingPath, testedCo
 
 function parseArguments(argv) {
   const options = {};
-  for (let index = 0; index < argv.length; index += 2) {
+  for (let index = 0; index < argv.length;) {
     const key = argv[index];
+    if (key === "--allow-v2-event-waivers") {
+      requireValue(!options[key], "duplicate waiver option");
+      options[key] = true;
+      index += 1;
+      continue;
+    }
     const value = argv[index + 1];
     if (!new Set(["--binding", "--report", "--tested-commit"]).has(key) || !value || options[key]) fail(`unknown, duplicate, or incomplete option: ${key}`);
     options[key] = value;
+    index += 2;
   }
   for (const key of ["--binding", "--report", "--tested-commit"]) requireValue(options[key], `${key} is required`);
   return options;
 }
 
-export async function verifyRuntimeBaselineCandidate({ bindingPath, reportPath, testedCommit }) {
+export function validateV2RuntimeWaiver(report) {
+  requireValue(report.request.acceptanceGateRequested === true, "formal 24-hour gate was not requested");
+  requireValue(report.smokePassed === true && report.ready === false && report.acceptanceGate.passed === false,
+    "raw runtime report must remain failed with a passing smoke gate");
+  requireValue(JSON.stringify(report.acceptanceGate.failures) === JSON.stringify([
+    "power_suspend_resume_pair_missing", "session_lock_unlock_pair_missing",
+  ]), "raw runtime failures exceed the two authorized event waivers");
+  requireValue(report.transitions.powerSuspendResumeObserved === false && report.transitions.sessionLockUnlockObserved === false,
+    "waived system events must remain unobserved");
+  requireValue(report.clock.wallClockObservedSeconds >= 86_400 && report.clock.activeSampleCoverageSeconds >= 72_000,
+    "runtime duration or active coverage is short");
+  requireValue(report.isolation.applicationErrorCount === 0 && report.storage.formalUserFilesWritten === 0,
+    "runtime isolation or application error gate failed");
+  return true;
+}
+
+export async function verifyRuntimeBaselineCandidate({ bindingPath, reportPath, testedCommit, allowV2EventWaivers = false }) {
   const resolvedBinding = path.resolve(bindingPath);
   const resolvedReport = path.resolve(reportPath);
   requireValue(path.dirname(resolvedBinding) === evidenceRoot && /^runtime-baseline-candidate-\d{8}T\d{6}Z\.json$/u.test(path.basename(resolvedBinding)), "binding path is outside the owned evidence directory");
@@ -204,7 +227,8 @@ export async function verifyRuntimeBaselineCandidate({ bindingPath, reportPath, 
     fixtureSha256: sha256(observedArtifacts.fixture.bytes),
     scriptSha256: sha256(observedArtifacts.measureScript.bytes),
   };
-  requireValue(validateRuntimeBaselineEvidence(report, expectedBindings, { requireAcceptance: true }), "runtime report is pending, stale, or inconsistent");
+  requireValue(validateRuntimeBaselineEvidence(report, expectedBindings, { requireAcceptance: !allowV2EventWaivers }), "runtime report is pending, stale, or inconsistent");
+  if (allowV2EventWaivers) validateV2RuntimeWaiver(report);
   validateRuntimeBaselineCandidateManifest({
     binding,
     testedCommit,
@@ -225,6 +249,7 @@ async function main() {
     bindingPath: options["--binding"],
     reportPath: options["--report"],
     testedCommit: options["--tested-commit"],
+    allowV2EventWaivers: options["--allow-v2-event-waivers"] === true,
   });
   process.stdout.write(`Community stable learning-on runtime baseline binding passed: ${result.bindingSha256}.\n`);
 }

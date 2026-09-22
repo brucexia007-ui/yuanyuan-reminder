@@ -13,11 +13,13 @@ import type {
 
 const backend = vi.hoisted(() => ({
   completeOccurrence: vi.fn(),
+  finishPetInteraction: vi.fn(async () => true),
   getBasicSupportState: vi.fn(),
   getCompanionExpressionSnapshot: vi.fn(),
   getFocusState: vi.fn(),
   getPetActivitySnapshot: vi.fn(),
   getSettings: vi.fn(),
+  getRuntimeCapabilities: vi.fn(),
   listToday: vi.fn(),
   onBackendEvent: vi.fn(),
   setPetSize: vi.fn(),
@@ -74,6 +76,8 @@ import { PetWindow } from "./PetWindow";
 
 const settings: AppSettings = {
   animationMode: "always",
+  sceneWardrobeMode: "full",
+  petProfile: { schemaVersion: 1, selectedPackId: "builtin:yuanyuan", nicknames: {} },
   companionIntensity: "everyday",
   companionLabelMode: "adaptive",
   animationSpeed: 1,
@@ -99,7 +103,7 @@ const settings: AppSettings = {
 };
 
 const expression: CompanionExpressionSnapshot = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   revision: 1,
   tier: "n0",
   intent: "quiet_presence",
@@ -114,6 +118,7 @@ const expression: CompanionExpressionSnapshot = {
   groupedCount: 0,
   focusDeferredCount: 0,
   accessibleState: "quiet_presence",
+  sceneAppearance: { kind: "none" },
 };
 
 const activity: PetActivitySnapshot = {
@@ -137,16 +142,21 @@ describe("PetWindow interaction bubble E2E", () => {
   let container: HTMLDivElement;
   let root: Root;
   let handlers: Map<string, (payload: unknown) => void>;
+  let interactionRevision: number;
 
   const flush = async () => {
     await act(async () => {
+      if (vi.isFakeTimers()) {
+        await vi.advanceTimersByTimeAsync(0);
+        return;
+      }
       await new Promise((resolve) => window.setTimeout(resolve, 0));
     });
   };
 
   const startInteraction = async (id: string, kind: string) => {
     await act(async () =>
-      handlers.get("pet-interaction-started")?.({ id, kind }),
+      handlers.get("pet-interaction-started")?.({ id, kind, leaseRevision: ++interactionRevision, expiresAtUnixMs: Date.now() + 30_000 }),
     );
     await flush();
     return container.querySelector<HTMLElement>(
@@ -215,7 +225,9 @@ describe("PetWindow interaction bubble E2E", () => {
       },
     });
     handlers = new Map();
+    interactionRevision = 1;
     backend.getSettings.mockResolvedValue(structuredClone(settings));
+    backend.getRuntimeCapabilities.mockResolvedValue({ learning: { available: true } });
     backend.getFocusState.mockResolvedValue({ session: null });
     backend.listToday.mockResolvedValue(structuredClone(today));
     backend.getCompanionExpressionSnapshot.mockResolvedValue(
@@ -242,6 +254,7 @@ describe("PetWindow interaction bubble E2E", () => {
   afterEach(async () => {
     await act(async () => root.unmount());
     container.remove();
+    vi.useRealTimers();
     vi.clearAllMocks();
   });
 
@@ -333,7 +346,7 @@ describe("PetWindow interaction bubble E2E", () => {
     expect(tool.style.top).toBe("12px");
   });
 
-  it("matches the original Yuanyuan pointer-driven wand row", async () => {
+  it("restores the original directional reach, swipe and return poses while holding the wand", async () => {
     await startInteraction("wand-original", "wand");
     setInteractionBounds();
     const tool = container.querySelector<HTMLButtonElement>(".pet-tool-wand");
@@ -344,43 +357,80 @@ describe("PetWindow interaction bubble E2E", () => {
     expect(sprite?.dataset.animation).toBe("idle");
     expect(sprite?.dataset.frameOverride).toBe("");
 
+    vi.useFakeTimers();
     await dispatchPointer(tool, "pointerdown", 138, 48, 0);
     sprite = container.querySelector<HTMLButtonElement>(".sprite-animator");
-    expect(sprite?.dataset.animation).toBe("wand-play");
-    expect(sprite?.dataset.frameOverride).toBe("0");
+    expect(sprite?.dataset.animation).toBe("wand-reach");
+    expect(sprite?.dataset.frameOverride).toBe("1");
     expect(sprite?.dataset.mirrored).toBe("false");
     expect(sprite?.dataset.offsetX).toBe("0");
 
-    await dispatchPointer(tool, "pointermove", 134, 48, 30);
+    await act(async () => { vi.advanceTimersByTime(130); });
     sprite = container.querySelector<HTMLButtonElement>(".sprite-animator");
-    expect(sprite?.dataset.frameOverride).toBe("0");
-
-    await dispatchPointer(tool, "pointermove", 126, 48, 90);
-    sprite = container.querySelector<HTMLButtonElement>(".sprite-animator");
+    expect(sprite?.dataset.animation).toBe("wand-swipe");
     expect(sprite?.dataset.frameOverride).toBe("1");
 
-    await dispatchPointer(tool, "pointermove", 90, 48, 100);
+    await act(async () => { vi.advanceTimersByTime(130); });
     sprite = container.querySelector<HTMLButtonElement>(".sprite-animator");
+    expect(sprite?.dataset.animation).toBe("wand-return");
     expect(sprite?.dataset.frameOverride).toBe("1");
 
-    await dispatchPointer(tool, "pointermove", 90, 48, 180);
+    await dispatchPointer(tool, "pointermove", 174, 96, 100);
     sprite = container.querySelector<HTMLButtonElement>(".sprite-animator");
-    expect(sprite?.dataset.frameOverride).toBe("3");
+    expect(sprite?.dataset.frameOverride).toBe("2");
 
-    await dispatchPointer(tool, "pointermove", 90, 48, 190);
+    await dispatchPointer(tool, "pointermove", 96, 96, 180);
     sprite = container.querySelector<HTMLButtonElement>(".sprite-animator");
-    expect(sprite?.dataset.frameOverride).toBe("3");
+    expect(sprite?.dataset.frameOverride).toBe("2");
+
+    await dispatchPointer(tool, "pointermove", 96, 196, 190);
+    sprite = container.querySelector<HTMLButtonElement>(".sprite-animator");
+    expect(sprite?.dataset.frameOverride).toBe("4");
 
     await dispatchPointer(tool, "pointermove", 22, 48, 270);
     sprite = container.querySelector<HTMLButtonElement>(".sprite-animator");
-    expect(sprite?.dataset.frameOverride).toBe("5");
-    expect(sprite?.dataset.mirrored).toBe("true");
+    expect(sprite?.dataset.frameOverride).toBe("7");
+    expect(sprite?.dataset.mirrored).toBe("false");
+    expect(tool.style.left).toBe("22px");
+    expect(tool.style.top).toBe("48px");
 
     await dispatchPointer(tool, "pointerup", 22, 48, 280);
     sprite = container.querySelector<HTMLButtonElement>(".sprite-animator");
     expect(sprite?.dataset.animation).toBe("idle");
     expect(sprite?.dataset.frameOverride).toBe("");
     expect(sprite?.dataset.mirrored).toBe("false");
+    await act(async () => { vi.advanceTimersByTime(520); });
+    expect(sprite?.dataset.animation).toBe("idle");
+    vi.useRealTimers();
+  });
+
+  it.each(["off", "system"] as const)("keeps the directional wand pose still with %s reduced motion", async (animationMode) => {
+    if (animationMode === "system") vi.mocked(window.matchMedia).mockReturnValue({ matches: true } as MediaQueryList);
+    await act(async () => handlers.get("settings-updated")?.({ ...settings, animationMode }));
+    await startInteraction("wand-still", "wand");
+    setInteractionBounds();
+    const tool = container.querySelector<HTMLButtonElement>(".pet-tool-wand")!;
+    vi.useFakeTimers();
+    await dispatchPointer(tool, "pointerdown", 138, 48, 0);
+    await act(async () => { vi.advanceTimersByTime(520); });
+    const sprite = container.querySelector<HTMLElement>(".sprite-animator")!;
+    expect(sprite.dataset.animation).toBe("wand-reach");
+    expect(sprite.dataset.frameOverride).toBe("1");
+    await dispatchPointer(tool, "pointercancel", 138, 48, 530);
+    await act(async () => { vi.advanceTimersByTime(520); });
+    expect(sprite.dataset.animation).toBe("idle");
+    expect(sprite.dataset.frameOverride).toBe("");
+  });
+
+  it("does not leave a wand timer running after switching tools", async () => {
+    await startInteraction("wand-switch", "wand");
+    setInteractionBounds();
+    vi.useFakeTimers();
+    await dispatchPointer(container.querySelector(".pet-tool-wand")!, "pointerdown", 138, 48, 0);
+    await startInteraction("treat-switch", "treat");
+    await act(async () => { vi.advanceTimersByTime(520); });
+    expect(container.querySelector(".pet-tool-wand")).toBeNull();
+    expect(container.querySelector<HTMLElement>(".sprite-animator")?.dataset.animation).toBe("treat-follow");
   });
 
   it("exposes every snooze level and sends the selected duration from a strong reminder", async () => {
@@ -433,7 +483,7 @@ describe("PetWindow interaction bubble E2E", () => {
     expect(backend.snoozeOccurrence).toHaveBeenCalledWith("occurrence-snooze", 30);
     expect(
       container.querySelector(
-        '[role="status"][aria-label="提醒已延后；饺饺安静等候"]',
+        '[role="status"][aria-label="提醒已延后；圆圆安静等候"]',
       ),
     ).not.toBeNull();
   });

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
@@ -12,6 +13,9 @@ import { communityProductFromBrand } from "./community_release_contract.mjs";
 const projectRoot = path.resolve(import.meta.dirname, "..");
 const brand = JSON.parse(await readFile(path.join(projectRoot, "product-brand.json"), "utf8"));
 const expectedProduct = communityProductFromBrand(brand);
+const authorizationRecordSha256 = createHash("sha256").update(
+  await readFile(path.join(projectRoot, "docs/release/COMMUNITY_STABLE_V2_WAIVER_DECISION.md")),
+).digest("hex").toUpperCase();
 const authority = {
   schemaVersion: 1,
   productName: expectedProduct.name,
@@ -22,7 +26,7 @@ const authority = {
 };
 const installerSha256 = "A".repeat(64);
 const acceptance = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   status: "accepted",
   product: {
     name: expectedProduct.name,
@@ -35,16 +39,18 @@ const acceptance = {
   },
   checks: {
     endurance24h: {
-      status: "passed",
+      status: "passed_with_waivers",
       reportSha256: "B".repeat(64),
       sourceBindingSha256: "9".repeat(64),
       observedSeconds: 86_401,
       activeCoverageSeconds: 72_001,
-      suspendResumeObserved: true,
-      lockUnlockObserved: true,
+      suspendResumeObserved: false,
+      lockUnlockObserved: false,
       controlledExit: true,
       applicationErrorCount: 0,
       formalUserFilesWritten: 0,
+      rawReportPassed: false,
+      rawFailureCodes: ["power_suspend_resume_pair_missing", "session_lock_unlock_pair_missing"],
     },
     installedCandidateE2e: {
       status: "passed",
@@ -67,14 +73,16 @@ const acceptance = {
       cleanupVerified: true,
     },
     legacyDataCompatibility: {
-      status: "passed",
+      status: "waived_with_substitutes",
       sourceVersion: "1.3.2",
-      normalizedSourceSha256: "D".repeat(64),
-      reportSha256: "E".repeat(64),
-      sourceUnchanged: true,
-      allRowsPreserved: true,
-      backupRestorePassed: true,
-      failureRollbackPassed: true,
+      realHistoricalDataVerified: false,
+      officialBinarySha256: "D".repeat(64),
+      syntheticMigrationReportSha256: "E".repeat(64),
+      v1527UpgradeRollbackReportSha256: "1".repeat(64),
+      syntheticRowsPreserved: true,
+      syntheticBackupRestorePassed: true,
+      syntheticFailureRollbackPassed: true,
+      v1527UpgradeRollbackPassed: true,
     },
     learningRuntime: {
       status: "passed",
@@ -89,9 +97,16 @@ const acceptance = {
       backupRestorePassed: true,
     },
   },
+  waivers: {
+    authorizationRecordSha256,
+    candidateCommit: "a".repeat(40),
+    ids: ["power_suspend_resume_pair_missing", "session_lock_unlock_pair_missing", "real_1_3_2_user_history_unavailable"],
+    evidenceSha256: { endurance: "B".repeat(64), synthetic132: "E".repeat(64), upgrade1527: "1".repeat(64) },
+  },
   review: {
     operator: "maintainer-chen",
     completedAt: "2026-08-27T03:00:00.000Z",
+    permissionSha256: "4".repeat(64),
     unresolvedFindings: [],
   },
 };
@@ -103,7 +118,7 @@ const options = {
   now: new Date("2026-08-27T04:00:00.000Z"),
 };
 
-test("accepts only complete stability and functionality evidence without signing fields", () => {
+test("accepts exact V2 waivers with complete substitute evidence", () => {
   assert.equal(validateCommunityStableAcceptance(acceptance, options), acceptance);
   assert.doesNotMatch(JSON.stringify(acceptance), /sign|certificate|publisher/iu);
 });
@@ -120,14 +135,14 @@ test("final acceptance rejects cross-candidate 24-hour and learning evidence", (
 test("rejects every missing core product acceptance result", () => {
   const mutations = [
     (value) => (value.checks.endurance24h.observedSeconds = 86_399),
-    (value) => (value.checks.endurance24h.suspendResumeObserved = false),
+    (value) => (value.checks.endurance24h.suspendResumeObserved = true),
     (value) => (value.checks.installedCandidateE2e.scenarios.snoozeThirtyMinutes = false),
     (value) => (value.checks.installedCandidateE2e.scenarios.missedReminderNotify = false),
     (value) => (value.checks.installedCandidateE2e.scenarios.missedReminderSkipOld = false),
     (value) => (value.checks.installedCandidateE2e.scenarios.hideAndRestorePet = false),
     (value) => (value.checks.installedCandidateE2e.scenarios.panelDrag = false),
     (value) => (value.checks.installedCandidateE2e.scenarios.automaticBackup = false),
-    (value) => (value.checks.legacyDataCompatibility.sourceUnchanged = false),
+    (value) => (value.checks.legacyDataCompatibility.syntheticRowsPreserved = false),
     (value) => (value.checks.learningRuntime.importedCards = 19_999),
     (value) => (value.checks.learningRuntime.answersApplied = 999),
   ];
@@ -136,8 +151,25 @@ test("rejects every missing core product acceptance result", () => {
     mutate(invalid);
     assert.throws(
       () => validateCommunityStableAcceptance(invalid, options),
-      /pending|passed|minimum|preservation|observation/u,
+      /pending|passed|minimum|preservation|observation|unobserved|event/u,
     );
+  }
+});
+
+test("rejects forged raw pass, broad waiver, missing authorization, evidence mismatch, and candidate drift", () => {
+  const mutations = [
+    (value) => { value.checks.endurance24h.rawReportPassed = true; },
+    (value) => { value.checks.endurance24h.rawFailureCodes.push("working_set_slope_limit_exceeded"); },
+    (value) => { value.waivers.ids.push("arbitrary_waiver"); },
+    (value) => { value.waivers.authorizationRecordSha256 = null; },
+    (value) => { value.waivers.evidenceSha256.endurance = "3".repeat(64); },
+    (value) => { value.waivers.candidateCommit = "c".repeat(40); },
+    (value) => { value.checks.legacyDataCompatibility.realHistoricalDataVerified = true; },
+  ];
+  for (const mutate of mutations) {
+    const invalid = structuredClone(acceptance);
+    mutate(invalid);
+    assert.throws(() => validateCommunityStableAcceptance(invalid, options));
   }
 });
 
@@ -177,7 +209,7 @@ test("keeps the checked-in acceptance template pending and non-optimistic", asyn
         projectRoot,
         "docs",
         "release",
-        "COMMUNITY_STABLE_ACCEPTANCE_V1.template.json",
+        "COMMUNITY_STABLE_ACCEPTANCE_V2.template.json",
       ),
       "utf8",
     ),

@@ -23,7 +23,6 @@ struct ApplicationBrand {
     display_name: String,
     identifier: String,
     window_titles: WindowTitles,
-    notification_sender: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -68,10 +67,6 @@ pub fn application_identifier() -> &'static str {
 
 pub fn tray_title() -> &'static str {
     &brand().application.window_titles.tray
-}
-
-pub fn notification_sender() -> &'static str {
-    &brand().application.notification_sender
 }
 
 pub fn storage_directory_name() -> &'static str {

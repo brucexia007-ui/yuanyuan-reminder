@@ -21,7 +21,7 @@ async function main() {
         projectRoot,
         "docs",
         "release",
-        "COMMUNITY_STABLE_RELEASE_POLICY_V1.json",
+        "COMMUNITY_STABLE_RELEASE_POLICY_V2.json",
       ),
     ),
     readJson(path.join(projectRoot, "product-version.json")),
