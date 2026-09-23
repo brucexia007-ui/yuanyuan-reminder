@@ -179,7 +179,12 @@ fn plain(path: &Path, directory: bool) -> AppResult<()> {
     Ok(())
 }
 
-fn validate_archive_directory(data: &[u8], start: u64, expected_entries: usize) -> AppResult<()> {
+fn validate_archive_directory(
+    data: &[u8],
+    start: u64,
+    expected_entries: usize,
+    minimum_entries: usize,
+) -> AppResult<()> {
     // ZipArchive's name map silently collapses repeated central-directory names.
     // Inspect the original bounded bytes, before extracting any file, so that
     // neither duplicate members nor a forged smaller entry count can hide them.
@@ -205,10 +210,118 @@ fn validate_archive_directory(data: &[u8], start: u64, expected_entries: usize) 
         }
         position += entry_length;
     }
-    if names.len() != expected_entries || !(REQUIRED.len()..=FILES.len()).contains(&names.len()) {
+    if names.len() != expected_entries || !(minimum_entries..=FILES.len()).contains(&names.len()) {
         return Err(invalid("宠物包目录文件数量不一致。"));
     }
     Ok(())
+}
+
+// One transport boundary for production import and the offline repair tool.
+// A tool may inspect an incomplete but safe archive; production still requires 6..=8 entries.
+fn read_archive(data: &[u8], minimum_entries: usize) -> AppResult<BTreeMap<String, Vec<u8>>> {
+    if data.len() as u64 > LIMIT {
+        return Err(invalid("宠物包超过 64 MiB。"));
+    }
+    let mut archive = zip::ZipArchive::new(Cursor::new(data))
+        .map_err(|_| invalid("宠物包不是有效 ZIP 文件。"))?;
+    if !(minimum_entries..=FILES.len()).contains(&archive.len()) {
+        return Err(invalid("宠物包文件数量不正确。"));
+    }
+    validate_archive_directory(
+        data,
+        archive.central_directory_start(),
+        archive.len(),
+        minimum_entries,
+    )?;
+    let mut files = BTreeMap::new();
+    let mut total = 0;
+    for index in 0..archive.len() {
+        let mut file = archive
+            .by_index(index)
+            .map_err(|_| invalid("宠物包损坏或已加密。"))?;
+        let name = file.name().to_owned();
+        if !FILES.contains(&name.as_str())
+            || files.contains_key(&name)
+            || file.encrypted()
+            || file
+                .unix_mode()
+                .is_some_and(|m| m & 0o170000 != 0 && m & 0o170000 != 0o100000)
+        {
+            return Err(invalid("宠物包包含重复文件、链接或不允许的内容。"));
+        }
+        let remaining = file_limit(&name).min(LIMIT - total);
+        if file.size() > remaining {
+            return Err(invalid("解压大小超过限制。"));
+        }
+        let mut bytes = Vec::new();
+        (&mut file).take(remaining + 1).read_to_end(&mut bytes)?;
+        total += bytes.len() as u64;
+        if bytes.len() as u64 > remaining {
+            return Err(invalid("实际解压大小超过限制。"));
+        }
+        files.insert(name, bytes);
+    }
+    Ok(files)
+}
+
+#[cfg(feature = "pet-repair-tools")]
+pub fn repair_tools_run(
+    command: &str,
+    source: &Path,
+    destination: Option<&Path>,
+) -> AppResult<Value> {
+    match command {
+        "extract" => {
+            let bytes = bounded_read(source, LIMIT)?;
+            let files = read_archive(&bytes, 1)?;
+            let destination = destination.ok_or_else(|| invalid("缺少新的工作目录。"))?;
+            // No overwrite, no partial extraction of unsafe archives, and no application store access.
+            let parent = destination
+                .parent()
+                .ok_or_else(|| invalid("工作目录不正确。"))?;
+            plain(parent, true)?;
+            fs::create_dir(destination)?;
+            let result = (|| {
+                use std::io::Write;
+                for (name, data) in &files {
+                    let mut file = fs::OpenOptions::new()
+                        .write(true)
+                        .create_new(true)
+                        .open(destination.join(name))?;
+                    file.write_all(data)?;
+                }
+                let hashes: BTreeMap<_, _> = files
+                    .iter()
+                    .map(|(name, bytes)| (name.clone(), digest(bytes)))
+                    .collect();
+                Ok(
+                    json!({"schemaVersion":1,"archiveSha256":digest(&bytes),"files":hashes,
+                    "validation":repair_validation(destination)}),
+                )
+            })();
+            if result.is_err() {
+                let _ = fs::remove_dir_all(destination);
+            }
+            result
+        }
+        "validate" => Ok(repair_validation(source)),
+        _ => Err(invalid("未知离线检查命令。")),
+    }
+}
+
+#[cfg(feature = "pet-repair-tools")]
+fn repair_validation(directory: &Path) -> Value {
+    // Keep validation identical to the final native import, including real image decoding.
+    match inspect(directory) {
+        Ok(pack) => json!({"valid":true,"packId":pack.summary.pack_id,"errors":[]}),
+        Err(error) => {
+            let message = match error {
+                AppError::Validation(message) => message,
+                _ => "清单无法解析或文件读取失败。".to_owned(),
+            };
+            json!({"valid":false,"packId":null,"errors":[message]})
+        }
+    }
 }
 fn bounded_read(path: &Path, limit: u64) -> AppResult<Vec<u8>> {
     plain(path, false)?;
@@ -586,38 +699,7 @@ impl PetStore {
         let destination = self.root.join(".pending").join(&token);
         fs::create_dir(&destination)?;
         let result = (|| {
-            let mut archive = zip::ZipArchive::new(Cursor::new(&data))
-                .map_err(|_| invalid("宠物包不是有效 ZIP 文件。"))?;
-            if !(6..=8).contains(&archive.len()) {
-                return Err(invalid("宠物包文件数量不正确。"));
-            }
-            validate_archive_directory(&data, archive.central_directory_start(), archive.len())?;
-            let mut seen = BTreeSet::new();
-            let mut total = 0;
-            for index in 0..archive.len() {
-                let mut file = archive
-                    .by_index(index)
-                    .map_err(|_| invalid("宠物包损坏或已加密。"))?;
-                let name = file.name().to_owned();
-                if !FILES.contains(&name.as_str())
-                    || !seen.insert(name.clone())
-                    || file.encrypted()
-                    || file
-                        .unix_mode()
-                        .is_some_and(|m| m & 0o170000 != 0 && m & 0o170000 != 0o100000)
-                {
-                    return Err(invalid("宠物包包含重复文件、链接或不允许的内容。"));
-                }
-                let remaining = file_limit(&name).min(LIMIT - total);
-                if file.size() > remaining {
-                    return Err(invalid("解压大小超过限制。"));
-                }
-                let mut bytes = Vec::new();
-                (&mut file).take(remaining + 1).read_to_end(&mut bytes)?;
-                total += bytes.len() as u64;
-                if bytes.len() as u64 > remaining {
-                    return Err(invalid("实际解压大小超过限制。"));
-                }
+            for (name, bytes) in read_archive(&data, REQUIRED.len())? {
                 fs::write(destination.join(&name), bytes)?;
             }
             let pack = inspect(&destination)?;

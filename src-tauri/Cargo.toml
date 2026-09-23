@@ -22,6 +22,12 @@ learning = ["dep:csv", "dep:fsrs", "dep:unicode-normalization", "dep:yuanyuan-le
 runtime-qa = ["rusqlite/hooks"]
 migration-qa = []
 store-data-lifecycle-qa = []
+pet-repair-tools = []
+
+[[bin]]
+name = "yuanyuan-pet-repair"
+path = "src/bin/pet_repair.rs"
+required-features = ["pet-repair-tools"]
 
 [[bin]]
 name = "yuanyuan-task-watch-fixture"

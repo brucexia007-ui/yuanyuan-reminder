@@ -161,3 +161,9 @@ npm.cmd run tauri build
 5. 在 Release 中说明这是独立分支，不是圆圆提醒官方版本。
 
 可以直接使用仓库根目录的 [AI_CUSTOMIZATION_PROMPT.md](../AI_CUSTOMIZATION_PROMPT.md) 启动一次完整的 Coding 工具任务。
+
+## 后续修复与私人素材工程
+
+首次制作除宠物包外，还须按[私人素材工程清单](../pet-template/source-project.template.md)交付已确认主形象、可获得的高清动作源图、身份锁、装配参数、工具及源码版本、许可和验收记录。默认不包含原始照片、私人绝对路径、会话或应用数据；填好的工程与报告保留在被忽略的 `work/`，独立于宠物包。旧素材缺少源图时明确记录，不宣称可完整重建。
+
+导入后发现问题，使用[修复提示词](../AI_PET_REPAIR_PROMPT.md)与[修复工作流](PET_REPAIR_WORKFLOW.md)。普通修复无需重新提交照片，仅更换主形象时重新确认；新包作为新形象导入，保留旧版可切回。
