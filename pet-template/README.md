@@ -1,10 +1,11 @@
 # 宠物定制起点
 
-1. 复制 `identity-lock.template.md` 并填写你的宠物特征。
-2. 准备你有权使用的参考照片，原始私人照片建议放在被 Git 忽略的 `work/` 下。
-3. 将 `AI_CUSTOMIZATION_PROMPT.md`、身份锁定文件和照片一起交给 Coding 工具。
-4. 生成后的三张正式图集放入 `public/assets/pet/`。
-5. 更新 `public/assets/pet/pet-manifest.json`，运行 `npm.cmd run verify`。
-6. 用你自己的授权说明替换 `ASSETS_LICENSE.md` 中的圆圆素材条款。
+普通用户从[完整提示词](../AI_CUSTOMIZATION_PROMPT.md)开始，提供照片、名称与性格，再确认主形象即可；以下文件由支持参考图生成或编辑的 Coding 工具或素材制作方填写。
+
+1. 将[身份锁](identity-lock.template.md)和[验收记录](realism-review.template.md)复制到被 Git 忽略的私人 `work/`，记录有权使用的照片及身份特征。
+2. 默认摄影写实，用户明确指定其他风格时遵从其选择。展示原照对照和桌面尺寸主形象，取得明确确认后再制作动作；无回复不视为确认，更换主形象需重新确认。
+3. 制作方先检查待机、转头、行走，再逐行生成完整素材、复核真实播放。每次使用原照和已确认主形象作为实际图像参考。
+4. 普通包在私人素材目录准备图集、回退图、`pet-manifest.json` 和独立许可，按[宠物包规范](../docs/PET_PACK_SPEC.md)打包、原生验收后交付 `.yuanyuan-pet` 及单独报告，不覆盖内置素材或应用许可。
+5. 仅在明确要求独立应用时，按[自定义教程](../docs/CUSTOMIZE_YOUR_PET.md)把资源写入独立工作副本、更新品牌和许可，并完成相应构建验收。
 
 不要把原始家庭照片、失败生成图、临时行素材或包含私人路径的日志提交到公开仓库。

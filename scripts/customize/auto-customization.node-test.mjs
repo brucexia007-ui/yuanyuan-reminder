@@ -42,7 +42,7 @@ test("public customization starts with one paste-ready prompt and no user-run co
   assert.match(readme, /一段提示词制作自己的桌面宠物/u);
   assert.match(readme, /即使电脑上没有本项目/u);
   assert.doesNotMatch(readme, /在 Codex、Kimi Code 或 WorkBuddy 中运行 `npm\.cmd/u);
-  assert.match(tutorial, /这就是普通用户需要完成的全部操作/u);
+  assert.match(tutorial, /普通用户无需运行命令或编辑文件/u);
   assert.match(tutorial, /github\.com\/brucexia007-ui\/yuanyuan-reminder/u);
   assert.doesNotMatch(tutorial, /npm\.cmd --silent run customize:auto/u);
   assert.match(customizationReadme, /智能体内部入口（普通用户不要运行）/u);

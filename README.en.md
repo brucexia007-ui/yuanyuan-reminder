@@ -57,6 +57,12 @@ Merging source into `main` runs CI but does not publish a Release. Stable tags u
 
 ## Make it your pet
 
-Prepare 3–8 photos that you have the right to use, then follow [CUSTOMIZE_YOUR_PET.md](docs/CUSTOMIZE_YOUR_PET.md). The repository also includes a reusable [AI coding prompt](AI_CUSTOMIZATION_PROMPT.md) and the complete [pet pack specification](docs/PET_PACK_SPEC.md).
+The app cannot generate a pet directly from uploaded photos. Give 3–8 photos you have the right to use, the pet's name and personality, and the [AI coding prompt](AI_CUSTOMIZATION_PROMPT.md) to a tool or asset creator that supports reference-image generation/editing and local file handling.
+
+The workflow is **provide photos → approve the master image → generate and review animations → import the pet package**. Photographic realism is the default; another style must be explicitly requested. Review a private photo comparison and a desktop-size preview before animation generation. Silence is not approval, and replacing the approved master requires renewed approval. The creator checks idle, head-turn and walking samples before producing the full set.
+
+Preserve the pet's actual age, facial anatomy, body proportions, fur and markings. Yuanyuan and Jiaojiao illustrate texture and restrained motion, not a replacement identity. Avoid enlarged eyes or toy-like proportions while retaining naturally round eyes or short muzzles present in the photos. Reference-image support and visual review determine the result; successful packaging is not proof of realism or native playback acceptance.
+
+Follow the [customization guide](docs/CUSTOMIZE_YOUR_PET.md) and [pet pack specification](docs/PET_PACK_SPEC.md). The default deliverable is a `.yuanyuan-pet` file imported through **Settings → My Pet**; keep the application identity and existing data. Original photos and completed [review records](pet-template/realism-review.template.md) remain in an ignored private workspace.
 
 The application code is [MIT licensed](LICENSE). Yuanyuan's photographs and derived visual assets have a separate [personal, non-commercial asset license](ASSETS_LICENSE.md). Forks are encouraged to replace them with their own pet imagery.
