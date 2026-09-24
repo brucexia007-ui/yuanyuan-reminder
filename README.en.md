@@ -57,6 +57,9 @@ Merging source into `main` runs CI but does not publish a Release. Stable tags u
 
 ## Make it your pet
 
+
+For animation or display problems after import, give your agent the original `.yuanyuan-pet`, a problem description and optional recordings, together with the [pet repair prompt](AI_PET_REPAIR_PROMPT.md) and [offline repair workflow](docs/PET_REPAIR_WORKFLOW.md). It repairs a copy and provides a comparison. Import the result as a new shape through My Pet; keep the old shape to switch back. Nicknames are not inherited automatically. First-time creators also deliver a separate [private source project](pet-template/source-project.template.md), excluding original photos and application data by default.
+
 The app cannot generate a pet directly from uploaded photos. Give 3–8 photos you have the right to use, the pet's name and personality, and the [AI coding prompt](AI_CUSTOMIZATION_PROMPT.md) to a tool or asset creator that supports reference-image generation/editing and local file handling.
 
 The workflow is **provide photos → approve the master image → generate and review animations → import the pet package**. Photographic realism is the default; another style must be explicitly requested. Review a private photo comparison and a desktop-size preview before animation generation. Silence is not approval, and replacing the approved master requires renewed approval. The creator checks idle, head-turn and walking samples before producing the full set.

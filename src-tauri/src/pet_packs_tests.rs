@@ -1,6 +1,92 @@
 use super::*;
 use std::io::Write;
 
+#[cfg(feature = "pet-repair-tools")]
+#[test]
+fn repair_validation_matches_production_for_valid_and_broken_packages() {
+    let root = tempfile::tempdir().unwrap();
+    let mut store = PetStore::open(root.path().join("store")).unwrap();
+    for complete in [false, true] {
+        let package = fixture(root.path(), complete, complete);
+        let original = fs::read(&package).unwrap();
+        for (index, problem) in [
+            "valid",
+            "json",
+            "missing",
+            "decode",
+            "static",
+            "duplicate",
+            "traversal",
+            "limit",
+        ]
+        .iter()
+        .enumerate()
+        {
+            let mut files = read_archive(&original, REQUIRED.len()).unwrap();
+            match *problem {
+                "json" => {
+                    files.insert("pet-pack.json".into(), b"{".to_vec());
+                }
+                "missing" => {
+                    files.remove("fallback.png");
+                }
+                "decode" => {
+                    files.insert("fallback.png".into(), b"invalid png".to_vec());
+                }
+                "static" => {
+                    let mut man: Value = serde_json::from_slice(&files["pet-pack.json"]).unwrap();
+                    man["animations"]["idle"]
+                        .as_object_mut()
+                        .unwrap()
+                        .remove("staticFrame");
+                    files.insert("pet-pack.json".into(), serde_json::to_vec(&man).unwrap());
+                }
+                "traversal" => {
+                    files.insert("../LICENSE.txt".into(), b"MIT".to_vec());
+                }
+                "limit" => {
+                    files.insert("LICENSE.txt".into(), vec![32; 65537]);
+                }
+                _ => {}
+            }
+            let input = root
+                .path()
+                .join(format!("sample-{complete}-{index}.yuanyuan-pet"));
+            write_zip(&input, &files);
+            if *problem == "duplicate" {
+                fs::write(
+                    &input,
+                    repeat_central_entry(&fs::read(&input).unwrap(), "LICENSE.txt"),
+                )
+                .unwrap();
+            }
+            let before = fs::read(&input).unwrap();
+            let output = root.path().join(format!("extract-{complete}-{index}"));
+            let result = repair_tools_run("extract", &input, Some(&output));
+            let production = store.preview(&input);
+            let tool_accepts = result
+                .as_ref()
+                .is_ok_and(|r| r["validation"]["valid"] == true);
+            assert_eq!(tool_accepts, production.is_ok(), "{problem}");
+            if let Ok(preview) = production {
+                store.cancel(&preview.token).unwrap();
+            }
+            if ["duplicate", "traversal", "limit"].contains(problem) {
+                assert!(result.is_err());
+                assert!(!output.exists());
+            } else {
+                let result = result.unwrap();
+                assert_eq!(
+                    repair_tools_run("validate", &output, None).unwrap(),
+                    result["validation"]
+                );
+                assert!(repair_tools_run("extract", &input, Some(&output)).is_err());
+            }
+            assert_eq!(fs::read(&input).unwrap(), before);
+        }
+    }
+}
+
 fn fixture(root: &Path, learning: bool, scene: bool) -> PathBuf {
     let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("../public/assets/pet");
     let mut manifest: Value =
@@ -127,19 +213,26 @@ fn raw_directory_scan_bounds_names_lengths_and_entry_counts() {
         directory.extend_from_slice(b"\x00\x00\x00\x00PK\x01\x02");
     }
     directory.extend_from_slice(b"PK\x05\x06");
-    assert!(validate_archive_directory(&directory, 0, REQUIRED.len()).is_ok());
-    assert!(validate_archive_directory(&directory, 0, REQUIRED.len() - 1).is_err());
-    assert!(validate_archive_directory(&directory, 0, REQUIRED.len() + 1).is_err());
-    assert!(validate_archive_directory(&directory, u64::MAX, REQUIRED.len()).is_err());
+    assert!(validate_archive_directory(&directory, 0, REQUIRED.len(), REQUIRED.len()).is_ok());
+    assert!(validate_archive_directory(&directory, 0, REQUIRED.len() - 1, REQUIRED.len()).is_err());
+    assert!(validate_archive_directory(&directory, 0, REQUIRED.len() + 1, REQUIRED.len()).is_err());
+    assert!(
+        validate_archive_directory(&directory, u64::MAX, REQUIRED.len(), REQUIRED.len()).is_err()
+    );
     for end in 0..46 + REQUIRED[0].len() + 8 {
-        assert!(validate_archive_directory(&directory[..end], 0, REQUIRED.len()).is_err());
+        assert!(
+            validate_archive_directory(&directory[..end], 0, REQUIRED.len(), REQUIRED.len())
+                .is_err()
+        );
     }
     let mut invalid_name = directory.clone();
     invalid_name[46] = b'/';
-    assert!(validate_archive_directory(&invalid_name, 0, REQUIRED.len()).is_err());
+    assert!(validate_archive_directory(&invalid_name, 0, REQUIRED.len(), REQUIRED.len()).is_err());
     let mut oversized_name = directory;
     oversized_name[28..30].copy_from_slice(&u16::MAX.to_le_bytes());
-    assert!(validate_archive_directory(&oversized_name, 0, REQUIRED.len()).is_err());
+    assert!(
+        validate_archive_directory(&oversized_name, 0, REQUIRED.len(), REQUIRED.len()).is_err()
+    );
 }
 #[test]
 fn nickname_unicode_limits_and_controls() {

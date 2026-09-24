@@ -51,6 +51,8 @@ mod models;
 mod notifications;
 mod pet_commands;
 mod pet_packs;
+#[cfg(feature = "pet-repair-tools")]
+pub use pet_packs::repair_tools_run;
 mod presentation_arbiter;
 mod presentation_runtime;
 mod repository;
